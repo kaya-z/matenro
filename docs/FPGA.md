@@ -164,12 +164,13 @@ BSRAM の共有領域は後から足せます。
 
 **実機での確認 (済み)**: `matenro_xltest.fs` を `openFPGALoader -b tangnano9k` で SRAM に書き込み (フラッシュは書き換えない)、USB のシリアル (FT2232 の 2 つ目のポート、115200 baud) に `SLR13BA` `0037` が出ました (GW1N-9C、IDCODE `0x100481b`)。長時間の連続動作と温度による変化は見ていません。`SLR` の `S` は起動、`L` は Z80 のプログラムの読み込み完了、`R` は Z80 の ready を受けた印です。これで OS-9 Level 2 を載せるには、SD カードのイメージ (sim09 の Level 2 ローダ) とドライバ `xlink` を使います ( `-m 1M` は要りません)。
 
-### 9.1 OS-9 Level 2 を SoC で起動する (RTL シミュレーションで確認済み・実機は未確認)
+### 9.1 OS-9 Level 2 を SoC で起動する (RTL シミュレーションと実機 Tang Nano 9K で確認済み)
 
 sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から Level 2 のローダを読み、ローダが Level 2 の ROM イメージを PSRAM に置いて起動します (`new-sbc09/tools/mkl2disk.py`)。この SoC は同じ ROM で動きます。
 
 * **SD イメージ**: `fpga/tn9k/scripts/mkdisk.sh OUT.dsk` が sim09 の `os9/OS9L2.dsk` に Matenro のコマンド (`cpm xrun xlink x0 cpp cc80`) と `hello.com` を入れます (360KB、空きは 473 セクタ)。カードには `sudo dd if=OUT.dsk of=/dev/sdX bs=512 conv=fsync` で書きます (**カード全体が上書きされる**ので、デバイス名を確かめてください。ここでは書いていません)。
 * **ビットストリーム**: `TV80=… fpga/tn9k/scripts/build.sh boot` (起動 ROM 版)。LUT 89%、CLS 93%、**Fmax 67.9MHz、負のスラックなし**。
 * **RTL シミュレーション**: `make -C fpga/tn9k/sim ROM=boot boot TV80=… DISK=OUT.dsk SCRIPT=… CLKS=4000000000` (2.8 億クロック、SD から 146 ブロックを読んで OS-9 Level 2 が起動)。`load xlink`、`load x0` のあと **`cpm /d0/hello.com abc` が `Hello from CP/M-80 on the Z80` と ` ABC` を出しました** (6809 の RTL コア、PSRAM のモデル、SD のモデル、XLINK、TV80 の Z80、ドライバ `xlink` が OS-9 の空き RAM から借りた Z80 のメモリ)。
+* **実機 (Tang Nano 9K)**: ビットストリーム `matenro_boot.fs` をフラッシュに書き (`openFPGALoader -b tangnano9k -f`)、`matenro_l2.dsk` を SD カードに書いて電源を入れると、シリアルに `NitrOS-9/6809 Level 2 V1.0.1` / `Tang Nano 9K` が出て OS-9 が起動し、`chx /d0/cmds`、`load xlink`、`load x0`、`cpm /d0/hello.com abc` で **`Hello from CP/M-80 on the Z80` / `!` / ` ABC`** が出ました (FPGA の 6809 が OS-9 Level 2 を動かし、同じ FPGA の Z80 が CP/M-80 のプログラムを動かし、OS-9 がその BDOS 呼び出しを引き受ける)。
 * **タイミングは配置配線の結果で変わります**: 同じ RTL でも変更のたびに Fmax が 64〜68MHz の間で動き、67.5MHz に届かないことがあります (`xltest` を作り直したときは Fmax 64.7MHz、スラック -3.4ns で、実機では動きましたが制約は満たしていません。`PLACE=1..4` の配置オプションは同じ結果でした)。ビットストリームを作ったら必ず `impl/pnr/*_tr_content.html` の `Total Negative Slack Summary` を見てください。`MEMTEST=0` で消えるメモリ試験の回路を `MEMTEST` で守ったのは、この余裕を作るためです。
 
