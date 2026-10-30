@@ -9,14 +9,16 @@ build/Vxlink: ../rtl/xlink.v tb_xlink.cpp
 # The TV80 core is not part of this repository: get rtl/core/{tv80_core,tv80_mcode,tv80_alu,tv80_reg,tv80s}.v from
 # github.com/hutch31/tv80 and set TV80=that directory.
 TV80 ?= tv80
+CLKDIV ?= 9   # Z80 clock = clk / CLKDIV; 2 or more (1 is not supported)
 soc: build_soc/Vz80_soc
 	python3 ../../os9/sub/sumz80.py build_soc/sumz80.bin
 	build_soc/Vz80_soc build_soc/sumz80.bin
 build_soc/Vz80_soc: ../rtl/z80_soc.v ../rtl/xlink.v tb_z80_soc.cpp
 	@test -f $(TV80)/tv80s.v || { echo "set TV80=<directory with tv80s.v tv80_core.v tv80_mcode.v tv80_alu.v tv80_reg.v>"; exit 1; }
 	mkdir -p build_soc
+	sh mk_tv80s_cen.sh $(TV80) build_soc/tv80s_cen.v
 	verilator -Wall -Wno-fatal -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-WIDTH -Wno-PINMISSING -Wno-UNDRIVEN -Wno-CASEINCOMPLETE \
 	  -Wno-LATCH -Wno-INITIALDLY -Wno-BLKSEQ -Wno-SYNCASYNCNET -Wno-MULTIDRIVEN -Wno-IMPLICIT -Wno-CASEOVERLAP -Wno-UNOPTFLAT \
 	  --cc --exe --build -Mdir build_soc --top-module z80_soc ../rtl/z80_soc.v ../rtl/xlink.v \
-	  $(TV80)/tv80s.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v tb_z80_soc.cpp -o Vz80_soc
+	  -GCLKDIV=$(CLKDIV) build_soc/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v tb_z80_soc.cpp -o Vz80_soc
 .PHONY: soc

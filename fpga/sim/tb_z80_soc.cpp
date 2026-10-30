@@ -64,8 +64,8 @@ int main(int argc, char **argv)
     EXPECT("image written and read back by the window", bad, 0);
 
     mw(0, 0x11);                                    // RUN | IEN
-    EXPECT("ready doorbell from the Z80", waitbell(20000), 1);
-    for (int i = 0; i < 100; i++) tick();           // the Z80 rings, then executes HALT
+    EXPECT("ready doorbell from the Z80", waitbell(400000), 1);
+    for (int i = 0; i < 1000; i++) tick();           // the Z80 rings, then executes HALT
     EXPECT("Z80 halted, waiting for the interrupt", d->z80_halted, 1);
     mw(1, 0);                                       // acknowledge
 
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
         mw(2, 0);                                   // ring the Z80 (maskable interrupt, IM 1 -> RST 38h)
         char what[64];
         snprintf(what, sizeof what, "reply for n=%d", ns[k]);
-        EXPECT(what, waitbell(200000), 1);
+        EXPECT(what, waitbell(4000000), 1);
         int lo = s2m(0), hi = s2m(1);
         snprintf(what, sizeof what, "1+..+%d in S2M[0..1]", ns[k]);
         EXPECT(what, lo | (hi << 8), want[k]);

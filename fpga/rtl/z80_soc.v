@@ -8,12 +8,14 @@
 //
 // The RAM here is a plain array (2MB, simulation only).  On the board it becomes the arbiter and PSRAM / BSRAM of
 // docs/FPGA.md chapter 5; the interface to the rest (mem port of the Z80 through sub_phys, window port) does not change.
-// The Z80 runs at the system clock (clk) here; on the board a clock enable divides the system clock (not done yet).
+// The Z80 gets a clock enable (cen) once in CLKDIV system clocks, so everything stays in one clock domain.  TV80's
+// tv80s ties cen to 1; tv80s_cen (made by fpga/sim/mk_tv80s_cen.sh with sed from the tv80s.v that you got) has it as a port.
 //
 // Credits: the TV80 core (Guy Hutchison, after T80 by Daniel Wallner, MIT) is not part of this repository
 // (see CREDITS.md).  Bus cycles follow the Z80 User Manual (UM0080): memory cycles with MREQ/RD/WR, I/O cycles with
 // IORQ, interrupt acknowledge = IORQ with M1.
 module z80_soc #(
+    parameter CLKDIV  = 9,                   // Z80 clock = clk / CLKDIV, 2 or more (67.5 MHz / 9 = 7.5 MHz)
     parameter RAMBITS = 21                   // physical address bits of the simulation RAM (21 = 2MB; small for a synthesis estimate)
 ) (
     input  wire        clk,
@@ -42,15 +44,25 @@ module z80_soc #(
     reg  [7:0]  di;
     reg         nmi_n;
 
-    tv80s #(.Mode(0), .T2Write(1), .IOWait(1)) cpu (
-        .reset_n(sub_rst_n), .clk(clk), .wait_n(1'b1), .int_n(~sub_int), .nmi_n(nmi_n), .busrq_n(~sub_hold),
+    // clock enable for the Z80
+    reg [7:0] cnt;
+    wire cen = (cnt == CLKDIV - 1);
+    always @(posedge clk) cnt <= (rst || cen) ? 8'd0 : cnt + 8'd1;
+
+    tv80s_cen #(.Mode(0), .T2Write(1), .IOWait(1)) cpu (
+        .reset_n(sub_rst_n), .clk(clk), .cen_i(cen), .wait_n(1'b1), .int_n(~sub_int), .nmi_n(nmi_n), .busrq_n(~sub_hold),
         .m1_n(m1_n), .mreq_n(mreq_n), .iorq_n(iorq_n), .rd_n(rd_n), .wr_n(wr_n), .rfsh_n(rfsh_n),
         .halt_n(halt_n), .busak_n(busak_n), .A(A), .di(di), .dout(dout));
 
     assign z80_halted = ~halt_n;
 
-    // NMI: the XLINK gives a one-clock pulse; the core wants a falling edge
-    always @(posedge clk) nmi_n <= ~sub_nmi;
+    // NMI: the XLINK gives a one-clock pulse, the core looks at nmi_n only when cen is set: keep it until then
+    reg nmi_pend;
+    always @(posedge clk) begin
+        if (sub_nmi) nmi_pend <= 1'b1;
+        else if (cen) nmi_pend <= 1'b0;
+        nmi_n <= ~nmi_pend;
+    end
 
     // ------------------------------------------------------------ cycle decode and strobes
     wire io_cycle  = ~iorq_n;
@@ -61,10 +73,15 @@ module z80_soc #(
     wire mem_wr    = ~mreq_n & ~wr_n;
     reg  io_rd_q, io_wr_q;
     always @(posedge clk) begin io_rd_q <= io_rd; io_wr_q <= io_wr; end
-    wire s_re = io_rd & ~io_rd_q;                 // one clock at the start of the cycle
-    wire s_we = io_wr & ~io_wr_q;
-    wire [3:0] s_port = A[3:0];
-    wire port_ok = (A[7:4] == 4'h0);              // only $00-$0F are decoded
+    // A write is done at the END of the I/O cycle (WR going high), with the data and the port of the last clock of the
+    // cycle: with a slow cen the data of the core is not there yet in the first clock of the cycle.
+    reg [7:0] dout_q;
+    reg [7:0] a_q;
+    always @(posedge clk) if (io_wr) begin dout_q <= dout; a_q <= A[7:0]; end
+    wire s_re = io_rd & ~io_rd_q;
+    wire s_we = io_wr_q & ~io_wr;
+    wire [3:0] s_port = s_we ? a_q[3:0] : A[3:0];
+    wire port_ok = s_we ? (a_q[7:4] == 4'h0) : (A[7:4] == 4'h0);   // only $00-$0F are decoded
 
     // ------------------------------------------------------------ XLINK
     wire [7:0]  s_rdata, s_vec;
@@ -79,8 +96,8 @@ module z80_soc #(
         .m_addr(m_addr), .m_re(m_re), .m_we(m_we), .m_wdata(m_wdata), .m_rdata(m_rdata), .m_wait(m_wait),
         .irq_n_o(irq_o), .firq_o(firq_o), .shr_o(),
         .sub_rst_n(sub_rst_n), .sub_hold(sub_hold), .sub_int(sub_int), .sub_nmi(sub_nmi),
-        .sub_halted(z80_halted), .sub_clk_en(1'b1),
-        .s_port(s_port), .s_re(s_re & port_ok), .s_we(s_we & port_ok), .s_wdata(dout),
+        .sub_halted(z80_halted), .sub_clk_en(cen),
+        .s_port(s_port), .s_re(s_re & port_ok), .s_we(s_we & port_ok), .s_wdata(dout_q),
         .s_rdata(s_rdata), .s_vec(s_vec),
         .con_we(con_we), .con_data(con_data), .pwr_we(pwr_we), .pwr_data(pwr_data),
         .sub_addr({4'b0, A}), .sub_is_z80(1'b1), .sub_phys(sub_phys),
@@ -99,9 +116,17 @@ module z80_soc #(
     end
     assign win_ack = win_req & ~mem_wr & ~mem_rd;     // an access of the Z80 in this clock blocks the window
 
+    // The core latches di during the whole T2 (many clocks when cen is slow), after RD/IORQ have gone high again, so
+    // what di shows is chosen when the cycle starts and kept until the next cycle starts.
+    reg sel_io, sel_ack;
+    always @(posedge clk) begin
+        if (mem_rd | mem_wr | io_wr) begin sel_io <= 1'b0; sel_ack <= 1'b0; end
+        else if (int_ack)            begin sel_io <= 1'b0; sel_ack <= 1'b1; end
+        else if (io_rd)              begin sel_io <= 1'b1; sel_ack <= 1'b0; end
+    end
     always @* begin
-        if (int_ack)      di = s_vec;
-        else if (io_rd)   di = port_ok ? s_rdata : 8'hff;
-        else              di = ram[zadr];
+        if (int_ack | sel_ack)     di = s_vec;
+        else if (io_rd | sel_io)   di = port_ok ? s_rdata : 8'hff;
+        else                       di = ram[zadr];
     end
 endmodule

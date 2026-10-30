@@ -5,5 +5,5 @@ module z80_soc_syn (
     input  wire [2:0] m_addr, input wire m_re, input wire m_we, input wire [7:0] m_wdata,
     output wire [7:0] m_rdata, output wire m_wait, output wire irq_o, output wire firq_o,
     output wire con_we, output wire [7:0] con_data, output wire pwr_we, output wire [7:0] pwr_data, output wire z80_halted);
-    z80_soc #(.RAMBITS(10)) u (.*);
+    z80_soc #(.RAMBITS(10), .CLKDIV(9)) u (.*);
 endmodule
