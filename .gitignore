@@ -1,0 +1,12 @@
+matenro
+src/*.o
+tests/z80_test
+tests/i8088_test
+tests/i8088/core.bin
+os9/xrun
+os9/xrun.lst
+fpga/sim/build
+fpga/synth/build
+build
+private/
+.claude/

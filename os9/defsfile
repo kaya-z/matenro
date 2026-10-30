@@ -1,0 +1,14 @@
+* SPDX-License-Identifier: MIT
+* defsfile of the Matenro OS-9 programs (Level 2). The NitrOS-9 definition files are read from the
+* directory given with a09 -I (new-sbc09/os9/nitros9-code/defs, NitrOS-9 project, GPL v2): not copied here.
+Level    equ   2
+OS9Vrsn  equ   1
+OS9Major equ   0
+OS9Minor equ   1
+NOS9VER   equ OS9Vrsn
+NOS9MAJ   equ OS9Major
+NOS9MIN   equ OS9Minor
+
+         use   os9.d
+         use   scf.d
+         use   rbf.d
