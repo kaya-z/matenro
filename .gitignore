@@ -10,3 +10,4 @@ fpga/synth/build
 build
 private/
 .claude/
+fpga/sim/build_soc

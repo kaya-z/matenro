@@ -9,7 +9,7 @@ MC6809 側は sim09 (`/export/nas/archives/MC6809/new-sbc09`) をベースにし
 * 6809 側のメモリ・MMU・I/O は sim09 のまま (Level 2: 8KB × 8 ページの MMU、物理 2MB、I/O は `$FF80`)。
 * ストレージは SD カード相当のディスクイメージ (6809/OS-9 側だけが持つ。生デバイスも指せる)。
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
-* FPGA (Tang Nano 9K / 20K) は**検討だけ**です: [docs/FPGA.md](docs/FPGA.md)。**RTL はまだありません**。
+* FPGA (Tang Nano 9K / 20K) は検討と、一部の RTL です: [docs/FPGA.md](docs/FPGA.md)。XLINK (`fpga/rtl/xlink.v`) と、Z80 をつないだ `fpga/rtl/z80_soc.v` があり、Verilator で C のシミュレータと同じ Z80 のバイナリを動かして同じ結果を確認しました (`make -C fpga/sim` と `make -C fpga/sim soc TV80=…`)。ボードへの実装 (6809 コア、メモリ調停、配置配線) はまだです。
 
 詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
 
