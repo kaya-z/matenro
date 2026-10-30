@@ -305,10 +305,10 @@ def os9_cpp(tmp):
     """the C preprocessor written for OS-9 (os9/cpp/cpp.asm): macros, conditionals, expressions, #include, -D"""
     if not os.path.isdir(OS9):
         return
-    files = {n: open(os.path.join(HERE, 'cpp', n), 'rb').read() for n in ('t1.c', 't1.h', 't2.c', 't3.c')}
+    files = {n: open(os.path.join(HERE, 'cpp', n), 'rb').read() for n in ('t1.c', 't1.h', 't2.c', 't3.c', 't4.c')}
     out, d = os9_session(tmp, 'cpp', 'z80', files, [
         'send "cpp t1.c >t1.o\\r"', 'expect "OS9:"', 'send "cpp t2.c >t2.o\\r"', 'expect "OS9:"',
-        'send "cpp t3.c >t3.o\\r"', 'expect "OS9:"', 'send "cpp -DFOO=5 -DBAR t1.c >t1d.o\\r"', 'expect "OS9:"'])
+        'send "cpp t3.c >t3.o\\r"', 'expect "OS9:"', 'send "cpp t4.c >t4.o\\r"', 'expect "OS9:"', 'send "cpp -DFOO=5 -DBAR t1.c >t1d.o\\r"', 'expect "OS9:"'])
     names = {n.lower(): n for n in os.listdir(os.path.join(d, 'v0'))}
     def words(n):
         if n not in names:
@@ -326,6 +326,10 @@ def os9_cpp(tmp):
     t3 = words('t3.o')
     check('cpp: operators (division, shifts, bit operations, 16 bit constants, ?:)',
           t3 == ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11', 'c13'], repr(t3))
+    t4 = words('t4.o')
+    check('cpp: # (stringify) and ## (paste), arguments expanded first except next to # and ##',
+          t4 == ['char *a = "hello world";', 'char *b = "\\"q\\\\\\"uote\\" \'c\' \\n";', 'int foobar = 1;', 'int x_y = 12;',
+                 'char *c = "abc" " done";', 'char *d = "42";', 'char *e = "VAL";', 'int f = VAL1;'], repr(t4))
     t1d = words('t1d.o')
     check('cpp: -Dname=value and -Dname',
           t1d is not None and 'int foo = 5;' in t1d and 'int calc_bad;' in t1d and 'int nobar;' not in t1d, repr(t1d))

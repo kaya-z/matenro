@@ -30,7 +30,7 @@ make test       # アセンブラ + Z80 / 8088 のテスト + 統合テスト (a
 |---|---|
 | `make test-z80` | Z80 の既知答えテスト 179 項目 |
 | `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 64 項目 |
-| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、ドアベルの割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (5 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、全部で 29 項目 |
+| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、ドアベルの割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、全部で 30 項目 |
 | `make test-asm` | 自作 Z80 アセンブラの既知の機械語 90 項目 |
 
 **テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で通しました (リポジトリには入れていません)。8086 の公開テストは**走らせていません**。
@@ -118,7 +118,7 @@ big 36
 
 HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB とヘッダ) は**このリポジトリに入っていません**。<https://github.com/agn453/HI-TECH-Z80-C>
 から自分で取得して `/v0/htc` (または `-t=dir`) に置いてください。テストは環境変数 `MATENRO_HTC=そのディレクトリ` のときだけ `cc80` を試します。
-`cpp` だけでも使えます (`cpp -Dname=v -Idir -ofile file.c`、`#` `##` は未実装)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
+`cpp` だけでも使えます (`cpp -Dname=v -Idir -ofile file.c`、`#` `##` は関数形式マクロのみ)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
 
 ### 主なオプション (sim09 のオプションは、そのまま使えます)
 

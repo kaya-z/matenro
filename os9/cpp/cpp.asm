@@ -7,8 +7,8 @@
 * Handles comments, line splicing (backslash at the end of a line), #include "file" / <file>, #define (with and
 * without parameters), #undef, #ifdef, #ifndef, #if / #elif with integer expressions (defined, ?: || && | ^ &
 * == != < > <= >= << >> + - * / % ! ~), #else, #endif, #error, #line and #pragma (the last two are dropped).
-* Macros are expanded in the text, but not inside strings and character constants.  The # and ## operators are
-* not implemented.  The output has one line for each input line (blank lines where a directive or a
+* Macros are expanded in the text, but not inside strings and character constants.  The # and ## operators work in
+* function-like macros (not in object-like ones).  The output has one line for each input line (blank lines where a directive or a
 * comment was), lines end with CR (the OS-9 text format).  `cpm` converts the line ends of the text files it
 * hands to a CP/M program by itself.
 *
@@ -66,6 +66,7 @@ tmp16b   rmb   2
 mulr     rmb   2
 nparam   rmb   1
 tmpoff_x rmb   2
+pastef   rmb   1                 the last item of the body was ##
 outp     rmb   1                 path of the output (1 = standard output, -ofile)
 ebase    rmb   2                 number base while a constant is parsed
 files    rmb   1056              4 * IFSZ
@@ -80,7 +81,7 @@ pbuf     rmb   100
 pnames   rmb   320               8 * 40
 incdirs  rmb   192               4 * 48
 tmpb     rmb   4160              8 * 520: replacement buffer / argument scratch of each expansion depth
-argb     rmb   8320              8 depths * 8 arguments * 130
+argb     rmb   16640             8 depths * 8 arguments * 130, then the same again: the arguments as written (for # and ##)
 heap     rmb   6000
 heapend  equ   .
          rmb   300               stack
@@ -749,10 +750,12 @@ df_body  pshs  y
 * copy the body: parameters become the markers 1..8, strings stay as they are
 df_b1    lda   ,x
          lbeq  df_b9
+         cmpa  #'#'
+         lbeq  df_hash
          cmpa  #QUOT
-         beq   df_bs
+         lbeq   df_bs
          cmpa  #APOS
-         beq   df_bs
+         lbeq   df_bs
          lbsr  isid1
          bcs   df_bc
          pshs  y
@@ -778,23 +781,63 @@ df_bi3   puls  x
 df_bc    sta   ,y+
          leax  1,x
          bra   df_b1
+* # in a body: ## = marker 30 (the blanks around it go), # param = marker 16 + number, else the character itself
+df_hash  leax  1,x
+         lda   ,x
+         cmpa  #'#'
+         bne   df_h1
+         leax  1,x
+df_ht    cmpy  ,s
+         bls   df_h0
+         lda   -1,y
+         cmpa  #' '
+         bne   df_h0
+         leay  -1,y
+         bra   df_ht
+df_h0    lbsr  skipsp
+         lda   #30
+         sta   ,y+
+         lbra  df_b1
+df_h1    lbsr  skipsp
+         tst   nparam,u
+         beq   df_hc
+         lda   ,x
+         lbsr  isid1
+         bcs   df_hc
+         pshs  y
+         lbsr  getident
+         puls  y
+         pshs  x,y
+         lbsr  parmidx
+         puls  x,y
+         tstb
+         beq   df_hb
+         addb  #16
+         stb   ,y+
+         lbra  df_b1
+df_hb    lda   #'#'
+         sta   ,y+
+         lbra  df_bi
+df_hc    lda   #'#'
+         sta   ,y+
+         lbra  df_b1
 df_bs    sta   tmp8,u                a string or character constant
          sta   ,y+
          leax  1,x
 df_bs1   lda   ,x
-         beq   df_b1
+         lbeq  df_b1
          sta   ,y+
          leax  1,x
          cmpa  #BSL
          bne   df_bs2
          lda   ,x
-         beq   df_b1
+         lbeq  df_b1
          sta   ,y+
          leax  1,x
          bra   df_bs1
 df_bs2   cmpa  tmp8,u
          bne   df_bs1
-         bra   df_b1
+         lbra  df_b1
 df_b9    puls  x                     X = start of the body, Y = end: drop trailing blanks
          stx   tmp16b,u
 df_t1    cmpy  tmp16b,u
@@ -1029,13 +1072,36 @@ prescan  ldx   dp,u
          pshs  b                     argument number
 ps1      ldb   ,s
          cmpb  nargs,u
-         bhs   ps9
+         lbhs   ps9
          lbsr  bufaddr               Y = scratch
          sty   dp,u
          leay  510,y
          sty   dlim,u
          lda   ,s
          lbsr  argptr
+         pshs  x
+         leay  8320,x                keep the argument as written (without the blanks at both ends)
+ps0a     lda   ,x
+         cmpa  #' '
+         bne   ps0
+         leax  1,x
+         bra   ps0a
+ps0      lda   ,x+
+         sta   ,y+
+         bne   ps0
+         leay  -2,y
+         ldx   ,s
+         leax  8320,x
+ps0t     pshs  x
+         cmpy  ,s++
+         blo   ps0e
+         lda   ,y
+         cmpa  #' '
+         bne   ps0e
+         clr   ,y
+         leay  -1,y
+         bra   ps0t
+ps0e     puls  x
          inc   edepth,u
          lbsr  expand
          dec   edepth,u
@@ -1069,7 +1135,7 @@ ps4      cmpy  tmp16b,u
          bra   ps4
 ps5      clr   ,y
          inc   ,s
-         bra   ps1
+         lbra   ps1
 ps9      leas  1,s
          puls  x,y
          stx   dp,u
@@ -1077,7 +1143,8 @@ ps9      leas  1,s
          rts
 
 * function-like macro: copy the body into the buffer replacing the markers by the arguments
-build_f  pshs  x
+build_f  clr   pastef,u
+         pshs  x
          lbsr  bufaddr
          sty   tmpoff_x,u
          puls  x
@@ -1090,26 +1157,109 @@ build_f  pshs  x
          tfr   y,x
          ldy   tmpoff_x,u
          tstb
-         beq   bf9
+         lbeq   bf9
 bf1      pshs  b
+         ldb   pastef,u
+         stb   tmp8b,u
+         clr   pastef,u
          lda   ,x+
+         cmpa  #30
+         beq   bf_paste
+         cmpa  #24
+         lbhi   bf_c
+         cmpa  #17
+         bhs   bf_str
          cmpa  #8
-         bhi   bf_c
+         lbhi   bf_c
          tsta
-         beq   bf_c
+         lbeq   bf_c
          pshs  x
          deca
          lbsr  argptr
+         tst   tmp8b,u               after ##: the argument as written
+         bne   bf_raw
+         ldb   2,s                   the item behind the marker is ##: as written too
+         cmpb  #1
+         bls   bf2
+         lda   [,s]
+         cmpa  #30
+         bne   bf2
+bf_raw   leax  8320,x
 bf2      lda   ,x+
          beq   bf3
          sta   ,y+
          bra   bf2
 bf3      puls  x
+         lbra   bf_n
+bf_paste cmpy  tmpoff_x,u            ## : drop the blanks before it, the next item is taken as written
+         bls   bp2
+         lda   -1,y
+         cmpa  #' '
+         bne   bp2
+         leay  -1,y
+         bra   bf_paste
+bp2      lda   #1
+         sta   pastef,u
+         bra   bf_n
+* # param : the argument as written, as a string constant
+bf_str   suba  #17
+         pshs  x
+         lbsr  argptr
+         leax  8320,x
+         lda   #QUOT
+         sta   ,y+
+         clr   tmp8,u
+bs0      lda   ,x
+         cmpa  #' '
+         bne   bs1
+         leax  1,x
+         bra   bs0
+bs1      lda   ,x+
+         beq   bs9
+         ldb   tmp8,u
+         bne   bs2
+         cmpa  #QUOT
+         beq   bs_o
+         cmpa  #APOS
+         bne   bs4
+bs_o     sta   tmp8,u
+         bra   bs3
+bs2      cmpa  #BSL
+         bne   bs2a
+         lda   #BSL
+         sta   ,y+
+         sta   ,y+
+         lda   ,x+
+         beq   bs9
+         bra   bs3
+bs2a     cmpa  tmp8,u
+         bne   bs3
+         clr   tmp8,u
+bs3      cmpa  #QUOT
+         beq   bs_e
+         cmpa  #BSL
+         bne   bs4
+bs_e     pshs  a
+         lda   #BSL
+         sta   ,y+
+         puls  a
+bs4      sta   ,y+
+         bra   bs1
+bs9      tst   tmp8,u
+         bne   bs10
+bs8      lda   -1,y
+         cmpa  #' '
+         bne   bs10
+         leay  -1,y
+         bra   bs8
+bs10     lda   #QUOT
+         sta   ,y+
+         puls  x
          bra   bf_n
 bf_c     sta   ,y+
 bf_n     puls  b
          decb
-         bne   bf1
+         lbne  bf1
 bf9      clr   ,y
          puls  x
          rts
