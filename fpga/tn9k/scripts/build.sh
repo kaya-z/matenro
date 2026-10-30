@@ -5,6 +5,7 @@
 #
 # xltest  the test ROM fpga/tn9k/test/xltest.asm: the 6809 loads the Z80 demo into the Z80 memory, runs it and prints
 #         "13BA" and "0037" on the UART of the board (115200 baud, 8N1; the USB port), then switches itself off.
+# boot    the 256 byte boot ROM of sim09 (at $FF00): it loads the Level 2 loader from the SD card (image: scripts/mkdisk.sh)
 # Result: fpga/tn9k/build/xltest/impl/pnr/matenro_xltest.fs   (program it with: openFPGALoader -b tangnano9k FILE)
 #
 # The parts of sim09 that are not changed (UART, timer, SD disk, PSRAM controller, 6809 core, PLL, pins and timing
@@ -17,14 +18,19 @@ ROM=${1:-xltest}
 IDE=${2:-${GOWIN_IDE:-/usr/local/IDE}}
 case $ROM in
 xltest) BASE="16'hFC00"; AW=10 ;;
+boot)   BASE="16'hFF00"; AW=8 ;;
 *) echo "unknown ROM $ROM"; exit 1 ;;
 esac
 B=$HERE/build/$ROM
 mkdir -p "$B"
 A09=${A09:-$SIM09/../../tools/a09}
 python3 -c "import sys; sys.path.insert(0,'$HERE/../../os9/sub'); import sumz80; i=sumz80.image(); open('$HERE/test/sumz80.inc','w').write(chr(10).join('         fcb   '+','.join('\$%02X'%b for b in i[k:k+16]) for k in range(0,len(i),16))+chr(10))"
-(cd "$HERE/test" && echo n | "$A09" -o xltest.bin -l xltest.lst xltest.asm)
-python3 "$SIM09/scripts/bin2hex.py" "$HERE/test/xltest.bin" > "$B/rom.hex"
+[ "$ROM" = boot ] || (cd "$HERE/test" && echo n | "$A09" -o xltest.bin -l xltest.lst xltest.asm)
+if [ "$ROM" = boot ]; then
+    python3 "$SIM09/scripts/bin2hex.py" "$SIM09/../../fuzix/images/bootrom.bin" > "$B/rom.hex"
+else
+    python3 "$SIM09/scripts/bin2hex.py" "$HERE/test/xltest.bin" > "$B/rom.hex"
+fi
 sh "$HERE/../sim/mk_tv80s_cen.sh" "$TV80" "$B/tv80s_cen.v"
 set -- $(date +"%Y %m %d %H %M %S")
 cat > "$B/tn9k_cfg.vh" <<EOT
@@ -77,7 +83,7 @@ set_option -use_ready_as_gpio 1
 set_option -use_done_as_gpio 1
 set_option -use_cpu_as_gpio 1
 set_option -rw_check_on_ram 1
-set_option -place_option 1
+set_option -place_option ${PLACE:-1}
 run all
 exit
 EOT

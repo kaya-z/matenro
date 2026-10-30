@@ -8,6 +8,7 @@
 //     fourth master of the arbiter (psram_arb4.v); the 6809 reaches the physical memory through the window of the XLINK,
 //     which uses the port of master 0 (the CPU is waiting then)
 //   * the IRQ of the 6809 is the OR of the timer and the XLINK
+//   * the memory test states are guarded by MEMTEST, so that with MEMTEST = 0 the synthesis drops the test and its messages
 // Everything else is the file of sim09.
 //
 // The sim09 / sbc09 "v09" machine (Level 1: 64 KB flat memory, I/O page at $E000) as a system on a chip:
@@ -259,7 +260,7 @@ module matenro_soc #(
             if (go_req) begin nreset_cpu <= 1'b0; rcnt <= 4'd0; end      // the mode register: reset the CPU (in the Level 2 mode)
             case (cs_)
                 C_WAIT:  if (bsy_d == 4'b0000 && !ps_busy) cs_ <= MEMTEST ? M_HDR : C_CLR;
-                M_HDR: if (!p_go && !st_wr && !st_d) begin                    // "Memory "
+                M_HDR: if (MEMTEST && !p_go && !st_wr && !st_d) begin                    // "Memory "
                     case (mi)
                         4'd0: p_ch <= "M"; 4'd1: p_ch <= "e"; 4'd2: p_ch <= "m"; 4'd3: p_ch <= "o";
                         4'd4: p_ch <= "r"; 4'd5: p_ch <= "y"; default: p_ch <= " ";
@@ -267,14 +268,14 @@ module matenro_soc #(
                     p_go <= 1'b1;
                     if (mi == 4'd6) begin mi <= 4'd0; cs_ <= M_W; end else mi <= mi + 1'b1;
                 end
-                M_W: begin c_wr <= 1'b1; cs_ <= M_WW; end
-                M_WW: if (!c_wr && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) begin
+                M_W: if (MEMTEST) begin c_wr <= 1'b1; cs_ <= M_WW; end
+                M_WW: if (MEMTEST && !c_wr && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) begin
                     if (cw_last) begin cw <= 0; cs_ <= M_R; end
                     else begin cw <= cw_n; cs_ <= M_W; end
                 end
-                M_R: begin t_rd <= 1'b1; cs_ <= M_RW; end
-                M_RW: if (!t_rd && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) cs_ <= M_RC;
-                M_RC: if (!p_go) begin
+                M_R: if (MEMTEST) begin t_rd <= 1'b1; cs_ <= M_RW; end
+                M_RW: if (MEMTEST && !t_rd && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) cs_ <= M_RC;
+                M_RC: if (MEMTEST && !p_go) begin
                     if (t_got_r != td_r && !t_fail) begin t_fail <= 1'b1; t_faddr <= cw; end
                     if (cw_pg || cw_last) begin p_ch <= ">"; p_go <= 1'b1; end   // one > for 256 KB
                     if (cw_last) begin
@@ -282,7 +283,7 @@ module matenro_soc #(
                         cs_ <= (tp == 2'd2) ? M_FIN : M_W;
                     end else begin cw <= cw_n; cs_ <= M_R; end
                 end
-                M_FIN: if (!p_go && !st_wr && !st_d) begin                    // " OK 2048K" or " NG @address"
+                M_FIN: if (MEMTEST && !p_go && !st_wr && !st_d) begin                    // " OK 2048K" or " NG @address"
                     if (msg(mi, t_fail, t_faddr) == 8'h00) cs_ <= C_CLR;       // then clear (tp = 3: zero bytes)
                     else begin p_ch <= msg(mi, t_fail, t_faddr); p_go <= 1'b1; mi <= mi + 1'b1; end
                 end
