@@ -174,3 +174,17 @@ sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から 
 * **実機 (Tang Nano 9K)**: ビットストリーム `matenro_boot.fs` をフラッシュに書き (`openFPGALoader -b tangnano9k -f`)、`matenro_l2.dsk` を SD カードに書いて電源を入れると、シリアルに `NitrOS-9/6809 Level 2 V1.0.1` / `Tang Nano 9K` が出て OS-9 が起動し、`chx /d0/cmds`、`load xlink`、`load x0`、`cpm /d0/hello.com abc` で **`Hello from CP/M-80 on the Z80` / `!` / ` ABC`** が出ました (FPGA の 6809 が OS-9 Level 2 を動かし、同じ FPGA の Z80 が CP/M-80 のプログラムを動かし、OS-9 がその BDOS 呼び出しを引き受ける)。
 * **タイミングは配置配線の結果で変わります**: 同じ RTL でも変更のたびに Fmax が 64〜68MHz の間で動き、67.5MHz に届かないことがあります (`xltest` を作り直したときは Fmax 64.7MHz、スラック -3.4ns で、実機では動きましたが制約は満たしていません。`PLACE=1..4` の配置オプションは同じ結果でした)。ビットストリームを作ったら必ず `impl/pnr/*_tr_content.html` の `Total Negative Slack Summary` を見てください。`MEMTEST=0` で消えるメモリ試験の回路を `MEMTEST` で守ったのは、この余裕を作るためです。
 
+### 9.2 SD カードのイメージ (ドライブ 0 と 1)
+
+カードは生のまま、ドライブ 0 = バイト 0 から、ドライブ 1 = 128MB の位置から (`sd_disk.v` の `DRIVE1_BLK`、LSN *n* = バイト *n* × 256) です。
+
+| ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
+|---|---|
+| `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のローダと ROM イメージ、コマンド、Matenro のコマンド (`cpm xrun xlink x0 cpp cc80`)、`hello.com` (`scripts/mkdisk.sh`) |
+| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`demo.c` `hello.c` (`scripts/mkdisk_d1.sh`)。空きは 475 セクタ。2048 セクタは 1 セクタの割り当て表で持てる最大 |
+| `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体のイメージ: `sudo dd if=matenro_card.img of=/dev/sdX bs=1M conv=fsync` (**カード全体が上書きされる**。128MB 以上のカード) |
+
+実機での使い方 (予定): `chx /d0/cmds`、`load xlink`、`load x0`、`chd /d1`、`cc80 -t=/d1/htc -r hello.c` (HI-TECH C)、`cpm zexdoc` (ZEXDOC)。`cc80 -t=/d1/htc -r hello.c` はシミュレータ (`/d1` を 2 番目のディスクイメージにしたもの) で `Hello from Hi-Tech C on CP/M` まで通りました。
+
+**ファイルの属性 `s` に注意**: OS-9 の `s` 属性 (単一ユーザ = 同時に 1 回しか開けない) が付いたファイルは、HI-TECH のリンカのように**同じファイルを 2 回開く**プログラムでは、2 回目が `E$Share` (`$FD`) で失敗し、リンカは `Can't open` を出します (`/v0` のホストディレクトリでは起きず、RBF のディスクでだけ起きる)。`mkdisk_d1.sh` はコピーのあとに `attr -s` で外します。`cpm -d` は、失敗した `open` の OS-9 のエラー番号を 16 進で表示します。
+

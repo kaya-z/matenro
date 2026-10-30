@@ -2025,9 +2025,35 @@ fo1      sta   fcb+F_PATH,u
          lbsr  mktslot
 fo2      clr   fcb+F_CR,u
          lbra  putfcb
-fo_err   lda   #$FF
+fo_err   tst   dbg,u                 -d: show the OS-9 error code (B) of the failed open / make
+         beq   fe1
+         pshs  b
+         tfr   b,a
+         lsra
+         lsra
+         lsra
+         lsra
+         bsr   fe_hex
+         lda   ,s
+         anda  #$0F
+         bsr   fe_hex
+         lda   #C$CR
+         sta   iobuf,u
+         bsr   fe_wr
+         puls  b
+fe1      lda   #$FF
          sta   r_al,u
          lbra  retA
+fe_hex   cmpa  #10
+         blo   fe_h1
+         adda  #7
+fe_h1    adda  #'0
+         sta   iobuf,u
+fe_wr    lda   #2
+         leax  iobuf,u
+         ldy   #1
+         os9   I$Write
+         rts
 
 f_close  lbsr  getfcb
          lda   fcb+F_PATH,u
