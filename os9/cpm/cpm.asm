@@ -123,6 +123,7 @@ pname    rmb   80
 pathbuf  rmb   96
 optb     rmb   1
 dbg      rmb   1
+xpath    rmb   1                 path of /x0 (the xlink driver), 0 = driver not loaded
 keep     rmb   1                 -k: the command tail keeps its case
 tooldir  rmb   48
 slotp    rmb   2
@@ -175,6 +176,13 @@ start    stx   argp,u
          cmpa  #2
          lbne  nosub
 idok     sta   subty,u
+         clr   xpath,u               the driver (xlink.asm): memory from OS-9, interrupt for the doorbell
+         leax  x0name,pcr
+         lda   #UPDAT.
+         os9   I$Open
+         bcs   idok2
+         sta   xpath,u
+idok2
          clr   >XCTL                 hold the sub CPU in reset
          clra                        the standard paths (kept in variables so that they can be redirected)
          sta   stdi,u
@@ -321,6 +329,10 @@ cl9      puls  b
 
 nosub    leax  msgnosub,pcr
          bra   say
+x0name   fcc   "/x0"
+         fcb   C$CR
+SS.XWait equ   $B1
+
 usage    leax  msgusage,pcr
          bra   say
 nofile   leax  msgfile,pcr
@@ -342,7 +354,14 @@ wq1      lda   >XSTAT
          bne   wq2
          leay  -1,y
          bne   wq1
-         ldx   #1
+         tst   xpath,u
+         beq   wq0
+         lda   xpath,u               sleep until the doorbell interrupt (the driver)
+         ldb   #SS.XWait
+         ldx   #100
+         os9   I$GetStt
+         bra   waitrq
+wq0      ldx   #1
          os9   F$Sleep
          bra   waitrq
 wq2      sta   >XSTAT                acknowledge

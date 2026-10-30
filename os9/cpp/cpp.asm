@@ -8,8 +8,8 @@
 * without parameters), #undef, #ifdef, #ifndef, #if / #elif with integer expressions (defined, ?: || && | ^ &
 * == != < > <= >= << >> + - * / % ! ~), #else, #endif, #error, #line and #pragma (the last two are dropped).
 * Macros are expanded in the text, but not inside strings and character constants.  The # and ## operators work in
-* function-like macros (not in object-like ones).  The output has one line for each input line (blank lines where a directive or a
-* comment was), lines end with CR (the OS-9 text format).  `cpm` converts the line ends of the text files it
+* function-like macros (not in object-like ones).  The output has one line for each input line (blank lines where a
+* directive or a comment was), lines end with CR (the OS-9 text format).  `cpm` converts the line ends of the text files it
 * hands to a CP/M program by itself.
 *
 * Typical use (docs/DESIGN.md, chapter 13):

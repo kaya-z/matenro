@@ -17,7 +17,7 @@ sim09 自身が参考にしたもの (sim09 の `CREDITS.md` より。これら�
   VRBF の規約 (`engine.c` `io.c` `v09.c` `vdisk.c` `trace.c`)。`os9/` のディスクイメージと ROM はこのプロジェクト由来で、**このリポジトリには
   複製していません** (テストが `new-sbc09/os9/` を読み取り専用で使います)。
 * **MAME `m6809.cpp`** (Nathan Woods, Tim Lindner ほか / BSD-3-Clause): クロック・サイクル・CPU 状態の考え方 (コードは使っていません)。
-* **NitrOS-9 プロジェクト** (GPL v2) <https://github.com/nitros9project/nitros9>: OS-9 のシステムコールの定義。`os9/xrun.asm` は
+* **NitrOS-9 プロジェクト** (GPL v2) <https://github.com/nitros9project/nitros9>: OS-9 のシステムコールの定義。`os9/xrun.asm` と `os9/xlink/` は
   `new-sbc09/os9/nitros9-code/defs/` の定義ファイルを `a09 -I` で**読むだけ**で、複製していません。
 
 ## このプロジェクトで書いたもの (MIT)
@@ -28,6 +28,7 @@ sim09 自身が参考にしたもの (sim09 の `CREDITS.md` より。これら�
 | `src/i8088.c` | Intel "MCS-86 / iAPX 86,88 User's Manual" の命令・フラグ・EA とクロック数・割り込みの手順・リセット状態。8086 の未定義の動き (`60-6F` など) の知識。他の x86 エミュレータのコードは使っていません |
 | `src/xlink.c` `xlink.h` `subcpu.h` | **FM-11 マンハッタンシステム** (富士通) の考え方 (異種 CPU がメインメモリを共有する)。資料やコードは見ていません。レジスタの構成は新しく設計しました。スケジューリングは sim09 の `machine_run` (MAME のデバイススケジューラに倣ったもの) に倣っています |
 | `os9/cpm/cpm.asm` `z80shim.asm` `i8088shim.asm` `tests/cpm/*` | **Digital Research の CP/M 2.2 と CP/M-86 の公開仕様**: BDOS の関数番号、FCB の配置、結果の返し方、ゼロページ/ベースページ、`.CMD` のヘッダ (グループ記述子)。CP/M の実物のコード (CCP、BDOS、BIOS) は見ていません。OS-9 のコマンドの形式は `xrun` と同じ |
+| `os9/xlink/xlink.asm` `x0.asm` | NitrOS-9 のドライバの形 (sim09 の `level1/pty.asm` と `level2/pty-dd.asm`、ジョイスティックのドライバの IRQ パケット)、カーネルの `F$AlHRAM` `F$DelRAM` の仕様。コードは新しく書きました |
 | `os9/cpp/cpp.asm` | ANSI C (X3.159) と K&R のプリプロセッサの規則。他のプリプロセッサのコードは使っていません |
 | `os9/cc80/cc80.asm` | HI-TECH C 3.09 (CP/M-80) のパスの順序と引数。`github.com/agn453/HI-TECH-Z80-C` の `OPTIONS` と、元のドライバ `C309.COM` が作る `$$EXEC.$$$` の内容を見て決めました。そのコードは使っていません |
 | `tools/z80asm.py` | Zilog の Z80 マニュアルの機械語。他のアセンブラのコードは使っていません |

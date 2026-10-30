@@ -186,7 +186,7 @@ def build_cpm(tmp):
     """assemble the OS-9 commands cpm, xrun and cpp (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 4:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 6:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -200,21 +200,22 @@ def z80_com(name, tmp):
     return img
 
 
-def os9_session(tmp, tag, cpu, files, script_lines, timeout=180):
+def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     """boot OS-9 Level 2 with the sub CPU `cpu`, /v0 holds the cmds directory and `files`; run the script; return the output"""
     d = os.path.join(tmp, 'sess_' + tag)
     os.mkdir(d)
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp'):
+    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
     script = os.path.join(d, 'script.txt')
-    open(script, 'w').write('timeout 60000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "chd /v0\\r"\nexpect "OS9:"\n'
+    pre = 'send "load xlink\\r"\nexpect "OS9:"\nsend "load x0\\r"\nexpect "OS9:"\n' if driver else ''
+    open(script, 'w').write('timeout 60000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "chd /v0\\r"\nexpect "OS9:"\n' + pre
                             + '\n'.join(script_lines) + '\nquit\n')
-    cmd = [SIM, '-max', '-m', '1M', '-sub', cpu, '-rom', os.path.join(OS9, 'os9v2.rom'), '-0', os.path.join(d, 'OS9.dsk'),
+    cmd = [SIM, '-max'] + ([] if driver else ['-m', '1M']) + ['-sub', cpu, '-rom', os.path.join(OS9, 'os9v2.rom'), '-0', os.path.join(d, 'OS9.dsk'),
            '-1', os.path.join(d, 'WORK.dsk'), '-v', os.path.join(d, 'v0'), '-script', script]
     r = run(cmd, timeout=timeout)
     return r.stdout.decode(errors='replace'), d
@@ -366,6 +367,22 @@ def os9_cc80(tmp):
     check('cc80: cpp on OS-9 -> HI-TECH C on the Z80 -> program runs (macros, #if, -D)', 'big 36' in out and 'small 36' in out, out[-800:])
 
 
+def os9_driver(tmp):
+    """the xlink driver (os9/xlink): the sub CPU memory comes from OS-9's own RAM (no -m 1M), the doorbell is an interrupt"""
+    if not os.path.isdir(OS9):
+        return
+    f80 = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio')}
+    out, d = os9_session(tmp, 'drv80', 'z80', f80, [
+        'send "cpm hello.com abc\\r"', 'expect "OS9:"', 'send "cpm fileio.com\\r"', 'expect "OS9:"',
+        'send "cpm hello.com again\\r"', 'expect "OS9:"'], driver=True)
+    check('xlink driver, Z80: memory from OS-9 (2MB machine), three runs in a row (allocate / free)',
+          out.count('Hello from CP/M-80 on the Z80') == 2 and 'FILEIO OK' in out and ' AGAIN' in out, out[-700:])
+    f86 = {'hello86.cmd': cmd86('hello86', tmp), 'small86.cmd': cmd86_small(tmp)}
+    out, d = os9_session(tmp, 'drv86', '8088', f86, [
+        'send "cpm hello86.cmd abc\\r"', 'expect "OS9:"', 'send "cpm small86.cmd\\r"', 'expect "OS9:"'], driver=True)
+    check('xlink driver, 8088: 32 blocks, the reset vector block mapped', 'Hello from CP/M-86 on the 8088' in out and 'Hello from the small model' in out, out[-700:])
+
+
 def main():
     if not os.path.exists(SIM):
         print('build first: make')
@@ -384,6 +401,7 @@ def main():
         os9_cpm86(tmp)
         os9_cpp(tmp)
         os9_cc80(tmp)
+        os9_driver(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print('%d tests, %d failed' % (total, fails))

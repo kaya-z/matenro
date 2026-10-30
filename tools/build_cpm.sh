@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 # Assemble the OS-9 command `cpm` (and the shims it embeds).
-#   tools/build_cpm.sh OUTDIR          -> OUTDIR/cpm, OUTDIR/xrun, OUTDIR/cpp, OUTDIR/cc80
+#   tools/build_cpm.sh OUTDIR          -> OUTDIR/cpm, OUTDIR/xrun, OUTDIR/cpp, OUTDIR/cc80, OUTDIR/xlink (driver), OUTDIR/x0 (descriptor)
 # Needs a09 (A09=...), the NitrOS-9 definition files (OS9DIR=.../os9, used read only), nasm and python3.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,3 +18,5 @@ echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/xrun.lst" -o "$OUT/xrun
 cd "$ROOT/os9"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cpp.lst" -o "$OUT/cpp" cpp/cpp.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cc80.lst" -o "$OUT/cc80" cc80/cc80.asm
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/xlink.lst" -o "$OUT/xlink" xlink/xlink.asm
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/x0.lst" -o "$OUT/x0" xlink/x0.asm
