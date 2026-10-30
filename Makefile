@@ -44,4 +44,9 @@ test: all test-asm test-z80 test-8088 test-mh
 clean:
 	rm -f src/*.o matenro tests/z80_test tests/i8088_test
 
-.PHONY: all clean test test-asm test-z80 test-8088 test-mh os9cmds
+.PHONY: all clean test test-asm test-z80 test-8088 test-mh os9cmds test-fpga
+
+# RTL tests (Verilator): XLINK; with TV80=<dir with tv80s.v ...> also the Z80 SoC and the whole Matenro SoC
+test-fpga:
+	make -C fpga/sim
+	@if [ -n "$(TV80)" ]; then make -C fpga/sim soc TV80=$(TV80) && make -C fpga/tn9k/sim TV80=$(TV80); else echo "set TV80=<directory> for the Z80 tests"; fi

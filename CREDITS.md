@@ -43,6 +43,10 @@ sim09 自身が参考にしたもの (sim09 の `CREDITS.md` より。これら�
 * **ZEXDOC / ZEXALL** (Frank D. Cringle、Yaze 付属 / GPL v2、Ian Bartholomew 改) : `src/z80.c` の検証 (ZEXDOC 67 項目)。取得したのは一時ディレクトリで、リポジトリには入れていません。
 * **HI-TECH C 3.09 (Z80 CP/M)** (HI-TECH Software; 無償利用の許諾、Tony Nicholson の `agn453/HI-TECH-Z80-C`): `cc80` の検証。`MATENRO_HTC` で指すだけで、リポジトリには入れていません。
 
+## sim09 の FPGA (new-sbc09/fpga/tn9k、MIT) から複製して変えたもの
+
+`fpga/tn9k/rtl/matenro_soc.v` (`sbc09_soc.v` に XLINK と Z80 を足した)、`psram_arb4.v` (`psram_arb.v` に 4 番目のマスタを足した)、`tn9k_top.v` (SoC の名前と `MEMTEST` の指定だけ)、`fpga/tn9k/sim/sim_top.v` (SoC の名前だけ)。いずれも冒頭に「sim09 contributors の MIT」と変更点を書いてあります。それ以外 (UART、タイマ、SD ディスク、PSRAM コントローラ (Feng Zhou)、6809 コア (Greg Miller、BSD-3-Clause)、PLL、ピンとタイミングの制約、テストベンチ `tb.cpp`、PSRAM のモデル) は複製せずに `new-sbc09` を読んで使います。
+
 ## ツール (使うだけ、複製していません)
 
 * `a09` (sbc09 プロジェクトの 6809 アセンブラ、GPL v2): `new-sbc09/tools/a09` をテストと `xrun` のビルドで**実行するだけ**です (`A09=` で場所を変えられます)。

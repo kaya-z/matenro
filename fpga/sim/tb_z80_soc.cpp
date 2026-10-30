@@ -24,7 +24,7 @@ static int  mr(int a)
 {
     d->m_addr = a; d->m_re = 1; d->eval(); tick();
     while (d->m_wait) tick();
-    d->m_addr = a; d->eval();
+    d->m_addr = a; d->eval(); tick(); tick();
     return d->m_rdata;                              // after the stall of a window read the data is there
 }
 static void ext(int i, int autoinc = 0) { mw(3, i | (autoinc ? 0x80 : 0)); }
@@ -32,9 +32,8 @@ static void setwin(unsigned a) { ext(0x0a); mw(4, a >> 16); ext(0x0b); mw(4, a >
 static int  waitbell(long clocks)
 {
     for (long i = 0; i < clocks; i++) {
-        d->m_addr = 1; d->eval();
+        d->m_addr = 1; d->eval(); tick();
         if (d->m_rdata & 1) return 1;
-        tick();
     }
     return 0;
 }
@@ -53,7 +52,7 @@ int main(int argc, char **argv)
     d->rst = 1;
     for (int i = 0; i < 3; i++) tick();
     d->rst = 0; tick();
-    EXPECT("XID", ({ d->m_addr = 2; d->eval(); d->m_rdata; }), 1);
+    EXPECT("XID", ({ d->m_addr = 2; d->eval(); tick(); tick(); d->m_rdata; }), 1);
     EXPECT("Z80 held in reset", d->z80_halted, 0);
 
     setwin(0x100000);                               // sub CPU address 0 = physical block $80

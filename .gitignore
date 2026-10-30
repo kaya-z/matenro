@@ -11,3 +11,8 @@ build
 private/
 .claude/
 fpga/sim/build_soc
+fpga/tn9k/build
+fpga/tn9k/sim/build
+fpga/tn9k/test/sumz80.inc
+fpga/tn9k/test/xltest.bin
+fpga/tn9k/test/xltest.lst
