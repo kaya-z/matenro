@@ -6,6 +6,7 @@
 # xltest  the test ROM fpga/tn9k/test/xltest.asm: the 6809 loads the Z80 demo into the Z80 memory, runs it and prints
 #         "13BA" and "0037" on the UART of the board (115200 baud, 8N1; the USB port), then switches itself off.
 # boot    the 256 byte boot ROM of sim09 (at $FF00): it loads the Level 2 loader from the SD card (image: scripts/mkdisk.sh)
+# MEMTEST=0  leave out the power-on memory test of the PSRAM (it takes about 4.5 s: "Memory >>>> OK 2048K" on the console); on by default
 # Result: fpga/tn9k/build/xltest/impl/pnr/matenro_xltest.fs   (program it with: openFPGALoader -b tangnano9k FILE)
 #
 # The parts of sim09 that are not changed (UART, timer, SD disk, PSRAM controller, 6809 core, PLL, pins and timing
@@ -48,6 +49,7 @@ cat > "$B/tn9k_cfg.vh" <<EOT
 \`define HDMI_ROWS 25
 \`define HDMI_CHARSET 0
 \`define KANJI_LOAD 0
+\`define MEMTEST_EN ${MEMTEST:-1}
 $( [ -n "$WDOG" ] && echo "\`define WATCHDOG 1" )
 EOT
 cat "$SIM09/constraints/tn9k.cst" > "$B/pins.cst"
