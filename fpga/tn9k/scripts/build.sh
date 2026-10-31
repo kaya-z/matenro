@@ -21,7 +21,7 @@ xltest) BASE="16'hFC00"; AW=10 ;;
 boot)   BASE="16'hFF00"; AW=8 ;;
 *) echo "unknown ROM $ROM"; exit 1 ;;
 esac
-B=$HERE/build/$ROM
+B=$HERE/build/$ROM${TAG}
 mkdir -p "$B"
 A09=${A09:-$SIM09/../../tools/a09}
 python3 -c "import sys; sys.path.insert(0,'$HERE/../../os9/sub'); import sumz80; i=sumz80.image(); open('$HERE/test/sumz80.inc','w').write(chr(10).join('         fcb   '+','.join('\$%02X'%b for b in i[k:k+16]) for k in range(0,len(i),16))+chr(10))"
@@ -48,6 +48,7 @@ cat > "$B/tn9k_cfg.vh" <<EOT
 \`define HDMI_ROWS 25
 \`define HDMI_CHARSET 0
 \`define KANJI_LOAD 0
+$( [ -n "$WDOG" ] && echo "\`define WATCHDOG 1" )
 EOT
 cat "$SIM09/constraints/tn9k.cst" > "$B/pins.cst"
 cat "$SIM09/constraints/tn9k.sdc" "$HERE/constraints/matenro.sdc" > "$B/timing.sdc"
@@ -68,6 +69,7 @@ add_file -type verilog $SIM09/rtl/acia_uart.v
 add_file -type verilog $SIM09/rtl/timer_rtc.v
 add_file -type verilog $SIM09/rtl/sd_disk.v
 add_file -type verilog $SIM09/rtl/dbg_uart.v
+add_file -type verilog $HERE/rtl/dbg_uart_z.v
 add_file -type verilog $SIM09/rtl/kanji_loader.v
 add_file -type verilog $SIM09/vendor/mc6809/mc6809i.v
 add_file -type verilog $SIM09/vendor/psram/psram_controller.v

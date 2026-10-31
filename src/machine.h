@@ -129,6 +129,7 @@ typedef struct machine {
 /* creation / configuration */
 machine_t *machine_create(int level2, size_t memsize);
 int  machine_load_rom(machine_t *m, const char *file, long romstart);
+int  machine_memtest(machine_t *m, long fault, char *out, size_t outsz);   /* power-on RAM test of the sim09 board (memtest.c) */
 void machine_reset(machine_t *m);
 void machine_set_timer(machine_t *m, long hz, int irq_line, int mode);
 

@@ -46,7 +46,8 @@ module z80_sub #(
     output wire [7:0]  con_data,
     output wire        pwr_we,
     output wire [7:0]  pwr_data,
-    output wire        z80_halted
+    output wire        z80_halted,
+    output wire [39:0] dbg_z                 // debug: last M1 address, address bus, flags (tn9k/rtl/dbg_uart_z.v)
 );
     // ------------------------------------------------------------ clock enable and stall
     reg  [7:0] cnt;
@@ -77,6 +78,10 @@ module z80_sub #(
         .halt_n(halt_n), .busak_n(busak_n), .A(A), .di(di_q), .dout(dout));
 
     assign z80_halted = ~halt_n;
+
+    reg [15:0] pc_m1;                        // the address of the last instruction fetch (debug)
+    always @(posedge clk) if (~m1_n & ~mreq_n) pc_m1 <= A;
+    assign dbg_z = {pc_m1, A, zstall, z80_halted, mem_req, mem_wr, ~m1_n, ~mreq_n, ~rd_n, ~wr_n};
 
     // NMI: the XLINK gives a one-clock pulse, the core looks at nmi_n only when cen is set: keep it until then
     reg nmi_pend;

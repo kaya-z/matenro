@@ -4,7 +4,7 @@
 CC      ?= gcc
 CFLAGS  ?= -O2 -g -Wall -Wextra -Wno-unused-parameter
 SRC      = src/m6809.c src/machine.c src/console.c src/net.c src/vdisk.c src/dbg.c src/dis6809.c \
-           src/xlink.c src/z80.c src/i8088.c src/main.c
+           src/xlink.c src/z80.c src/i8088.c src/memtest.c src/main.c
 OBJ      = $(SRC:.c=.o)
 
 all: matenro

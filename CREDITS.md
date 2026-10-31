@@ -26,6 +26,7 @@ sim09 自身が参考にしたもの (sim09 の `CREDITS.md` より。これら�
 |---|---|
 | `src/z80.c` | Zilog "Z80 CPU User Manual" (UM0080) の命令・フラグ・T ステート。Sean Young "The Undocumented Z80 Documented" (X/Y フラグ、IXH/IXL、`DD CB` のコピー、`SLL`、ブロック I/O のフラグ、MEMPTR)。Cristian Dinu "Decoding Z80 opcodes" の x/y/z/p/q によるデコード。他の Z80 エミュレータのコードは使っていません |
 | `src/i8088.c` | Intel "MCS-86 / iAPX 86,88 User's Manual" の命令・フラグ・EA とクロック数・割り込みの手順・リセット状態。8086 の未定義の動き (`60-6F` など) の知識。他の x86 エミュレータのコードは使っていません |
+| `src/memtest.c` | 実機 (new-sbc09 の `fpga/tn9k/rtl/sbc09_soc.v` の `MEMTEST`、起動時に RTL が行う 2MB のメモリ検査) の手順と表示 (`Memory >>>> OK 2048K` / `NG @アドレス`)。コードは新しく書きました |
 | `src/xlink.c` `xlink.h` `subcpu.h` | **FM-11 マンハッタンシステム** (富士通) の考え方 (異種 CPU がメインメモリを共有する)。資料やコードは見ていません。レジスタの構成は新しく設計しました。スケジューリングは sim09 の `machine_run` (MAME のデバイススケジューラに倣ったもの) に倣っています |
 | `os9/cpm/cpm.asm` `z80shim.asm` `i8088shim.asm` `tests/cpm/*` | **Digital Research の CP/M 2.2 と CP/M-86 の公開仕様**: BDOS の関数番号、FCB の配置、結果の返し方、ゼロページ/ベースページ、`.CMD` のヘッダ (グループ記述子)。CP/M の実物のコード (CCP、BDOS、BIOS) は見ていません。OS-9 のコマンドの形式は `xrun` と同じ |
 | `os9/xlink/xlink.asm` `x0.asm` | NitrOS-9 のドライバの形 (sim09 の `level1/pty.asm` と `level2/pty-dd.asm`、ジョイスティックのドライバの IRQ パケット)、カーネルの `F$AlHRAM` `F$DelRAM` の仕様。コードは新しく書きました |

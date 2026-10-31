@@ -377,10 +377,32 @@ def os9_driver(tmp):
         'send "cpm hello.com again\\r"', 'expect "OS9:"'], driver=True)
     check('xlink driver, Z80: memory from OS-9 (2MB machine), three runs in a row (allocate / free)',
           out.count('Hello from CP/M-80 on the Z80') == 2 and 'FILEIO OK' in out and ' AGAIN' in out, out[-700:])
+    out, d = os9_session(tmp, 'drvstress', 'z80', {'bstress.com': z80_com('bstress', tmp)}, [
+        'send "cpm bstress.com\\r"', 'expect "DONE"', 'expect "OS9:"'], driver=True, timeout=240)
+    run_out = out.split('DONE')[0].rsplit('cpm bstress.com', 1)[-1]
+    check('xlink driver, Z80: 3000 rounds of memory work and BDOS calls (tests/cpm/bstress.asm), no E',
+          'DONE' in out and run_out.count('.') >= 3000 and 'E' not in run_out, out[-300:])
     f86 = {'hello86.cmd': cmd86('hello86', tmp), 'small86.cmd': cmd86_small(tmp)}
     out, d = os9_session(tmp, 'drv86', '8088', f86, [
         'send "cpm hello86.cmd abc\\r"', 'expect "OS9:"', 'send "cpm small86.cmd\\r"', 'expect "OS9:"'], driver=True)
     check('xlink driver, 8088: 32 blocks, the reset vector block mapped', 'Hello from CP/M-86 on the 8088' in out and 'Hello from the small model' in out, out[-700:])
+
+
+def memtest():
+    """power-on memory test of the sim09 board: "Memory " + 24 x ">" + " OK 2048K" / " NG @aaaaaa" """
+    rom = os.path.join(OS9, 'os9v2.rom')
+    if not os.path.exists(rom):
+        print('skip memtest (no %s)' % rom)
+        return
+    base = [SIM, '-max', '-nt', '-maxcount', '10', '-rom', rom]
+    out = run(base).stdout.decode(errors='replace')
+    check('memory test: Memory %s OK 2048K' % ('>' * 24), out.startswith('Memory ' + '>' * 24 + ' OK 2048K\r\n'), out[:80])
+    out = run(base + ['-memfault', '123456']).stdout.decode(errors='replace')
+    check('memory test: a stuck bit is reported with its address', out.startswith('Memory ' + '>' * 24 + ' NG @123456\r\n'), out[:80])
+    out = run(base + ['-nomemtest']).stdout.decode(errors='replace')
+    check('memory test: -nomemtest prints nothing', not out.startswith('Memory'), out[:80])
+    out = run(base + ['-L1', '-rom', os.path.join(OS9, 'v09.rom')]).stdout.decode(errors='replace')
+    check('memory test: Level 1 tests its 64KB', out.startswith('Memory >>> OK 64K\r\n'), out[:80])
 
 
 def main():
@@ -389,6 +411,7 @@ def main():
         return 2
     tmp = tempfile.mkdtemp(prefix='mh_')
     try:
+        memtest()
         integration('z80', z80_program(), tmp)
         integration('8088', i8088_program(tmp), tmp)
         standalone('z80', tmp)

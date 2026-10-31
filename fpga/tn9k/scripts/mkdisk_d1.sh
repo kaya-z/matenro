@@ -21,6 +21,12 @@ for n in P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LICENSE; do cp "$H
 cp "$HTC"/*.H "$T/v0/htc/"
 cp "$ZEX/zexdoc.com" "$ZEX/zexall.com" "$T/v0/"
 cp "$ZEX/LICENSE" "$T/v0/ZEX_LICENSE"
+# zexdoc8.com / zexall8.com: the same programs, but the table of the tests starts at the 8th test (aluop a,(<ix,iy>+1)): to repeat
+# the place where ZEXDOC stopped on the board without the 2.5 hours before it (tools/zexfrom.py)
+python3 "$ROOT/tools/zexfrom.py" 8 "$ZEX/zexdoc.com" "$T/v0/zexdoc8.com"
+python3 "$ROOT/tools/zexfrom.py" 8 "$ZEX/zexall.com" "$T/v0/zexall8.com"
+# bstress.com: the stress test of the link (tests/cpm/bstress.asm)
+python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/bstress.asm" -o "$T/v0/bstress.com" > /dev/null
 cp "$ROOT/tests/cpp/demo.c" "$T/v0/demo.c"
 printf '#include <stdio.h>\n\nmain()\n{\n\tprintf("Hello from Hi-Tech C on CP/M\\n");\n\treturn 0;\n}\n' > "$T/v0/hello.c"
 cp "$D0" "$T/d0.dsk"
@@ -31,7 +37,7 @@ python3 "$SIM09/tools/growdisk.py" "$D1" 2048 > /dev/null
   echo 'send "makdir /d1/htc\r"'; echo 'expect "OS9:"'
   # attr -s: a file with the "s" attribute (single user) can be open once; the HI-TECH linker opens its library twice
   for f in $(cd "$T/v0/htc" && ls); do echo "send \"copy /v0/htc/$f /d1/htc/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/htc/$f -s\\r\""; echo 'expect "OS9:"'; done
-  for f in zexdoc.com zexall.com ZEX_LICENSE demo.c hello.c; do echo "send \"copy /v0/$f /d1/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/$f -s\\r\""; echo 'expect "OS9:"'; done
+  for f in zexdoc.com zexall.com zexdoc8.com zexall8.com bstress.com ZEX_LICENSE demo.c hello.c; do echo "send \"copy /v0/$f /d1/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/$f -s\\r\""; echo 'expect "OS9:"'; done
   echo 'send "dir /d1\r"'; echo 'expect "OS9:"'; echo 'send "free /d1\r"'; echo 'expect "OS9:"'; echo 'quit'
 } > "$T/s.txt"
 "$ROOT/matenro" -max -rom "$SIM09/os9/os9v2.rom" -0 "$T/d0.dsk" -1 "$D1" -v "$T/v0" -script "$T/s.txt" 2>&1 | tr '\r' '\n' | grep -i "error\|free\|can't\|zex\|hello.c" || true

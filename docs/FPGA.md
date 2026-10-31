@@ -181,10 +181,26 @@ sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から 
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
 | `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のローダと ROM イメージ、コマンド、Matenro のコマンド (`cpm xrun xlink x0 cpp cc80`)、`hello.com` (`scripts/mkdisk.sh`) |
-| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`demo.c` `hello.c` (`scripts/mkdisk_d1.sh`)。空きは 475 セクタ。2048 セクタは 1 セクタの割り当て表で持てる最大 |
+| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `hello.c` (`scripts/mkdisk_d1.sh`)。空きは 475 セクタ。2048 セクタは 1 セクタの割り当て表で持てる最大 |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体のイメージ: `sudo dd if=matenro_card.img of=/dev/sdX bs=1M conv=fsync` (**カード全体が上書きされる**。128MB 以上のカード) |
 
 実機での使い方 (予定): `chx /d0/cmds`、`load xlink`、`load x0`、`chd /d1`、`cc80 -t=/d1/htc -r hello.c` (HI-TECH C)、`cpm zexdoc` (ZEXDOC)。`cc80 -t=/d1/htc -r hello.c` はシミュレータ (`/d1` を 2 番目のディスクイメージにしたもの) で `Hello from Hi-Tech C on CP/M` まで通りました。
 
 **ファイルの属性 `s` に注意**: OS-9 の `s` 属性 (単一ユーザ = 同時に 1 回しか開けない) が付いたファイルは、HI-TECH のリンカのように**同じファイルを 2 回開く**プログラムでは、2 回目が `E$Share` (`$FD`) で失敗し、リンカは `Can't open` を出します (`/v0` のホストディレクトリでは起きず、RBF のディスクでだけ起きる)。`mkdisk_d1.sh` はコピーのあとに `attr -s` で外します。`cpm -d` は、失敗した `open` の OS-9 のエラー番号を 16 進で表示します。
 
+### 9.3 実機での ZEXDOC と、止まったときの診断 (2026-10-31)
+
+**実機の ZEXDOC** (`cpm zexdoc`、Z80 7.5MHz): 05:18:29 に開始し、7 項目 (`adc,sbc hl` `add hl` `add ix` `add iy` `aluop a,nn` `aluop a,<b,c,...>` `aluop a,<ixh,...>`) が **OK** (誤りの行なし) になりました。所要時間は 9 分、4.5 分、4.5 分、4.5 分、2.3 分、**1 時間 19 分**、40 分で、7 項目目の OK が 07:42:17 です。**8 項目目 `aluop a,(<ix,iy>+1)` の名前が出ないまま 3 時間以上出力がなくなりました** (シミュレータ `matenro` では 67 項目が通り、8 項目目だけを実行する `zexdoc8.com` も 18 秒で OK)。USB の切断ではありません (ログは時刻つきで取っています。01:19 の切断は別件で、そのときのリセットで途中経過を失いました)。
+
+**ここまでに分かったこと** (原因はまだ特定していません):
+
+* シミュレータ (C) では再現しません。RTL (Verilator) で Z80 の計算と BDOS 呼び出しを交互に 3000 回繰り返す負荷試験 `tests/cpm/bstress.asm` は通りました (`bstress.com`)。
+* `Ctrl-C` `Ctrl-E` は**停止の判断に使えません**: この OS-9 は端末の入力をプロセスが読むときにしか見ないので、`cpm` を待っている間は効きません (止まった状態でも効かない)。
+* **診断ビルド**: `WDOG=1 TAG=_wd TV80=… fpga/tn9k/scripts/build.sh boot` (出力は `build/boot_wd/`)。6809 が約 1 秒以上止まる (stall) と、UART に 31ms ごとに 1 行 (`dbg_uart_z.v`) が出ます。ホストから **`0x1F` を 3 回送ると同じ行をいつでも出し、`0x1E` を 3 回送ると戻ります** (6809 が止まっていても効きます。コンソールの出力は止まります)。行: `PPPP SSSS AA BB XXXX YYYY UUUU CC DD ssss pppp aaaa ff` = 6809 の PC、S、A、B、X、Y、U、CC、DP、`ssss` = CPU を止めているもの (15 `xl_wait`、14 `xl_rcap`、13 `xw_act`、12 `m0_req`、11 `zm_req`、10 `ps_busy`、9 `mem_pend`、8 `acia_pend`、7 `disk_busy`、6 `pwroff`、5 `settle`、4 `stall`、3 `win_req`、2:0 起動の状態)、`pppp` = Z80 の最後の命令フェッチのアドレス、`aaaa` = Z80 のアドレスバス、`ff` = 80 stalled、40 halted、20 `mem_req`、10 `mem_wr`、08 M1、04 MREQ、02 RD、01 WR。
+* この診断ビルドは (SMMU の読み出しをレジスタ経由にして) タイミングを満たしています (clk81 67.65MHz、負のスラックなし)。LUT 8,014 (94%) で、**起動 ROM 版 (89%) より約 5% 大きい**ので、普段使いではなく診断用です。ついでに使っていない漢字ローダを外し (`KANJI = 0` のとき)、LUT は 177 減りました。
+
+**2 回目の実行 (診断ビルドで、12:11:12 開始): 67 項目すべて OK、`error` なし、15:15:39 に `Tests complete` (3 時間 4 分)。** 1 回目に止まった場所 (7 項目目の OK のあと) では 8 項目目の名前がすぐ出て、8 項目目は 20 分で OK でした。つまり**1 回目の停止は再現していません**。1 回目と 2 回目の違いは、ビットストリームだけです (1 回目 = フラッシュの起動 ROM 版 `build/boot`、2 回目 = 診断ビルド `build/boot_wd`: SMMU の読み出しのレジスタ、漢字ローダなし、デバッグ UART、別の配置配線)。ランダムな現象か、ビルドの違いかを分けるため、3 回目は 1 回目と同じビットストリーム (`build/boot`) で実行しました。
+
+**3 回目の実行 (起動 ROM 版 `build/boot`、15:34:17 開始): 67 項目すべて OK、`error` なし、18:38:44 に `Tests complete` (3 時間 4 分)。** 7 項目目の OK のあと 8 項目目の名前がすぐ出ました。
+
+**結論 (2026-10-31)**: 実機の Z80 (7.5MHz) は ZEXDOC の 67 項目を**2 回、別々のビットストリームで通しました** (診断ビルドと起動 ROM 版)。1 回目に 7 項目目のあとで出力が止まった件は、**再現せず、原因は分かっていません** (そのときは 6809 側の状態を取れませんでした)。決定的な不具合ではありません (同じ場所で毎回は止まらない)。疑うとすれば、(1) 1 回目の前後にあった USB / 電源の不安定 (01:19 に USB が切れてボードが再起動した)、(2) まれなタイミングの問題 (余裕が 0.1〜0.5ns しかない)、(3) まれな受け渡しの競合、です。次に長い実行をするときは**診断ビルド (`WDOG=1 TAG=_wd`) を使えば**、止まった時点で 6809 と Z80 のどちらがどこにいるかを取れます。

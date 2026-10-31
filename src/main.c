@@ -50,6 +50,8 @@ static void usage(const char *prog)
 "  -t file            instruction trace file   -tl lo  -th hi   limit trace range\n"
 "  -nt                start in the monitor, timer off\n"
 "  -e char            escape character that enters the monitor (default 0x1d)\n"
+"  -nomemtest         skip the power-on memory test (the board prints \"Memory >>>> OK 2048K\")\n"
+"  -memfault addr     (debug) make the memory test see a stuck bit at this physical address (hex)\n"
 "  -hz n              timer interrupt rate (default 50)\n"
 "  -clock hz          6809 clock in Hz (default 2000000, MC68B09E)\n"
 "  -max               run at full host speed (no real time pacing)\n"
@@ -95,7 +97,9 @@ int main(int argc, char **argv)
     const char *bn = basename(base);
     machine_t *m;
     const char *hostcs = NULL, *watch = NULL;
-    int stats = 0;
+    int stats = 0, memtest = 1;
+    long memfault = -1;
+    char memmsg[96];
     unsigned long m_dettype_start = 0, m_dettype_gap = 0;
     const char *m_dettype_text = NULL;
     unsigned long maxcount = 0;
@@ -151,6 +155,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "-os9trace")) { dbg_os9trace = 1; }
         else if (!strcmp(a, "-watch")) { watch = NEXT(); }
         else if (!strcmp(a, "-stats")) stats = 1;
+        else if (!strcmp(a, "-nomemtest")) memtest = 0;
+        else if (!strcmp(a, "-memfault")) memfault = strtol(NEXT(), 0, 16);
         else if (!strcmp(a, "-maxcount")) maxcount = strtoul(NEXT(), 0, 0);
         else if (!strcmp(a, "-dettype")) {
             m_dettype_start = strtoul(NEXT(), 0, 0);
@@ -168,6 +174,7 @@ int main(int argc, char **argv)
 
     m = machine_create(level2, (size_t)memsize);
     if (!m) { fprintf(stderr, "out of memory\n"); return 2; }
+    if (memtest) machine_memtest(m, memfault, memmsg, sizeof memmsg);    /* before anything is stored in the RAM */
     m->clock_hz = clock_hz;
     m->realtime = realtime;
     if (icount) { m->det_icount = (int)icount; m->det_next = (uint64_t)icount; }
@@ -219,6 +226,7 @@ int main(int argc, char **argv)
     console_set_kanji(kanji);
     if (script && console_load_script(script)) { perror(script); return 2; }
     console_setup(m);
+    if (memtest) for (const char *p = memmsg; *p; p++) console_tx(m, 0, (uint8_t)*p);
     for (i = 0; i < nnet; i++)
         if (net_config(m, netspec[i])) fprintf(stderr, "bad -net spec: %s\n", netspec[i]);
 

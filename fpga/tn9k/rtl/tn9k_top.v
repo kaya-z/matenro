@@ -65,6 +65,8 @@ module tn9k_top (
 
     wire [111:0] dbg_regs;
     wire [15:0]  dbg_status, dbg_kanji, dbg_disk;
+    wire         dbg_stall;
+    wire [39:0]  dbg_z80;
 `ifdef DEBUG_X1
     wire [15:0]  dbg_x1;
     reg  [13:0]  x1_last = 14'h0000;                 // DEBUG=4: kanji_ok, a lookup was answered, and the low 14 bits of the last word of a lookup
@@ -91,7 +93,39 @@ module tn9k_top (
         .O_psram_cs_n(O_psram_cs_n)
     );
 
-`ifdef DEBUG_TX
+`ifdef WATCHDOG
+    // watchdog (build.sh WDOG=1): when the CPU has been held for about a second the UART pin carries, instead of the console,
+    // the line of dbg_uart every 31 ms (the 6809 registers and what holds the CPU: see dbg_status of matenro_soc.v)
+    wire dbg_tx;
+    reg [26:0] wd_cnt = 27'd0;
+    always @(posedge clk) wd_cnt <= dbg_stall ? (wd_cnt[26] ? wd_cnt : wd_cnt + 1'b1) : 27'd0;
+    dbg_uart_z #(.BAUD_DIV(`CLK_HZ / 115200)) dbg (.clk(clk), .regs(dbg_regs), .status(dbg_status), .zdbg(dbg_z80), .txd(dbg_tx));
+    // the same lines on request, whatever the 6809 does: three bytes $1F in a row on the serial line switch them on,
+    // three bytes $1E switch them off (a receiver of its own listens to the pin; the console sees the bytes too)
+    localparam [9:0] RX_DIV = `CLK_HZ / 115200;
+    reg         rx_q1 = 1'b1, rx_q2 = 1'b1, rx_act = 1'b0, dbg_on = 1'b0;
+    reg  [9:0]  rx_cnt = 10'd0;
+    reg  [3:0]  rx_n = 4'd0;
+    reg  [7:0]  rx_sh = 8'd0, rx_prev = 8'd0;
+    reg  [1:0]  rx_rep = 2'd0;
+    always @(posedge clk) begin
+        rx_q1 <= uart_rx; rx_q2 <= rx_q1;
+        if (!rx_act) begin
+            if (!rx_q2) begin rx_act <= 1'b1; rx_cnt <= RX_DIV + (RX_DIV >> 1); rx_n <= 4'd0; end
+        end else if (rx_cnt != 10'd0) rx_cnt <= rx_cnt - 1'b1;
+        else if (rx_n < 4'd8) begin
+            rx_sh <= {rx_q2, rx_sh[7:1]}; rx_n <= rx_n + 1'b1; rx_cnt <= RX_DIV - 1'b1;
+        end else begin
+            rx_act <= 1'b0;
+            if ((rx_sh == 8'h1F || rx_sh == 8'h1E) && rx_sh == rx_prev) begin
+                if (rx_rep == 2'd1) begin dbg_on <= (rx_sh == 8'h1F); rx_rep <= 2'd0; end
+                else rx_rep <= rx_rep + 1'b1;
+            end else rx_rep <= 2'd0;
+            rx_prev <= rx_sh;
+        end
+    end
+    assign uart_tx = (wd_cnt[26] | dbg_on) ? dbg_tx : uart_tx_soc;
+`elsif DEBUG_TX
     wire dbg_tx;
     dbg_uart #(.BAUD_DIV(`CLK_HZ / 115200)) dbg (.clk(clk), .regs(dbg_regs), .status(`ifdef DEBUG_DISK dbg_disk `elsif DEBUG_X1 dbg_x1 `elsif DEBUG_KANJI dbg_kanji `else dbg_status `endif), .txd(dbg_tx));
     assign uart_tx = dbg_tx;
@@ -113,7 +147,7 @@ module tn9k_top (
         .fl_cs(flash_csb), .fl_clk(flash_clk), .fl_mosi(flash_mosi), .fl_miso(flash_miso),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata), .kanji_ok(kanji_ok),
-        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_kanji(dbg_kanji), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()
+        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_kanji(dbg_kanji), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()
     );
 
 `ifndef HDMI

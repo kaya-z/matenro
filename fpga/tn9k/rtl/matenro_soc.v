@@ -97,6 +97,8 @@ module matenro_soc #(
     output wire [7:0]  term_byte,
     output wire [111:0] dbg_regs,
     output wire        dbg_lic,
+    output wire [39:0] dbg_z80,             // the Z80 for the debug UART
+    output wire        dbg_stall,           // the CPU is held (any reason): the watchdog of the board looks at it
     output wire [15:0] dbg_addr,
     output wire        dbg_acc,
     output wire [15:0] dbg_status,
@@ -151,7 +153,6 @@ module matenro_soc #(
     assign dbg_lic = cpu_lic;
     assign dbg_addr = cpu_a;
     assign dbg_acc = acc2;
-    assign dbg_status = {cs_[2:0], mem_pend, acia_pend, disk_busy, pwroff, sd_st, sd_ready, sd_fail};
     assign dbg_din = cpu_d_in;
     assign dbg_rnw = cpu_rnw;
     assign dbg_vma = vma_pend;
@@ -310,12 +311,17 @@ module matenro_soc #(
 
     wire [21:0] ld_addr;
     wire [7:0]  ld_data;
+    generate if (KANJI) begin : g_kanji
     kanji_loader loader (
         .clk(clk), .rst(rst), .start(ld_start), .done(ld_done), .ok(kanji_ok),
         .j_flash(`KJ_FLASH), .j_psram(`KJ_PSRAM), .j_size(`KJ_SIZE), .j_magic(1'b1),
         .fl_cs(fl_cs), .fl_clk(fl_clk), .fl_mosi(fl_mosi), .fl_miso(fl_miso),
         .wr(ld_wr), .wr_addr(ld_addr), .wr_data(ld_data), .busy(ps_busy_m), .dbg(dbg_kanji)
     );
+    end else begin : g_nokanji                  // no kanji image (no HDMI screen): the loader (177 LUT) is not built
+        assign ld_done = 1'b1, ld_wr = 1'b0, ld_addr = 22'd0, ld_data = 8'd0, kanji_ok = 1'b0, dbg_kanji = 16'd0;
+        assign fl_cs = 1'b1, fl_clk = 1'b0, fl_mosi = 1'b0;
+    end endgenerate
 
     // ---------------------------------------------------------------- the access of a cycle
     reg        vma_pend;            // AVMA of the previous cycle = "valid" of this one
@@ -621,7 +627,7 @@ module matenro_soc #(
         .irq_o(xl_irq), .firq_o(xl_firq),
         .win_req(win_req), .win_wr(win_wr), .win_addr(win_addr), .win_wdata(win_wdata), .win_ack(win_ack), .win_rdata(win_rdata),
         .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
-        .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted()
+        .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(dbg_z80)
     );
 
     // ---------------------------------------------------------------- feed the CPU
@@ -632,5 +638,12 @@ module matenro_soc #(
     always @(posedge clk) hb <= hb + 1'b1;
     // LED2: card ready (steady) / card failed (blinking); LED4: the OS has been started
     assign led = ~{pwroff, osrun, sd_active, sd_fail ? hb[22] : sd_ready, run, hb[23]};
+
+    // the status word of the debug UART (dbg_uart, DEBUG=1) and the watchdog of the board: what holds the CPU
+    //   15 xl_wait  14 xl_rcap  13 xw_act  12 m0_req  11 zm_req  10 ps_busy  9 mem_pend  8 acia_pend
+    //    7 disk_busy 6 pwroff   5 settle    4 stall    3 win_req  2:0 cs_
+    assign dbg_status = {xl_wait, xl_rcap, xw_act, m0_req, zm_req, ps_busy, mem_pend, acia_pend,
+                         disk_busy, pwroff, |settle, stall, win_req, cs_[2:0]};
+    assign dbg_stall  = stall;
 
 endmodule
