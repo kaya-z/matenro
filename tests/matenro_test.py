@@ -225,13 +225,20 @@ def os9_cpm80(tmp):
     """CP/M-80 programs on the Z80, started from OS-9 with the command cpm"""
     if not os.path.isdir(OS9):
         return
-    files = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio', 'line', 'stk6')}
+    files = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio', 'line', 'stk6', 'share', 'kbpoll')}
     out, d = os9_session(tmp, 'cpm80', 'z80', files, [
         'send "cpm hello.com abc def\\r"', 'expect "OS9:"',
         'send "cpm fileio.com\\r"', 'expect "OS9:"',
         'send "cpm line.com\\r"', 'expect "Name? "', 'send "xyz\\r"', 'expect "]"', 'send "q"', 'expect "OS9:"',
-        'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm hello.com again\\r"', 'expect "OS9:"'])
+        'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm hello.com again\\r"', 'expect "OS9:"',
+        'send "cpm share.com\\r"', 'expect "OS9:"',
+        'send "chx /d0/cmds\\r"', 'expect "OS9:"', 'send "build /d0/p1\\r"', 'expect "?"', 'send "cpm kbpoll.com\\r"', 'expect "?"', 'send "echo AFTER1\\r"', 'expect "?"',
+        'send "cpm kbpoll.com\\r"', 'expect "?"', 'send "echo AFTER2\\r"', 'expect "?"', 'send "\\r"', 'expect "OS9:"',
+        'send "chx /v0/cmds\\r"', 'expect "OS9:"', 'send "shell </d0/p1\\r"', 'expect "AFTER2"', 'expect "OS9:"'])
     check('CP/M-80: stack at (6), JP 0 ends the program; later runs are not disturbed', out.count('stack at (6) ok') == 2 and 'AGAIN' in out, out[-600:])
+    check('CP/M-80: the same file open through two FCBs (one shared OS-9 path, own positions)', 'SHARE OK' in out, out[-600:])
+    check('CP/M-80: BDOS 6 / 11 key polls do not eat the procedure file that is the standard input (shell <file)',
+          out.count('KBPOLL ok') == 2 and 'AFTER1' in out.split('shell </d0/p1')[-1] and 'AFTER2' in out.split('shell </d0/p1')[-1], out[-700:])
     check('CP/M-80 on the Z80 from OS-9: BDOS 9/2, command tail', 'Hello from CP/M-80 on the Z80' in out and ' ABC DEF' in out, out[-800:])
     check('CP/M-80: file I/O (make, write, open, read, EOF, random, size, search, delete)', 'FILEIO OK' in out, out[-800:])
     check('CP/M-80: console buffer (BDOS 10), BDOS 1 and 6', '[xyz]' in out and 'key=q' in out, out[-800:])
@@ -360,11 +367,18 @@ def os9_cc80(tmp):
     shutil.copy(os.path.join(HERE, 'cpp', 'demo.c'), v0)
     script = os.path.join(d, 'script.txt')
     open(script, 'w').write('timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "chd /v0\\r"\nexpect "OS9:"\n'
-                            'send "cc80 -r demo.c\\r"\nexpect "OS9:"\nsend "cc80 -r -DSMALL demo.c\\r"\nexpect "OS9:"\nquit\n')
+                            'send "cc80 -r demo.c\\r"\nexpect "OS9:"\nsend "cc80 -r -DSMALL demo.c\\r"\nexpect "OS9:"\n'
+                            # two cc80 in a procedure file (shell <file): the system memory of Level 2 must be enough, and the
+                            # passes must not eat the second line of the file
+                            'send "chx /d0/cmds\\r"\nexpect "OS9:"\nsend "build /d0/p2\\r"\nexpect "?"\nsend "cc80 -r demo.c\\r"\nexpect "?"\n'
+                            'send "cc80 -r -DSMALL demo.c\\r"\nexpect "?"\nsend "\\r"\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\n'
+                            'send "echo START2\\r"\nexpect "OS9:"\nsend "shell </d0/p2\\r"\nexpect "small 36"\nexpect "OS9:"\nquit\n')
     r = run([SIM, '-max', '-m', '1M', '-sub', 'z80', '-rom', os.path.join(OS9, 'os9v2.rom'), '-0', os.path.join(d, 'OS9.dsk'),
              '-1', os.path.join(d, 'WORK.dsk'), '-v', v0, '-script', script], timeout=900)
     out = r.stdout.decode(errors='replace')
     check('cc80: cpp on OS-9 -> HI-TECH C on the Z80 -> program runs (macros, #if, -D)', 'big 36' in out and 'small 36' in out, out[-800:])
+    check('cc80 twice in a procedure file (shell <file): enough system memory, the passes leave the file alone',
+          out.split('START2')[-1].count('big 36') == 1 and out.split('START2')[-1].count('small 36') == 1, out[-800:])
 
 
 def os9_driver(tmp):

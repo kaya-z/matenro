@@ -167,7 +167,6 @@ fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットスト
 * FPGA のタイミングの余裕は小さいです (67.5 MHz で 0.1〜0.5 ns)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC と HI-TECH C だけです (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS 直接呼び出し、複数ドライブ、リネームは未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
 * OS-9 のデバイスドライバ (`os9/xlink`、メモリを OS-9 の空き RAM から借りる) は doorbell を**割り込みで通知しません** (sim09 の Clock が割り込み表を調べないため。ポーリングで待ちます。docs/DESIGN.md の 14 章)。
-* `shell </ファイル` から `cc80` を続けて呼ぶと `libc.lib: Can't open` のあと止まります (シミュレータでも再現。プロンプトから直接呼べば動きます。未調査)。
 * メモリ競合 (2 つの CPU が同じ RAM を取り合うときの待ち) のモデル。
 * 8086 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。
 * FM-11 の実際のマンハッタンシステムとの互換性 (考え方だけを借りています)。

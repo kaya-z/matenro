@@ -80,6 +80,13 @@ S_RDLEN  equ   3
 S_RDPOS  equ   4
 S_BUF    equ   8
 
+* Shared paths: a CP/M program does not have to close a file it only reads, and linq opens the same file again and again (the
+* library twice per pass, every object file in every pass).  Every OS-9 path takes a page of the system memory of Level 2,
+* which is small (some 6 KB are free): an open on a name that is open already takes the same path again (every read seeks to
+* the record, so the FCBs do not disturb each other).  shtab: NSH entries of path, count (0 = free) and the 11 bytes of the name.
+NSH      equ   6
+SHSZ     equ   13
+
 RQZ80    equ   $FC80
 RQ88     equ   $0600
 LB88     equ   $0620
@@ -132,6 +139,7 @@ tlast    rmb   1
 tdst     rmb   2
 slots    rmb   816                  NSLOT * SLOTSZ
 tslots   rmb   16                   NT * 4: real path, temp path, flags (bit7 used, bit1 writable, bit0 modified)
+shtab    rmb   78                   NSH * SHSZ: shared paths (see above)
 tname    rmb   12
 cbuf     rmb   256
 cvlast   rmb   1
@@ -195,7 +203,7 @@ idok2
          clr   keep,u
          clr   tooldir,u
          leax  slots,u               the data area is not cleared by OS-9: free all text slots
-         ldy   #832                  NSLOT * SLOTSZ + NT * 4
+         ldy   #910                  NSLOT * SLOTSZ + NT * 4 + NSH * SHSZ
 cls1     clr   ,x+
          leay  -1,y
          bne   cls1
@@ -1682,7 +1690,9 @@ f_dio    lda   parl,u
          cmpa  #$FE
          beq   dio_st
          bra   f_conout
-dio_st   lda   stdi,u
+dio_st   lbsr  stdrbf
+         beq   dio_nk
+         lda   stdi,u
          ldb   #SS.Ready
          os9   I$GetStt
          bcs   dio_no
@@ -1690,11 +1700,30 @@ dio_st   lda   stdi,u
          sta   r_al,u
          bra   retA
 dio_no   rts
-dio_in   lda   stdi,u
+dio_nk   clr   r_al,u                 standard input is a file: no key (see stdrbf)
+         bra   retA
+dio_in   lbsr  stdrbf
+         beq   dio_nk
+         lda   stdi,u
          ldb   #SS.Ready
          os9   I$GetStt
          bcs   dio_no
          bra   f_conin
+
+* Z set if the standard input is a file (RBF).  A program that only asks whether a key is there (BDOS 6 and 11; the HI-TECH
+* programs do, to see a ^C) must not eat the file: a procedure file, `shell <file`, is the standard input of the passes of cc80
+* and its lines would be gone.  A keyboard (SCF) and a pipe are read as before.
+stdrbf   lda   stdi,u
+         ldb   #SS.Opt
+         leax  iobuf,u
+         os9   I$GetStt
+         bcs   sr1
+         lda   iobuf,u               PD.DTP: 0 = SCF, 1 = RBF
+         cmpa  #1
+         rts
+sr1      lda   #$FF
+         cmpa  #1
+         rts
 
 f_const  bra   dio_st
 
@@ -2002,6 +2031,74 @@ err9     lda   #9                     invalid FCB
          sta   r_al,u
          lbra  retA
 
+* shared paths: shfind = the entry (X) whose name is the one of the FCB, carry set if none
+shfind   leax  shtab,u
+         ldb   #NSH
+shq1      tst   1,x
+         beq   shq3
+         pshs  x,b
+         leax  2,x
+         leay  fcb+F_NAME,u
+         ldb   #11
+shq2      lda   ,x+
+         cmpa  ,y+
+         bne   shq4
+         decb
+         bne   shq2
+         puls  x,b
+         andcc #$FE
+         rts
+shq4      puls  x,b
+shq3      leax  SHSZ,x
+         decb
+         bne   shq1
+         orcc  #1
+         rts
+
+* shadd: enter the path of the FCB under its name (no free entry: it is not shared)
+shadd    leax  shtab,u
+         ldb   #NSH
+shw1      tst   1,x
+         beq   shw2
+         leax  SHSZ,x
+         decb
+         bne   shw1
+         rts
+shw2      lda   fcb+F_PATH,u
+         sta   ,x
+         lda   #1
+         sta   1,x
+         leay  fcb+F_NAME,u
+         leax  2,x
+         ldb   #11
+shw3      lda   ,y+
+         sta   ,x+
+         decb
+         bne   shw3
+         rts
+
+* shdrop: A = path being closed.  Carry set: not shared.  Else one FCB less; Z set if it was the last one (A is kept)
+shdrop   leax  shtab,u
+         ldb   #NSH
+shd1      tst   1,x
+         beq   shd2
+         cmpa  ,x
+         beq   shd3
+shd2      leax  SHSZ,x
+         decb
+         bne   shd1
+         orcc  #1
+         rts
+shd3      dec   1,x
+         andcc #$FE
+         rts
+
+* shkill: the file of this name is made or deleted: forget the entry (the FCBs that have the path close it as usual)
+shkill   lbsr  shfind
+         bcs   shk9
+         clr   1,x
+shk9      rts
+
 f_open   lbsr  getfcb
          clr   fcb+F_SLOT,u
          clr   fcb+F_TSLOT,u
@@ -2010,7 +2107,13 @@ f_open   lbsr  getfcb
          lbsr  mkstd
          lbra  fo2
 fo0      lbsr  mkname
-         clr   cvw,u
+         lbsr  shfind                 the name is open already: take its path
+         bcs   fo0n
+         lda   ,x
+         inc   1,x
+         sta   fcb+F_PATH,u
+         bra   fo2
+fo0n     clr   cvw,u
          lda   #UPDAT.
          lbsr  openany
          bcs   fo0r
@@ -2023,6 +2126,11 @@ fo1      sta   fcb+F_PATH,u
          lda   #1
          sta   tmp8b,u
          lbsr  mktslot
+         tst   fcb+F_SLOT,u           a binary file can be shared
+         bne   fo2
+         tst   fcb+F_TSLOT,u
+         bne   fo2
+         lbsr  shadd
 fo2      clr   fcb+F_CR,u
          lbra  putfcb
 fo_err   tst   dbg,u                 -d: show the OS-9 error code (B) of the failed open / make
@@ -2071,7 +2179,10 @@ f_close  lbsr  getfcb
          bitb  #4
          bne   fc2
          lda   fcb+F_PATH,u
-fc1      os9   I$Close
+fc1      lbsr  shdrop                 shared with another FCB: only the last one closes
+         bcs   fc1c
+         bne   fc2
+fc1c     os9   I$Close
 fc2      clr   fcb+F_PATH,u
          clr   fcb+F_SLOT,u
          lbsr  putfcb
@@ -2110,6 +2221,7 @@ f_make   lbsr  getfcb
          lbsr  mkstd
          bra   mk3
 mk0      lbsr  mkname
+         lbsr  shkill
          lda   #UPDAT.
          ldb   #READ.+WRITE.+PREAD.+PWRIT.
          leax  pname,u
@@ -2128,6 +2240,7 @@ mk3      clr   fcb+F_CR,u
 
 f_delete lbsr  getfcb
          lbsr  mkname
+         lbsr  shkill
          lda   #UPDAT.
          leax  pname,u
          os9   I$Delete
