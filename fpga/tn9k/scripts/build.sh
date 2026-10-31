@@ -34,7 +34,7 @@ fi
 sh "$HERE/../sim/mk_tv80s_cen.sh" "$TV80" "$B/tv80s_cen.v"
 set -- $(date +"%Y %m %d %H %M %S")
 cat > "$B/tn9k_cfg.vh" <<EOT
-\`define CLK_HZ 67500000
+\`define CLK_HZ ${CLK_HZ:-67500000}
 \`define PH_DIV 9
 \`define ROM_BASE $BASE
 \`define ROM_AW $AW
@@ -52,10 +52,13 @@ $( [ -n "$WDOG" ] && echo "\`define WATCHDOG 1" )
 EOT
 cat "$SIM09/constraints/tn9k.cst" > "$B/pins.cst"
 cat "$SIM09/constraints/tn9k.sdc" "$HERE/constraints/matenro.sdc" > "$B/timing.sdc"
+# SDC_SED="s/-multiply_by 5 -divide_by 2/-multiply_by 3 -divide_by 1/": constrain the system clock harder (81 MHz) to see how fast the design really can go
+# (the PLL is not changed: such a bitstream is for the timing report only)
+[ -z "$SDC_SED" ] || sed -i "$SDC_SED" "$B/timing.sdc"
 cat > "$B/build.tcl" <<EOT
 set_device -name GW1NR-9C GW1NR-LV9QN88PC6/I5
 add_file -type verilog $HERE/rtl/tn9k_top.v
-add_file -type verilog $SIM09/rtl/tn9k_pll.v
+add_file -type verilog ${PLL:-$SIM09/rtl/tn9k_pll.v}
 add_file -type verilog $HERE/rtl/matenro_soc.v
 add_file -type verilog $HERE/rtl/psram_arb4.v
 add_file -type verilog $HERE/../rtl/z80_sub.v

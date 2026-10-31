@@ -1,7 +1,7 @@
 # 摩天楼 (Matenro): MC6809 (OS-9 Level 2) + 差し替え可能なサブ CPU (Z80 / 8088) のシミュレータ
 
 FM-11 の「マンハッタンシステム」のように、**異種 CPU を 1 つのメモリに密結合**したマシンを C 言語で作りました。
-MC6809 側は sim09 (`/export/nas/archives/MC6809/new-sbc09`) をベースにしていて、OS-9 Level 2 がそのまま動きます。
+MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしていて、OS-9 Level 2 がそのまま動きます。
 サブ CPU は 1 ファイルで差し込む作りで、**Z80** と **8088** が入っています。
 **OS-9 のコマンド `cpm` で、Z80 では CP/M-80 の `.COM`、8088 では CP/M-86 の `.CMD` が動きます** ([下](#cp-m-のプログラムを-os-9-から動かす))。
 
@@ -9,9 +9,13 @@ MC6809 側は sim09 (`/export/nas/archives/MC6809/new-sbc09`) をベースにし
 * 6809 側のメモリ・MMU・I/O は sim09 のまま (Level 2: 8KB × 8 ページの MMU、物理 2MB、I/O は `$FF80`)。
 * ストレージは SD カード相当のディスクイメージ (6809/OS-9 側だけが持つ。生デバイスも指せる)。
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
-* FPGA (Tang Nano 9K / 20K) は検討と、一部の RTL です: [docs/FPGA.md](docs/FPGA.md)。XLINK (`fpga/rtl/xlink.v`) と、Z80 をつないだ `fpga/rtl/z80_soc.v` があり、Verilator で C のシミュレータと同じ Z80 のバイナリを動かして同じ結果を確認しました (`make -C fpga/sim` と `make -C fpga/sim soc TV80=…`)。`fpga/tn9k/` には sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80) があり、Verilator で `13BA 0037` を確認し、Tang Nano 9K 向けに配置配線して 67.5MHz のタイミング (Fmax 68.1MHz) に届きました (LUT 90%)。**実機でも `13BA 0037` が出ました。さらに FPGA 上で OS-9 Level 2 を起動して `cpm` で CP/M-80 のプログラムが動きました** (docs/FPGA.md の 9 章)。
+* **FPGA 版 (Tang Nano 9K) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 89%、タイミングは 67.5 MHz に収めていますが余裕は小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、シミュレータだけです (20K のボードが要ります)。
 
 詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
+
+## Claude Code による開発
+
+このプロジェクトは **Claude Code (Anthropic の AI コーディングツール) を使って開発しました**。C のシミュレータ、Z80 / 8088 のコア、OS-9 のコマンドとドライバ (6809 のアセンブラ)、FPGA の RTL とビルドスクリプト、テスト、文書は、Claude が書いたものです。要求の提示、実機 (Tang Nano 9K) の接続、SD カードの書き込み、実機の結果の確認は人 (kaya-z) が行いました。土台の [sim09](https://github.com/kaya-z/sim09) と、使った外部のコード (TV80、ZEXDOC、HI-TECH C など) の出典とライセンスは [CREDITS.md](CREDITS.md) に書いています。
 
 ## ビルドとテスト
 
@@ -20,9 +24,10 @@ make            # ./matenro を作る
 make test       # アセンブラ + Z80 / 8088 のテスト + 統合テスト (a09 と nasm が要る。下を見てください)
 ```
 
-必要なもの: `gcc` `make` `python3`、テストには `nasm` (8088 のプログラム) と、6809 のアセンブラ `a09`
-(既定は `/export/nas/archives/MC6809/new-sbc09/tools/a09`。別の場所なら `A09=...`、OS-9 のイメージの場所は `OS9DIR=...`)。
-`new-sbc09` は**読み取り専用**で使います (ディスクイメージはテストが一時ディレクトリに複製してから使います)。
+必要なもの: `gcc` `make` `python3`、テストには `nasm` (8088 のプログラム) と、6809 のアセンブラ `a09`。
+`a09` と OS-9 のイメージは [sim09](https://github.com/kaya-z/sim09) のものを使います (`git clone https://github.com/kaya-z/sim09`)。
+テストの既定の場所は筆者の環境のパスなので、**`A09=<sim09>/tools/a09` と `OS9DIR=<sim09>/os9`** を環境変数で指定してください (FPGA のスクリプトは `SIM09=<sim09>`)。
+sim09 は**読み取り専用**で使います (ディスクイメージはテストが一時ディレクトリに複製してから使います)。
 
 テストの内容 (Debian 12 で全部通っています):
 
@@ -30,10 +35,10 @@ make test       # アセンブラ + Z80 / 8088 のテスト + 統合テスト (a
 |---|---|
 | `make test-z80` | Z80 の既知答えテスト 179 項目 |
 | `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 64 項目 |
-| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、ドアベルの割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 2 項目、全部で 35 項目 |
+| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 36 項目 |
 | `make test-asm` | 自作 Z80 アセンブラの既知の機械語 90 項目 |
 
-**テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で通しました (リポジトリには入れていません)。8086 の公開テストは**走らせていません**。
+**テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で、シミュレータと**実機の FPGA** (7.5 MHz、約 3 時間) の両方で通しました (リポジトリには入れていません)。実機の 1 回目は、7 項目目のあとで出力が止まりましたが、同じ条件で 2 回やり直すと 2 回とも完走し、原因は分かっていません ([docs/FPGA.md](docs/FPGA.md) の 9.3)。8086 の公開テストは**走らせていません**。
 8088 のクロック数は、プリフェッチキューを作っていないので近似です ([docs/DESIGN.md](docs/DESIGN.md) の 3.2)。
 
 ## 使い方
@@ -54,10 +59,11 @@ OS-9 の上で動くコマンド `xrun` (`os9/xrun.asm`) が、サブ CPU のプ
 サブ CPU の RAM は OS-9 の RAM とぶつからないよう、`-m 1M` で OS-9 を下半分 1MB に閉じ込めます (上半分がサブ CPU のプール)。
 
 ```sh
-SBC=/export/nas/archives/MC6809/new-sbc09/os9
+SIM09=~/sim09                                                          # git clone https://github.com/kaya-z/sim09
+SBC=$SIM09/os9
 mkdir -p /tmp/mh/v0 && cp $SBC/OS9.dsk $SBC/WORK.dsk /tmp/mh/          # ディスクは書き換わるので複製を使う
 cp -r $SBC/level2/cmds /tmp/mh/v0/cmds
-(cd os9 && /export/nas/archives/MC6809/new-sbc09/tools/a09 -I $SBC/nitros9-code/defs/ -o /tmp/mh/v0/cmds/xrun xrun.asm)
+(cd os9 && $SIM09/tools/a09 -I $SBC/nitros9-code/defs/ -o /tmp/mh/v0/cmds/xrun xrun.asm)
 python3 os9/sub/sumz80.py /tmp/mh/v0/sumz80.bin                        # Z80 のデモ (1+2+...+n)
 nasm -f bin os9/sub/sum8088.asm -o /tmp/mh/v0/sum8088.bin              # 8088 のデモ
 
@@ -150,14 +156,18 @@ os9/            xrun.asm と cpm/ cpp/ cc80/ (OS-9 Level 2 のコマンド `xrun
 tools/          z80asm.py (Z80 アセンブラ)、mkcmd.py (CP/M-86 の .CMD を作る)、build_cpm.sh (OS-9 コマンドのビルド)
 tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80asm_test.py mh/xlink_test.asm cpm/ (CP/M のテストプログラム) cpp/ (cpp と cc80 の C ソース)
 docs/           DESIGN.md (設計・レジスタ仕様) FPGA.md (FPGA の検討)
-fpga/           rtl/xlink.v (XLINK の RTL)、sim/ (Verilator のテスト: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
+fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
+fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットストリーム、mkdisk.sh と mkdisk_d1.sh で SD イメージ、sim/ で RTL シミュレーション)
 ```
 
 ## できていないこと
 
-* **FPGA の完成した RTL**。書いたのは XLINK だけです (`fpga/rtl/xlink.v`、Verilator のテストあり、Gowin で合成して 408 LUT)。Z80 コア (TV80) は単体で合成して約 1,450 LUT と実測しましたが、8088 のコアは手元になく見積もりのままです ([docs/FPGA.md](docs/FPGA.md))。9K に入るのは Z80 までで、それもぎりぎり。8088 は 20K が要る見込みです。
+* **8088 の FPGA 版**。8088 のコアは手元になく、見積もり (3,000〜6,000 LUT) だけです。9K には載らず、20K のボードが要ります (シミュレータでは動きます)。
+* FPGA 版の **HDMI の画面と RTC** (どちらも載せられますが、書いていません。9K の LUT は残り約 10% で HDMI は載りません)。
+* FPGA のタイミングの余裕は小さいです (67.5 MHz で 0.1〜0.5 ns)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC と HI-TECH C だけです (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS 直接呼び出し、複数ドライブ、リネームは未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
-* OS-9 のデバイスドライバは書きました (`os9/xlink`、メモリを OS-9 の空き RAM から借りる)。**割り込みでの呼び鈴の通知は未対応**です (sim09 の Clock が割り込み表を調べないため。docs/DESIGN.md の 14 章)。
+* OS-9 のデバイスドライバ (`os9/xlink`、メモリを OS-9 の空き RAM から借りる) は doorbell を**割り込みで通知しません** (sim09 の Clock が割り込み表を調べないため。ポーリングで待ちます。docs/DESIGN.md の 14 章)。
+* `shell </ファイル` から `cc80` を続けて呼ぶと `libc.lib: Can't open` のあと止まります (シミュレータでも再現。プロンプトから直接呼べば動きます。未調査)。
 * メモリ競合 (2 つの CPU が同じ RAM を取り合うときの待ち) のモデル。
-* Z80 / 8088 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。
+* 8086 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。
 * FM-11 の実際のマンハッタンシステムとの互換性 (考え方だけを借りています)。
