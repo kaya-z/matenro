@@ -11,7 +11,7 @@ MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしてい�
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
 * **FPGA 版 (Tang Nano 9K) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 88%、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、シミュレータだけです (20K のボードが要ります)。
 
-詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
+**使い方は [docs/MANUAL.md](docs/MANUAL.md)** (ユーザーマニュアル)。詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
 
 ## Claude Code による開発
 
