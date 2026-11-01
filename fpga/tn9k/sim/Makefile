@@ -6,7 +6,7 @@ TV80  ?= tv80
 CZDIV ?= 9
 B     := build
 RTL    = ../rtl/matenro_soc.v ../rtl/psram_arb4.v ../../rtl/z80_sub.v ../../rtl/xlink.v \
-         $(SIM09)/rtl/acia_uart.v $(SIM09)/rtl/timer_rtc.v $(SIM09)/rtl/sd_disk.v $(SIM09)/rtl/kanji_loader.v \
+         $(SIM09)/rtl/acia_uart.v $(SIM09)/rtl/timer_rtc.v $(SIM09)/rtl/sd_disk.v \
          $(SIM09)/vendor/mc6809/mc6809i.v $(SIM09)/sim/psram_model.v sim_top.v
 TV80V  = $(B)/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
 

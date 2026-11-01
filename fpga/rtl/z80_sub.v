@@ -166,9 +166,14 @@ module z80_sub #(
         else if (int_ack)             begin sel_io <= 1'b0; sel_ack <= 1'b1; end
         else if (io_rd)               begin sel_io <= 1'b1; sel_ack <= 1'b0; end
     end
+    // The port data go through a register first (the address of the port, the read mux of the XLINK and the choice of
+    // di were one long path); the cycle starts at least eight clocks before the core takes di, so one clock more is no problem.
+    reg [7:0] s_rdata_q;
+    reg       port_ok_q;
+    always @(posedge clk) begin s_rdata_q <= s_rdata; port_ok_q <= port_ok; end
     always @* begin
         if (int_ack | sel_ack)     di = s_vec;
-        else if (io_rd | sel_io)   di = port_ok ? s_rdata : 8'hff;
+        else if (io_rd | sel_io)   di = port_ok_q ? s_rdata_q : 8'hff;
         else                       di = zdat;
     end
 endmodule

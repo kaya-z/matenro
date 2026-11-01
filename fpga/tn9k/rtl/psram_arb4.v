@@ -7,7 +7,7 @@
 // raises its request (with the address and, for master 0, the data) and holds it until the arbiter pulses
 // ack; with the ack, rdata (the 16 bit word at the address) is valid and stays until the next ack.
 //
-//   master 0   byte reads / writes: the CPU, the disk, the start-up (clear, kanji loader)      lowest priority
+//   master 0   byte reads / writes: the CPU, the disk, the start-up (memory test, clear)      lowest priority
 //   master 1   word reads: the HDMI decoder (UTF-8 table look-ups)
 //   master 2   word reads: the HDMI display (the glyph lines of the next scan line)             highest: it has a deadline
 //   master 3   byte reads / writes: the Z80 of Matenro (above master 0, below the HDMI)

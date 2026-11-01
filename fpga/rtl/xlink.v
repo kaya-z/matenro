@@ -7,7 +7,12 @@
 //   * SMMU: 128 x 8 bit table, sub CPU address -> physical RAM address (21 bit)
 //   * window: 21 bit physical address counter with a memory port (request / acknowledge)
 //
-// One clock domain (clk).  The CPUs' bus enables (m_re/m_we/s_re/s_we) are one-clock strobes
+// One clock domain (clk).  Timing: two things take a clock more than they look (the 6809 side is never faster than one bus
+// cycle, 18 clocks or more, so nobody sees it; the test benches leave a clock between two accesses of the 6809):
+// the decode of the extended index (a write of XIDX, or the auto increment, is decoded into flip-flops one clock later) and
+// the carry of the window address (the increment after an access goes through three registered stages of 7 bits;
+// m_wait stays high until it is done).
+//   The CPUs' bus enables (m_re/m_we/s_re/s_we) are one-clock strobes
 // that the SoC derives from its E / sub CPU clock phases.  Credits: the register layout is original;
 // the structure of the strobe/stall handshake follows sim09's fpga/tn9k/rtl/sd_disk.v idea (CPU is
 // stalled while the memory port works).
@@ -68,6 +73,7 @@ module xlink #(
     reg [7:0]  svec;
     reg [31:0] clk_cnt, clk_latch;
     reg        win_busy, win_is_read;
+    reg        win_c1, win_c2;                     // the carry of the window address is on its way (7 bits per clock)
 
     assign shr_o     = c_shr;
     assign sub_hold  = c_hold;
@@ -76,7 +82,7 @@ module xlink #(
     assign irq_n_o   = pend_s2m & c_ien & ~c_firq;
     assign firq_o    = pend_s2m & c_ien &  c_firq;
     assign s_vec     = svec;
-    assign m_wait    = win_busy;
+    assign m_wait    = win_busy | win_c1 | win_c2;
 
     // ------------------------------------------------------------ SMMU (128 x 8)
     reg [7:0] smmu [0:127];
@@ -128,7 +134,15 @@ module xlink #(
     end
 
     wire dat_acc  = (m_re | m_we) & (m_addr == 3'd4);
-    wire win_sel  = (ei == 7'h0d);
+    // the decode of the index in flip-flops (one clock after idx has changed)
+    reg d_m2s0, d_m2s1, d_m2s2, d_m2s3, d_mi, d_smmu, d_wa2, d_wa1, d_wa0, d_win, d_clk;
+    always @(posedge clk) begin
+        d_m2s0 <= (ei == 7'h00); d_m2s1 <= (ei == 7'h01); d_m2s2 <= (ei == 7'h02); d_m2s3 <= (ei == 7'h03);
+        d_mi   <= (ei == 7'h08); d_smmu <= (ei == 7'h09);
+        d_wa2  <= (ei == 7'h0a); d_wa1  <= (ei == 7'h0b); d_wa0  <= (ei == 7'h0c);
+        d_win  <= (ei == 7'h0d); d_clk  <= (ei == 7'h10);
+    end
+    wire win_sel  = d_win;
 
     // ------------------------------------------------------------ sequential logic
     always @(posedge clk) begin
@@ -142,7 +156,17 @@ module xlink #(
         if (win_busy && win_ack) begin
             win_req  <= 1'b0;
             win_busy <= 1'b0;
-            win_addr <= win_addr + 21'd1;
+            win_addr[6:0] <= win_addr[6:0] + 7'd1;
+            win_c1   <= (win_addr[6:0] == 7'h7f);
+        end
+        if (win_c1) begin
+            win_addr[13:7] <= win_addr[13:7] + 7'd1;
+            win_c1   <= 1'b0;
+            win_c2   <= (win_addr[13:7] == 7'h7f);
+        end
+        if (win_c2) begin
+            win_addr[20:14] <= win_addr[20:14] + 7'd1;
+            win_c2   <= 1'b0;
         end
 
         // ---- 6809 side
@@ -157,25 +181,24 @@ module xlink #(
                 3'd2: if (m_wdata[7]) sub_nmi <= 1'b1; else pend_m2s <= 1'b1;
                 3'd3: idx <= m_wdata;
                 3'd4: begin
-                    case (ei)
-                        7'h00: m2s0 <= m_wdata;  7'h01: m2s1 <= m_wdata;
-                        7'h02: m2s2 <= m_wdata;  7'h03: m2s3 <= m_wdata;
-                        7'h08: mi <= m_wdata[6:0];
-                        7'h09: smmu[mi] <= m_wdata;
-                        7'h0a: win_addr[20:16] <= m_wdata[4:0];
-                        7'h0b: win_addr[15:8]  <= m_wdata;
-                        7'h0c: win_addr[7:0]   <= m_wdata;
-                        7'h0d: begin
-                            win_req <= 1'b1; win_wr <= 1'b1; win_wdata <= m_wdata; win_busy <= 1'b1;
-                        end
-                        default: ;
-                    endcase
+                    if (d_m2s0) m2s0 <= m_wdata;
+                    if (d_m2s1) m2s1 <= m_wdata;
+                    if (d_m2s2) m2s2 <= m_wdata;
+                    if (d_m2s3) m2s3 <= m_wdata;
+                    if (d_mi)   mi   <= m_wdata[6:0];
+                    if (d_smmu) smmu[mi] <= m_wdata;
+                    if (d_wa2)  win_addr[20:16] <= m_wdata[4:0];
+                    if (d_wa1)  win_addr[15:8]  <= m_wdata;
+                    if (d_wa0)  win_addr[7:0]   <= m_wdata;
+                    if (d_win) begin
+                        win_req <= 1'b1; win_wr <= 1'b1; win_wdata <= m_wdata; win_busy <= 1'b1;
+                    end
                 end
                 default: ;
             endcase
         end
         if (m_re && m_addr == 3'd4) begin
-            if (ei == 7'h10) clk_latch <= clk_cnt;
+            if (d_clk) clk_latch <= clk_cnt;
             if (win_sel) begin win_req <= 1'b1; win_wr <= 1'b0; win_busy <= 1'b1; end
         end
         if (dat_acc && idx[7] && !win_sel) idx <= {1'b1, ei + 7'd1};
@@ -197,7 +220,7 @@ module xlink #(
         if (rst) begin
             c_run <= 1'b0; c_hold <= 1'b0; c_shr <= 1'b0; c_firq <= 1'b0; c_ien <= 1'b0;
             pend_s2m <= 1'b0; pend_m2s <= 1'b0; idx <= 8'h00; mi <= 7'd0;
-            svec <= 8'hff; win_req <= 1'b0; win_busy <= 1'b0; win_addr <= 21'd0; win_wr <= 1'b0;
+            svec <= 8'hff; win_req <= 1'b0; win_busy <= 1'b0; win_c1 <= 1'b0; win_c2 <= 1'b0; win_addr <= 21'd0; win_wr <= 1'b0;
             clk_cnt <= 32'd0; m2s0 <= 0; m2s1 <= 0; m2s2 <= 0; m2s3 <= 0;
             s2m0 <= 0; s2m1 <= 0; s2m2 <= 0; s2m3 <= 0; win_wdata <= 8'h00;
         end

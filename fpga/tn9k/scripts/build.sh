@@ -48,7 +48,6 @@ cat > "$B/tn9k_cfg.vh" <<EOT
 \`define RTC_SEC $(echo $6 | sed 's/^0//')
 \`define HDMI_ROWS 25
 \`define HDMI_CHARSET 0
-\`define KANJI_LOAD 0
 \`define MEMTEST_EN ${MEMTEST:-1}
 $( [ -n "$WDOG" ] && echo "\`define WATCHDOG 1" )
 EOT
@@ -75,7 +74,6 @@ add_file -type verilog $SIM09/rtl/timer_rtc.v
 add_file -type verilog $SIM09/rtl/sd_disk.v
 add_file -type verilog $SIM09/rtl/dbg_uart.v
 add_file -type verilog $HERE/rtl/dbg_uart_z.v
-add_file -type verilog $SIM09/rtl/kanji_loader.v
 add_file -type verilog $SIM09/vendor/mc6809/mc6809i.v
 add_file -type verilog $SIM09/vendor/psram/psram_controller.v
 add_file -type cst $B/pins.cst

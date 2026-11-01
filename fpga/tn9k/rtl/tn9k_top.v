@@ -33,7 +33,7 @@ module tn9k_top (
     inout  wire [15:0] IO_psram_dq,
     output wire [1:0]  O_psram_reset_n,
     output wire [1:0]  O_psram_cs_n,
-    // the SPI flash of the board (the kanji image of the HDMI screen is read from it)
+    // the SPI flash of the board: not used (the pins stay in the constraints file of sim09; they are held idle)
     output wire        flash_csb,
     output wire        flash_clk,
     output wire        flash_mosi,
@@ -64,19 +64,12 @@ module tn9k_top (
     assign O_psram_reset_n = {2{resetn}};
 
     wire [111:0] dbg_regs;
-    wire [15:0]  dbg_status, dbg_kanji, dbg_disk;
+    wire [15:0]  dbg_status, dbg_disk;
     wire         dbg_stall;
     wire [39:0]  dbg_z80;
-`ifdef DEBUG_X1
-    wire [15:0]  dbg_x1;
-    reg  [13:0]  x1_last = 14'h0000;                 // DEBUG=4: kanji_ok, a lookup was answered, and the low 14 bits of the last word of a lookup
-    reg          x1_seen = 1'b0;
-    always @(posedge clk) if (x1_ack) begin x1_last <= x1_rdata[13:0]; x1_seen <= 1'b1; end
-    assign dbg_x1 = {kanji_ok, x1_seen, x1_last};
-`endif
     wire        uart_tx_soc;
     wire        term_stb, term_busy;
-    wire        x1_ack, x2_ack, kanji_ok;
+    wire        x1_ack, x2_ack;
     wire        x1_req, x2_req;
     wire [21:0] x1_addr, x2_addr;
     wire [15:0] x1_rdata, x2_rdata;
@@ -127,7 +120,7 @@ module tn9k_top (
     assign uart_tx = (wd_cnt[26] | dbg_on) ? dbg_tx : uart_tx_soc;
 `elsif DEBUG_TX
     wire dbg_tx;
-    dbg_uart #(.BAUD_DIV(`CLK_HZ / 115200)) dbg (.clk(clk), .regs(dbg_regs), .status(`ifdef DEBUG_DISK dbg_disk `elsif DEBUG_X1 dbg_x1 `elsif DEBUG_KANJI dbg_kanji `else dbg_status `endif), .txd(dbg_tx));
+    dbg_uart #(.BAUD_DIV(`CLK_HZ / 115200)) dbg (.clk(clk), .regs(dbg_regs), .status(`ifdef DEBUG_DISK dbg_disk `else dbg_status `endif), .txd(dbg_tx));
     assign uart_tx = dbg_tx;
 `else
     assign uart_tx = uart_tx_soc;
@@ -137,18 +130,19 @@ module tn9k_top (
         .CLK_HZ(`CLK_HZ), .PH_DIV(`PH_DIV), .BAUD_DIV(`CLK_HZ / 115200),
         .ROM_BASE(`ROM_BASE), .ROM_AW(`ROM_AW), .ROM_FILE("rom.hex"), .FREERUN(`FREERUN),
         .RTC_YEAR(`RTC_YEAR), .RTC_MONTH(`RTC_MONTH), .RTC_DAY(`RTC_DAY),
-        .RTC_HOUR(`RTC_HOUR), .RTC_MIN(`RTC_MIN), .RTC_SEC(`RTC_SEC), .KANJI(`KANJI_LOAD), .MEMTEST(`MEMTEST_EN)
+        .RTC_HOUR(`RTC_HOUR), .RTC_MIN(`RTC_MIN), .RTC_SEC(`RTC_SEC), .MEMTEST(`MEMTEST_EN)
     ) soc (
         .clk(clk), .resetn(resetn), .rxd(uart_rx), .txd(uart_tx_soc),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy),
         .led(led), .term_busy(term_busy),
-        .fl_cs(flash_csb), .fl_clk(flash_clk), .fl_mosi(flash_mosi), .fl_miso(flash_miso),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
-        .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata), .kanji_ok(kanji_ok),
-        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_kanji(dbg_kanji), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()
+        .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
+        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()
     );
+
+    assign flash_csb = 1'b1, flash_clk = 1'b0, flash_mosi = 1'b0;     // (flash_miso is not read)
 
 `ifndef HDMI
     assign term_busy = 1'b0;
@@ -165,7 +159,7 @@ module tn9k_top (
     wire rst_pix = rpx[3];
 
     hdmi_text #(.ROWS(`HDMI_ROWS), .CHARSET(`HDMI_CHARSET), .FONT_FILE("font8x16.hex")) screen (
-        .clk(clk), .rst(~resetn), .stb(term_stb), .din(term_byte), .busy(term_busy), .kanji_ok(kanji_ok),
+        .clk(clk), .rst(~resetn), .stb(term_stb), .din(term_byte), .busy(term_busy), .kanji_ok(1'b0),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r)

@@ -40,8 +40,6 @@
 // stable and the access is made.  The CPU's clock is held (before E falls) while a memory access or the
 // disk is still busy, so the access time of the PSRAM or of the card never matters for the result.
 
-`include "kanji.vh"
-
 module matenro_soc #(
     parameter CLK_HZ     = 67500000,
     parameter PH_DIV     = 9,                       // clks per phase; E = CLK_HZ / (4 * PH_DIV) = 1.875 MHz
@@ -59,8 +57,7 @@ module matenro_soc #(
     parameter RTC_SEC    = 0,
     parameter MEMTEST    = 1,                       // test the PSRAM (55, AA, the address as the data) after the reset: Memory >>>> on the console
     parameter [21:0] MT_LAST = 22'h1fffff,          // the last byte to test (2 MB)
-    parameter CZ_DIV     = 9,                       // Z80 clock = CLK_HZ / CZ_DIV (7.5 MHz)
-    parameter KANJI      = 1                        // copy the kanji image from the SPI flash to the PSRAM after the reset (HDMI screen)
+    parameter CZ_DIV     = 9                        // Z80 clock = CLK_HZ / CZ_DIV (7.5 MHz)
 ) (
     input  wire        clk,
     input  wire        resetn,
@@ -81,9 +78,7 @@ module matenro_soc #(
     // LEDs (active low), and the CPU for the test bench
     output wire [5:0]  led,
     input  wire        term_busy,           // the HDMI screen has no room for more characters now
-    // the SPI flash with the kanji image, and two more PSRAM masters of the HDMI screen (word reads)
-    output wire        fl_cs, fl_clk, fl_mosi,
-    input  wire        fl_miso,
+    // two more PSRAM masters (word reads) for a screen: not used on the 9K
     input  wire        x1_req,
     input  wire [21:0] x1_addr,
     output wire        x1_ack,
@@ -92,7 +87,6 @@ module matenro_soc #(
     input  wire [21:0] x2_addr,
     output wire        x2_ack,
     output wire [15:0] x2_rdata,
-    output wire        kanji_ok,
     output wire        term_stb,            // a byte the guest wrote to the console (for the HDMI screen)
     output wire [7:0]  term_byte,
     output wire [111:0] dbg_regs,
@@ -102,7 +96,6 @@ module matenro_soc #(
     output wire [15:0] dbg_addr,
     output wire        dbg_acc,
     output wire [15:0] dbg_status,
-    output wire [15:0] dbg_kanji,
     output wire [15:0] dbg_disk,
     output wire [7:0]  dbg_din,
     output wire        dbg_rnw,
@@ -200,14 +193,12 @@ module matenro_soc #(
     end
 
     // ---------------------------------------------------------------- start-up: PSRAM, clear, reset of the CPU
-    localparam [3:0] C_WAIT = 4'd0, C_CLR = 4'd1, C_WAIT2 = 4'd2, C_RUN = 4'd3, C_LOAD = 4'd4, C_LOADW = 4'd5,
+    localparam [3:0] C_WAIT = 4'd0, C_CLR = 4'd1, C_WAIT2 = 4'd2, C_RUN = 4'd3,
                      M_HDR = 4'd6, M_W = 4'd7, M_WW = 4'd8, M_R = 4'd9, M_RW = 4'd10, M_RC = 4'd11, M_FIN = 4'd12;
     localparam [21:0] CLR_LAST = 22'h1fffff;                              // the last byte to clear: 2 MB (the Level 2 mode)
     reg [3:0]  cs_;
     reg [21:0] cw;
     reg        c_wr, t_rd;
-    reg        ld_start;
-    wire       ld_done, ld_wr;
     reg [3:0]  rcnt;
     reg        go_req = 1'b0;           // a one clock pulse: the guest wrote $A3 to the mode register
     reg        l2 = 1'b0;               // the Level 2 mode
@@ -220,6 +211,7 @@ module matenro_soc #(
     reg        t_fail;
     reg [21:0] t_faddr;
     reg [3:0]  mi;                                   // the index in the message
+    reg [7:0]  msg_q;                                // msg(), registered (see M_FIN)
     // the console output of the test: one character at a time (the ACIA and the screen)
     reg        p_go, st_wr, st_d, st_d2;
     reg [7:0]  p_ch, st_byte;
@@ -240,6 +232,7 @@ module matenro_soc #(
     reg [21:0] cw_n;                                 // cw + 1, registered (the carry chain of the counter was the critical path)
     reg        cw_last, cw_pg;
     always @(posedge clk) begin
+        msg_q   <= msg(mi, t_fail, t_faddr);
         td_r    <= tdata;
         cw_n    <= cw + 1'b1;
         t_got_r <= cw[0] ? ps_dout_m[15:8] : ps_dout_m[7:0];
@@ -250,7 +243,6 @@ module matenro_soc #(
     always @(posedge clk) begin
         c_wr <= 1'b0;
         t_rd <= 1'b0;
-        ld_start <= 1'b0;
         st_wr <= 1'b0; st_d <= st_wr; st_d2 <= st_d;
         if (p_go && !st_wr && !st_d && !st_d2 && !acia_tx_full && !term_busy) begin st_wr <= 1'b1; st_byte <= p_ch; p_go <= 1'b0; end
         if (rst) begin
@@ -285,19 +277,19 @@ module matenro_soc #(
                     end else begin cw <= cw_n; cs_ <= M_R; end
                 end
                 M_FIN: if (MEMTEST && !p_go && !st_wr && !st_d) begin                    // " OK 2048K" or " NG @address"
-                    if (msg(mi, t_fail, t_faddr) == 8'h00) cs_ <= C_CLR;       // then clear (tp = 3: zero bytes)
-                    else begin p_ch <= msg(mi, t_fail, t_faddr); p_go <= 1'b1; mi <= mi + 1'b1; end
+                    // msg_q is one clock behind its inputs; mi changes only together with p_go, and p_go is up for several clocks
+                    // (and the first character is a blank, ok or not), so it is always current when it is looked at
+                    if (msg_q == 8'h00) cs_ <= C_CLR;                          // then clear (tp = 3: zero bytes)
+                    else begin p_ch <= msg_q; p_go <= 1'b1; mi <= mi + 1'b1; end
                 end
                 C_CLR: begin                            // write zero bytes 0, 1, 2 ... 65535 (2 MB - 1 for Level 2; the access the controller was tested with)
                     c_wr <= 1'b1;
                     cs_  <= C_WAIT2;
                 end
                 C_WAIT2: if (!c_wr && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) begin
-                    if (cw == CLR_LAST) cs_ <= C_LOAD;
+                    if (cw == CLR_LAST) cs_ <= C_RUN;
                     else begin cw <= cw_n; cs_ <= C_CLR; end
                 end
-                C_LOAD:  if (KANJI) begin ld_start <= 1'b1; cs_ <= C_LOADW; end else cs_ <= C_RUN;     // the kanji image
-                C_LOADW: if (ld_done) cs_ <= C_RUN;
                 C_RUN: if (ecyc) begin
                     if (rcnt == 4'd15) nreset_cpu <= 1'b1;
                     else rcnt <= rcnt + 1'b1;
@@ -308,20 +300,6 @@ module matenro_soc #(
     end
     reg run = 1'b0;                             // the start-up is over (a register of its own: it selects the PSRAM path)
     always @(posedge clk) run <= !rst && (cs_ == C_RUN);
-
-    wire [21:0] ld_addr;
-    wire [7:0]  ld_data;
-    generate if (KANJI) begin : g_kanji
-    kanji_loader loader (
-        .clk(clk), .rst(rst), .start(ld_start), .done(ld_done), .ok(kanji_ok),
-        .j_flash(`KJ_FLASH), .j_psram(`KJ_PSRAM), .j_size(`KJ_SIZE), .j_magic(1'b1),
-        .fl_cs(fl_cs), .fl_clk(fl_clk), .fl_mosi(fl_mosi), .fl_miso(fl_miso),
-        .wr(ld_wr), .wr_addr(ld_addr), .wr_data(ld_data), .busy(ps_busy_m), .dbg(dbg_kanji)
-    );
-    end else begin : g_nokanji                  // no kanji image (no HDMI screen): the loader (177 LUT) is not built
-        assign ld_done = 1'b1, ld_wr = 1'b0, ld_addr = 22'd0, ld_data = 8'd0, kanji_ok = 1'b0, dbg_kanji = 16'd0;
-        assign fl_cs = 1'b1, fl_clk = 1'b0, fl_mosi = 1'b0;
-    end endgenerate
 
     // ---------------------------------------------------------------- the access of a cycle
     reg        vma_pend;            // AVMA of the previous cycle = "valid" of this one
@@ -451,6 +429,11 @@ module matenro_soc #(
             endcase
     end
 
+    // The address is stable long before the access (see above), so the read data of the registers are registered first:
+    // the mux (the maps are RAM, the clock, the XLINK) and the choice of rd_reg were one long path.
+    reg [7:0] io_rdata_q;
+    always @(posedge clk) io_rdata_q <= io_rdata;
+
     // a write to the disk registers: noted at the access, done one clock later (c_wdata holds the byte)
     reg       w_disk = 1'b0;
     reg [2:0] w_off;
@@ -480,7 +463,7 @@ module matenro_soc #(
                 vma_pend <= cpu_avma;
                 if (vma_pend) begin
                     if (io_hit) begin
-                        if (cpu_rnw) rd_reg <= io_rdata;
+                        if (cpu_rnw) rd_reg <= io_rdata_q;
                         else begin
                             if (io_power && cpu_d_out == 8'ha5) begin pwroff <= 1'b1; osrun <= 1'b0; end      // shutdown: LED5 on, LED4 off
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
@@ -543,7 +526,7 @@ module matenro_soc #(
         end
     end
 
-    // master 0 of the PSRAM arbiter: the start-up (clear, kanji loader), the disk and the CPU.  Their pulses
+    // master 0 of the PSRAM arbiter: the start-up (memory test, clear), the disk and the CPU.  Their pulses
     // become a request that is held until the arbiter has done it; ps_busy_m is high from the clock of the pulse
     // until then (so no master has to count clocks).
     // the buffer address of the disk port is a logical address: it goes through the map that is active (like the simulator)
@@ -554,7 +537,7 @@ module matenro_soc #(
     reg  disk_sel = 1'b0;                       // the disk owns the port (a clock late: the CPU is waiting at both ends)
     always @(posedge clk) disk_sel <= disk_busy;
     wire m_rd_s   = use_clr ? t_rd : xw_act ? xw_rdp : disk_sel ? d_rd : c_rd;
-    wire m_wr_s   = use_clr ? (c_wr | ld_wr) : xw_act ? xw_wrp : disk_sel ? d_wr : c_cwr;
+    wire m_wr_s   = use_clr ? c_wr : xw_act ? xw_wrp : disk_sel ? d_wr : c_cwr;
     wire m0_pulse = m_rd_s | m_wr_s;
     reg         m0_req = 1'b0, m0_wrr = 1'b0;
     reg  [21:0] m0_addr;
@@ -565,8 +548,8 @@ module matenro_soc #(
         if (m0_pulse) begin
             m0_req  <= 1'b1;
             m0_wrr  <= m_wr_s;
-            m0_addr <= use_clr ? (ld_wr ? ld_addr : cw) : xw_act ? {1'b0, win_addr} : disk_sel ? (l2 ? d_pa : d_addr) : c_addr;
-            m0_din  <= use_clr ? (ld_wr ? ld_data : td_r) : xw_act ? win_wdata : disk_sel ? d_din : c_wdata;
+            m0_addr <= use_clr ? cw : xw_act ? {1'b0, win_addr} : disk_sel ? (l2 ? d_pa : d_addr) : c_addr;
+            m0_din  <= use_clr ? td_r : xw_act ? win_wdata : disk_sel ? d_din : c_wdata;
         end
     end
     assign ps_busy_m = m0_req;                  // (high from the clock after the pulse: nobody looks at the clock of the pulse itself)

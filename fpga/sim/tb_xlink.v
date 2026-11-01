@@ -63,11 +63,18 @@ module tb_xlink;
         end
     endtask
 
-    task mw(input [2:0] a, input [7:0] v);
+    task mw0(input [2:0] a, input [7:0] v);    // a write, without the pause after it (to see the one-clock pulses)
         begin
             m_addr = a; m_wdata = v; m_we = 1'b1; #1;
             tick;
             while (m_wait) tick;
+        end
+    endtask
+
+    task mw(input [2:0] a, input [7:0] v);
+        begin
+            mw0(a, v);
+            tick;                                  // the 6809 never makes two accesses in two clocks (XLINK decodes the index a clock late)
         end
     endtask
 
@@ -81,6 +88,7 @@ module tb_xlink;
             tick;
             win = (a == 3'd4) && ((cur_idx & 32'h7f) == 32'h0d);
             while (m_wait) tick;
+            tick;
             v = win ? win_rdata : v0;
         end
     endtask
@@ -140,7 +148,7 @@ module tb_xlink;
         sr(4'd1, v); check("sub stat bit0", v, 8'h81);
         sw(4'd3, 8'h00);
         check("sub INT cleared by ACK", sub_int, 0);
-        mw(3'd2, 8'h80);
+        mw0(3'd2, 8'h80);
         check("NMI pulse", sub_nmi, 1); tick; check("NMI pulse is one clock", sub_nmi, 0);
 
         // doorbell sub -> main (FIRQ)
@@ -199,7 +207,7 @@ module tb_xlink;
         check("clock counter", {b3, b2, b1, b0}, 1000);
 
         // reset pulse
-        mw(3'd0, 8'h99);
+        mw0(3'd0, 8'h99);
         check("XC_RESET pulse", sub_rst_n, 0); tick; tick;
         check("reset released again", sub_rst_n, 1);
         // halted / status

@@ -45,6 +45,7 @@ module tb_z80_soc #(
             m_addr = a; m_wdata = v; m_we = 1'b1; #1;
             tick;
             while (m_wait) tick;
+            tick;                                  // the 6809 never makes two accesses in two clocks (XLINK decodes the index a clock late)
         end
     endtask
 
@@ -55,7 +56,8 @@ module tb_z80_soc #(
             while (m_wait) tick;
             m_addr = a; #1;
             tick; tick;
-            v = m_rdata;                       // after the stall of a window read the data is there
+            v = m_rdata;
+            tick;                       // after the stall of a window read the data is there
         end
     endtask
 
