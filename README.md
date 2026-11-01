@@ -156,7 +156,7 @@ os9/            xrun.asm と cpm/ cpp/ cc80/ (OS-9 Level 2 のコマンド `xrun
 tools/          z80asm.py (Z80 アセンブラ)、mkcmd.py (CP/M-86 の .CMD を作る)、build_cpm.sh (OS-9 コマンドのビルド)
 tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80asm_test.py mh/xlink_test.asm cpm/ (CP/M のテストプログラム) cpp/ (cpp と cc80 の C ソース)
 docs/           DESIGN.md (設計・レジスタ仕様) FPGA.md (FPGA の検討)
-fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
+fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト、テストベンチは Verilog: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
 fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットストリーム、mkdisk.sh と mkdisk_d1.sh で SD イメージ、sim/ で RTL シミュレーション)
 ```
 

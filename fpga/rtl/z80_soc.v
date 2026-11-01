@@ -32,6 +32,7 @@ module z80_soc #(
     wire [7:0]  mem_wdata;
     reg         mem_ack;
     reg  [7:0]  mem_rdata;
+    wire [39:0] dbg_z;
 
     z80_sub #(.CLKDIV(CLKDIV)) sub (.*);
 
