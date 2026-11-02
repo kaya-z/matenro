@@ -2,7 +2,7 @@
 ********************************************************************
 * cc80 - compile a C program for CP/M-80 from OS-9 Level 2, written for 摩天楼 (Matenro)
 *
-*   cc80 [-s] [-c] [-r] [-k] [-v] [-t=dir] [-Dname[=value]] [-Idir] file.c
+*   cc80 [-s] [-c] [-r] [-k] [-v] [-lf] [-t=dir] [-Dname[=value]] [-Idir] file.c
 *
 * One command drives the whole chain of two operating systems:
 *
@@ -14,7 +14,9 @@
 *   -s  stop after the code generator (file.as)      -c  stop after the assembler (file.obj)
 *   -r  run the program                              -k  keep the intermediate files (.i .p1 .as .obj)
 *   -v  show the commands                            -t=dir  the directory of the compiler (default /v0/htc)
-* The HI-TECH C compiler (CPP.COM is not needed, P1.COM CGEN.COM ZAS.COM LINQ.COM, CRTCPM.OBJ, LIBC.LIB and the
+*   -lf link the floating point library (libf.lib, like the -LF of the HI-TECH driver).  It is added by itself when
+*       the code generator has called a routine of it (fladd, flmul, aitof ...).
+* The HI-TECH C compiler (CPP.COM is not needed, P1.COM CGEN.COM ZAS.COM LINQ.COM, CRTCPM.OBJ, LIBC.LIB, LIBF.LIB and the
 * header files) is not part of this project: it has to be copied to the directory by the user.
 *
 * Credits: the order of the compiler passes and the options of the passes follow the verbose output and the
@@ -40,6 +42,7 @@ F_C      equ   2
 F_R      equ   4
 F_V      equ   8
 F_K      equ   16
+F_F      equ   32
 
          mod   eom,name,tylg,atrv,start,size
 
@@ -56,13 +59,15 @@ nmp      rmb   2
 plen     rmb   2
 tmp16    rmb   2
 status   rmb   1
+fpth     rmb   1
+lbuf     rmb   80
          rmb   200               stack
 size     equ   .
 
 name     fcs   /cc80/
          fcb   edition
 
-msgusage fcc   "usage: cc80 [-s -c -r -k -v] [-t=dir] [-Dname[=value]] [-Idir] file.c"
+msgusage fcc   "usage: cc80 [-s -c -r -k -v -lf] [-t=dir] [-Dname[=value]] [-Idir] file.c"
          fcb   C$CR
 msgfail  fcc   "cc80: failed: "
          fcb   0
@@ -90,6 +95,8 @@ t_cgen   fcc   "-k -p=@ cgen %.p1 %.as"
 t_zas    fcc   "-k -p=@ zas -J -N -O%.obj %.as"
          fcb   0
 t_link   fcc   "-k -p=@ linq -Z -Ptext=0,data,bss -C100H -O%.com crtcpm.obj %.obj libc.lib"
+         fcb   0
+t_linkf  fcc   "-k -p=@ linq -Z -Ptext=0,data,bss -C100H -O%.com crtcpm.obj %.obj libf.lib libc.lib"
          fcb   0
 t_run    fcc   "%.com"
          fcb   0
@@ -172,7 +179,19 @@ o5b      lda   ,x
 o5c      clr   ,y
          stx   argp,u
          bra   nxt
-o6       cmpa  #'D'
+o6       cmpa  #'L'
+         bne   o6a
+         lda   1,x                   -lf: the floating point library
+         anda  #$DF
+         cmpa  #'F'
+         lbne  usage
+         lda   flags,u
+         ora   #F_F
+         sta   flags,u
+         leax  2,x
+         stx   argp,u
+         lbra  nxt
+o6a      cmpa  #'D'
          beq   o7
          cmpa  #'I'
          lbne  usage
@@ -259,8 +278,13 @@ pa5      clr   ,x
          lda   flags,u
          bita  #F_C
          bne   fin
+         lbsr  scanfl
          leax  t_link,pcr
-         leay  n_cpm,pcr
+         lda   flags,u
+         bita  #F_F
+         beq   ln1
+         leax  t_linkf,pcr
+ln1      leay  n_cpm,pcr
          lbsr  stage
          lda   flags,u
          bita  #F_R
@@ -344,6 +368,72 @@ delete   leay  pbuf,u
          lda   #UPDAT.
          os9   I$Delete
          rts
+
+* look in file.as (the output of the code generator) for a call of a routine of the floating point library:
+* the lines "call<TAB>name", name = fladd flsub flmul fldiv (fl...), asfl..., frelop, ftol, aitof, altof, lltof.  If there is
+* one, F_F is set (libf.lib in front of libc.lib).  Nothing to do when -lf is given already.
+scanfl   lda   flags,u
+         bita  #F_F
+         bne   sf9
+         leax  d_as,pcr
+         leay  pbuf,u
+         lbsr  appt
+         leax  pbuf,u
+         lda   #READ.
+         os9   I$Open
+         bcs   sf9
+         sta   fpth,u
+sf1      lda   fpth,u
+         leax  lbuf,u
+         ldy   #80
+         os9   I$ReadLn
+         bcs   sf8
+         leax  lbuf,u
+         ldd   ,x
+         cmpd  #$6361                "ca"
+         bne   sf1
+         ldd   2,x
+         cmpd  #$6C6C                "ll"
+         bne   sf1
+         lda   4,x
+         cmpa  #9                    TAB
+         bne   sf1
+         leax  5,x                   the name
+         leay  fpfx,pcr
+sf2      tst   ,y
+         lbeq  sf1                   no prefix matches: the next line
+         pshs  x
+sf3      lda   ,y+
+         beq   sf5
+         cmpa  ,x+
+         beq   sf3
+sf4      lda   ,y+                   skip the rest of this prefix
+         bne   sf4
+         puls  x
+         bra   sf2
+sf5      puls  x
+         lda   flags,u
+         ora   #F_F
+         sta   flags,u
+sf8      lda   fpth,u
+         os9   I$Close
+sf9      rts
+
+fpfx     fcc   "fl"
+         fcb   0
+         fcc   "asfl"
+         fcb   0
+         fcc   "frelop"
+         fcb   0
+         fcc   "ftol"
+         fcb   0
+         fcc   "ait"
+         fcb   0
+         fcc   "alt"
+         fcb   0
+         fcc   "llt"
+         fcb   0
+         fcb   0
 
 * write the text at X (up to CR or NUL) to the standard error path
 wrstr    pshs  x

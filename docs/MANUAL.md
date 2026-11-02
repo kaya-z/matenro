@@ -263,7 +263,7 @@ cpp [-Dname[=値]] [-Idir] [-oファイル] file.c
 ### 7.2 `cc80` (OS-9 の cpp → CP/M-80 の C コンパイラ)
 
 ```
-cc80 [-s] [-c] [-r] [-k] [-v] [-t=dir] [-Dname[=値]] [-Idir] file.c
+cc80 [-s] [-c] [-r] [-k] [-v] [-lf] [-t=dir] [-Dname[=値]] [-Idir] file.c
 ```
 
 `cpp` で展開し (途中のファイルは、拡張子 `.i` のテキストです)、HI-TECH C 3.09 の各パス (`p1` `cgen` `zas` `linq`) を `cpm` で Z80 に動かして、`file.com` を作ります。
@@ -274,6 +274,7 @@ cc80 [-s] [-c] [-r] [-k] [-v] [-t=dir] [-Dname[=値]] [-Idir] file.c
 | `-s` `-c` | `.as` / `.obj` で止める |
 | `-k` | 途中のファイル (`.i` `.p1` `.as` `.obj`) を残す |
 | `-v` | 実行するコマンドを表示する |
+| `-lf` | 浮動小数点のライブラリ `libf.lib` をリンクする (HI-TECH C の `-LF` と同じ)。`float` の計算や `%f` の `printf` を使うときに要ります。コードの中に `float` の計算があれば (`fladd` `flmul` `aitof` などを呼んでいれば) **自動で付きます** |
 | `-t=dir` | コンパイラのある場所 (既定 `/v0/htc`。FPGA 版では `-t=/d1/htc`) |
 | `-D` `-I` | `cpp` に渡す |
 
@@ -283,7 +284,7 @@ OS9:cc80 -t=/d1/htc -r hello.c
 Hello from Hi-Tech C on CP/M
 ```
 
-**HI-TECH C はこのリポジトリに入っていません。** 配布元 <https://github.com/agn453/HI-TECH-Z80-C> から自分で取得し、`P1.COM` `CGEN.COM` `ZAS.COM` `LINQ.COM` `CRTCPM.OBJ` `LIBC.LIB` とヘッダ (`*.H`) を、`-t` で指すディレクトリに置いてください。ライセンスは HI-TECH のものに従います。
+**HI-TECH C はこのリポジトリに入っていません。** 配布元 <https://github.com/agn453/HI-TECH-Z80-C> から自分で取得し、`P1.COM` `CGEN.COM` `ZAS.COM` `LINQ.COM` `CRTCPM.OBJ` `LIBC.LIB` `LIBF.LIB` とヘッダ (`*.H`) を、`-t` で指すディレクトリに置いてください。ライセンスは HI-TECH のものに従います。
 
 手順ファイル (`shell <ファイル`) の中から `cc80` を続けて呼ぶこともできます。
 
@@ -312,7 +313,7 @@ reply: BA 13 00 00
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
 | `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `xlink` `x0` `cpp` `cc80` ほか)、`hello.com` |
-| `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `hello.c` |
+| `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c` |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体 |
 
 ```sh

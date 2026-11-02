@@ -345,7 +345,7 @@ def os9_cpp(tmp):
 
 def os9_cc80(tmp):
     """OS-9 cpp -> HI-TECH C passes on the Z80 -> a CP/M-80 program, started by cc80.  The compiler is not part of
-    this project: set MATENRO_HTC to a directory with P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB and the headers."""
+    this project: set MATENRO_HTC to a directory with P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB and the headers."""
     htc = os.environ.get('MATENRO_HTC')
     if not os.path.isdir(OS9):
         return
@@ -365,9 +365,12 @@ def os9_cc80(tmp):
         if n.upper().endswith(('.COM', '.OBJ', '.LIB', '.H')):
             shutil.copy(os.path.join(htc, n), os.path.join(v0, 'htc', n))
     shutil.copy(os.path.join(HERE, 'cpp', 'demo.c'), v0)
+    shutil.copy(os.path.join(HERE, 'cpp', 'fp.c'), v0)
     script = os.path.join(d, 'script.txt')
     open(script, 'w').write('timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "chd /v0\\r"\nexpect "OS9:"\n'
                             'send "cc80 -r demo.c\\r"\nexpect "OS9:"\nsend "cc80 -r -DSMALL demo.c\\r"\nexpect "OS9:"\n'
+                            # floating point: libf.lib is linked by itself, and by -lf
+                            'send "cc80 -r fp.c\\r"\nexpect "OS9:"\nsend "cc80 -lf -r fp.c\\r"\nexpect "OS9:"\n'
                             # two cc80 in a procedure file (shell <file): the system memory of Level 2 must be enough, and the
                             # passes must not eat the second line of the file
                             'send "chx /d0/cmds\\r"\nexpect "OS9:"\nsend "build /d0/p2\\r"\nexpect "?"\nsend "cc80 -r demo.c\\r"\nexpect "?"\n'
@@ -377,6 +380,8 @@ def os9_cc80(tmp):
              '-1', os.path.join(d, 'WORK.dsk'), '-v', v0, '-script', script], timeout=900)
     out = r.stdout.decode(errors='replace')
     check('cc80: cpp on OS-9 -> HI-TECH C on the Z80 -> program runs (macros, #if, -D)', 'big 36' in out and 'small 36' in out, out[-800:])
+    check('cc80: floating point (libf.lib is linked when the code generator calls fladd ..., or with -lf)',
+          out.split('START2')[0].count('fp 1250') == 2, out[-800:])
     check('cc80 twice in a procedure file (shell <file): enough system memory, the passes leave the file alone',
           out.split('START2')[-1].count('big 36') == 1 and out.split('START2')[-1].count('small 36') == 1, out[-800:])
 

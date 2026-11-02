@@ -181,7 +181,7 @@ sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から 
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
 | `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のローダと ROM イメージ、コマンド、Matenro のコマンド (`cpm xrun xlink x0 cpp cc80`)、`hello.com` (`scripts/mkdisk.sh`) |
-| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `hello.c` (`scripts/mkdisk_d1.sh`)。空きは 475 セクタ。2048 セクタは 1 セクタの割り当て表で持てる最大 |
+| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB` `LIBF.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` `hello.c` (`scripts/mkdisk_d1.sh`)。空きは 475 セクタ。2048 セクタは 1 セクタの割り当て表で持てる最大 |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体のイメージ: `sudo dd if=matenro_card.img of=/dev/sdX bs=1M conv=fsync` (**カード全体が上書きされる**。128MB 以上のカード) |
 
 実機での使い方 (予定): `chx /d0/cmds`、`load xlink`、`load x0`、`chd /d1`、`cc80 -t=/d1/htc -r hello.c` (HI-TECH C)、`cpm zexdoc` (ZEXDOC)。`cc80 -t=/d1/htc -r hello.c` はシミュレータ (`/d1` を 2 番目のディスクイメージにしたもの) で `Hello from Hi-Tech C on CP/M` まで通りました。

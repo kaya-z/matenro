@@ -35,7 +35,7 @@ sim09 は**読み取り専用**で使います (ディスクイメージはテ�
 |---|---|
 | `make test-z80` | Z80 の既知答えテスト 179 項目 |
 | `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 64 項目 |
-| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 36 項目 |
+| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 38 項目 (`MATENRO_HTC` があれば 41 項目) |
 | `make test-asm` | 自作 Z80 アセンブラの既知の機械語 90 項目 |
 
 **テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で、シミュレータと**実機の FPGA** (7.5 MHz、約 3 時間) の両方で通しました (リポジトリには入れていません)。実機の 1 回目は、7 項目目のあとで出力が止まりましたが、同じ条件で 2 回やり直すと 2 回とも完走し、原因は分かっていません ([docs/FPGA.md](docs/FPGA.md) の 9.3)。8086 の公開テストは**走らせていません**。
@@ -122,7 +122,7 @@ OS9:cc80 -r -v demo.c
 big 36
 ```
 
-HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB とヘッダ) は**このリポジトリに入っていません**。<https://github.com/agn453/HI-TECH-Z80-C>
+HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB とヘッダ) は**このリポジトリに入っていません**。<https://github.com/agn453/HI-TECH-Z80-C>
 から自分で取得して `/v0/htc` (または `-t=dir`) に置いてください。テストは環境変数 `MATENRO_HTC=そのディレクトリ` のときだけ `cc80` を試します。
 `cpp` だけでも使えます (`cpp -Dname=v -Idir -ofile file.c`、`#` `##` は関数形式マクロのみ)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
 
