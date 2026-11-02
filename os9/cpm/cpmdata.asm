@@ -47,6 +47,16 @@ slots    rmb   816                  NSLOT * SLOTSZ
 tnames   rmb   44                   NT * 11: the FCB name of each open text file (BDOS 23 closes the file that is renamed)
 tslots   rmb   16                   NT * 4: real path, temp path, flags (bit7 used, bit1 writable, bit0 modified)
 shtab    rmb   78                   NSH * SHSZ: shared paths (see above)
+islib    rmb   1                    1: the engine runs in the module bdos (there is no guest memory to write tables into)
+srchdr   rmb   1                    the drive byte of the FCB of the search (BDOS 17), for BDOS 18
+iobyte   rmb   1                    the IOBYTE (BDOS 7 / 8)
+curdrv   rmb   1                    the current drive, 0 = A (BDOS 14)
+curuser  rmb   1                    the user number (BDOS 32)
+pfxlen   rmb   1                    the length of drvdir
+drvtab   rmb   NDRV*DRVSZ          the drives that are mapped: drive + 1 (0 = free), the path of the directory
+drvdir   rmb   40                   the directory of the drive and the user area of the FCB, with a / behind
+dirpath  rmb   40                   the same for the directory scans (no / at the end; "." for the current directory)
+clrend   equ   .                    (the data area from slots to here is cleared at the start)
 tname    rmb   12
 cbuf     rmb   256
 cvlast   rmb   1

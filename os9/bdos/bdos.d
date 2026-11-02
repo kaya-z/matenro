@@ -30,6 +30,6 @@
 * The functions are those of `cpm` (docs/DESIGN.md, chapter 12): console 1 2 6 9 10 11, files 15 16 17 18 19 20 21 22 23
 * 26 33 34 35 36, 12 version (0022h); the FCB, the string and the DMA address are pointers into the memory of the caller.
 * The DMA address is 0 until function 26 sets it.  A native program has no CP/M memory: no program is loaded, no CALL 5.
-BDOSSZ   equ   2500
+BDOSSZ   equ   3000
 BDOSINIT equ   $FF
 BDOSEXIT equ   $FE

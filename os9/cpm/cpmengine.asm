@@ -61,6 +61,8 @@ openany  sta   tmp8b,u
          leax  pname,u
          os9   I$Open
          bcc   oa9
+         tst   pfxlen,u
+         bne   oaf
          tst   tooldir,u
          beq   oaf
          lbsr  mkprefix
@@ -620,9 +622,49 @@ ts1      leax  4,x
          bne   ts1
 ts9      rts
 
+* A .BAS file is text only when it is an ASCII listing: the program SAVE of MBASIC writes the tokenized form, which starts
+* with FFh (and has no line ends).  A new file is binary (the text is then not converted), an old one is looked at.
+* Carry set: binary.
+isbas    leax  fcb+F_EXT,u
+         lda   ,x+
+         anda  #$7F
+         cmpa  #'B'
+         bne   ib_txt
+         lda   ,x+
+         anda  #$7F
+         cmpa  #'A'
+         bne   ib_txt
+         lda   ,x
+         anda  #$7F
+         cmpa  #'S'
+         bne   ib_txt
+         lda   tmp8b,u
+         cmpa  #1
+         bne   ib_bin                 a new file
+         lda   fcb+F_PATH,u
+         leax  iobuf,u
+         ldy   #1
+         os9   I$Read
+         bcs   ib_txt
+         lda   fcb+F_PATH,u
+         ldx   #0                     back to the start
+         pshs  u
+         ldu   #0
+         os9   I$Seek
+         puls  u
+         lda   iobuf,u
+         cmpa  #$FF
+         beq   ib_bin
+ib_txt   andcc #$FE
+         rts
+ib_bin   orcc  #1
+         rts
+
 * the FCB just got a real path in F_PATH: if it is a text file, build the temporary CP/M form.
 * tmp8b = 1 for an existing file (convert it), 2 for a new file.  Carry set: not made (the file stays binary).
 mktslot  lbsr  istext
+         lbcs  mt_no
+         lbsr  isbas
          lbcs  mt_no
          lbsr  alloct
          lbcs  mt_no
@@ -847,19 +889,219 @@ dispatch clr   r_al,u
          rola
          ldd   d,x
          jmp   d,x
-dsp2     cmpa  #51
+dsp2     cmpa  #37
+         lbeq  f_nop                  reset drive: nothing to do
+         cmpa  #40
+         lbeq  f_wrrnd                write random with zero fill
+         cmpa  #51
          lbeq  f_sdmab
          cmpa  #52
          lbeq  f_gdmab
          rts
-jtab     fdb   f_boot-jtab,f_conin-jtab,f_conout-jtab,f_nop-jtab,f_nop-jtab,f_nop-jtab,f_dio-jtab
-         fdb   f_nop-jtab,f_nop-jtab,f_prstr-jtab,f_rdbuf-jtab,f_const-jtab,f_vers-jtab,f_nop-jtab
+jtab     fdb   f_boot-jtab,f_conin-jtab,f_conout-jtab,f_rdr-jtab,f_nop-jtab,f_nop-jtab,f_dio-jtab
+         fdb   f_getio-jtab,f_setio-jtab,f_prstr-jtab,f_rdbuf-jtab,f_const-jtab,f_vers-jtab,f_reset-jtab
          fdb   f_seldsk-jtab,f_open-jtab,f_close-jtab,f_sfirst-jtab,f_snext-jtab,f_delete-jtab
          fdb   f_rdseq-jtab,f_wrseq-jtab,f_make-jtab,f_rename-jtab,f_login-jtab,f_curdsk-jtab
-         fdb   f_sdma-jtab,f_nop-jtab,f_nop-jtab,f_ro-jtab,f_nop-jtab,f_nop-jtab,f_user-jtab
+         fdb   f_sdma-jtab,f_alloc-jtab,f_nop-jtab,f_ro-jtab,f_sattr-jtab,f_dpb-jtab,f_user-jtab
          fdb   f_rdrnd-jtab,f_wrrnd-jtab,f_fsize-jtab,f_setrnd-jtab
 
 f_nop    rts
+
+* 3 reader input: nothing is there (end of file)
+f_rdr    lda   #$1A
+         sta   r_al,u
+         lbra  retA
+
+* 7 / 8 the IOBYTE
+f_getio  lda   iobyte,u
+         sta   r_al,u
+         lbra  retA
+f_setio  lda   parl,u
+         sta   iobyte,u
+         rts
+
+* 31 the disk parameter block of the drive: a disk of 4 MB (2K blocks, 512 directory entries), at FD00h of the Z80
+* (the Z80 programs read it: STAT).  HL = 0 for CP/M-86 and for the module bdos.
+f_dpb    lda   subty,u
+         cmpa  #1
+         bne   dpb9
+         tst   islib,u
+         bne   dpb9
+         ldd   #$FD00
+         lbsr  setlin16
+         leax  dpbtab,pcr
+         ldy   #15
+         lbsr  wrsub
+         ldd   #$FD00
+         sta   r_bh,u
+         stb   r_bl,u
+         stb   r_al,u
+dpb9     rts
+dpbtab   fcb   128,0                SPT: records per track (little endian: the Z80 reads it)
+         fcb   4,15,1                BSH, BLM, EXM: blocks of 2K
+         fcb   $FF,$07               DSM = 2047: 2048 blocks = 4 MB
+         fcb   $FF,$01               DRM = 511: 512 directory entries
+         fcb   $FF,$00               AL0, AL1: the first 8 blocks are the directory
+         fcb   0,0                   CKS
+         fcb   0,0                   OFF
+
+* 27 the allocation vector of the drive: one bit per block of 2K, the blocks of the directory and of the files (counted
+* from the sizes of the files in the directory of the drive, and put one behind the other from the start), at FD20h
+f_alloc  lda   subty,u
+         cmpa  #1
+         lbne  fa_no
+         tst   islib,u
+         lbne  fa_no
+         clr   fcb+F_DR,u            the current drive
+         ldd   #8                    the directory
+         std   rec,u
+         lbsr  calcdir
+         lda   #DIR.+READ.
+         leax  dirpath,u
+         os9   I$Open
+         lbcs  fa3
+         pshs  a
+fa1      lda   ,s
+         leax  dirent,u
+         ldy   #32
+         os9   I$Read
+         bcs   fa9
+         cmpy  #32
+         bne   fa9
+         lda   dirent,u
+         beq   fa1
+         lbsr  dir2cpm
+         bcs   fa1
+         lbsr  calcpfx
+         lbsr  addpfx
+         lda   #READ.
+         leax  pname,u
+         os9   I$Open
+         bcs   fa1
+         sta   tmp8b,u
+         ldb   #SS.Size
+         pshs  u
+         os9   I$GetStt
+         tfr   u,d
+         puls  u
+         std   posu,u
+         stx   posx,u
+         lda   tmp8b,u
+         os9   I$Close
+         ldd   posu,u                blocks = (size + 2047) / 2048
+         addd  #2047
+         std   posu,u
+         bcc   fa2
+         ldx   posx,u
+         leax  1,x
+         stx   posx,u
+fa2      lda   posu,u
+         lsra
+         lsra
+         lsra
+         tfr   a,b
+         clra
+         std   tmp16,u               posu / 2048
+         ldd   posx,u                + posx * 32
+         lslb
+         rola
+         lslb
+         rola
+         lslb
+         rola
+         lslb
+         rola
+         lslb
+         rola
+         addd  tmp16,u
+         addd  rec,u
+         std   rec,u
+         lbra  fa1
+fa9      puls  a
+         os9   I$Close
+fa3      ldd   rec,u                 the number of blocks (at most 2048)
+         cmpd  #2048
+         bls   fa3a
+         ldd   #2048
+fa3a     std   tmp16,u
+         leax  cbuf,u
+         ldy   #256
+fa4      clr   ,x+
+         leay  -1,y
+         bne   fa4
+         ldd   tmp16,u
+         andb  #7
+         stb   tmp8,u                the bits of the last byte
+         ldd   tmp16,u
+         lsra
+         rorb
+         lsra
+         rorb
+         lsra
+         rorb
+         tfr   d,y                   the full bytes
+         leax  cbuf,u
+         cmpy  #0
+         beq   fa6
+fa5      lda   #$FF
+         sta   ,x+
+         leay  -1,y
+         bne   fa5
+fa6      ldb   tmp8,u
+         beq   fa7
+         clra
+fa6a     orcc  #1
+         rora
+         decb
+         bne   fa6a
+         sta   ,x
+fa7      ldd   #$FD20
+         lbsr  setlin16
+         leax  cbuf,u
+         ldy   #256
+         lbsr  wrsub
+         ldd   #$FD20
+         sta   r_bh,u
+         stb   r_bl,u
+         stb   r_al,u
+fa_no    rts
+
+* 30 set file attributes: the high bit of the first character of the type (t1') = read only.  OS-9: the write
+* permission of the owner and of the public (SS.FD, like the command attr).
+f_sattr  lbsr  getfcb
+         lbsr  mkname
+         lda   #WRITE.
+         leax  pname,u
+         os9   I$Open
+         bcc   sat1
+         lda   #READ.
+         leax  pname,u
+         os9   I$Open
+         lbcs  fo_err
+sat1     sta   tmp8,u
+         ldb   #SS.FD
+         leax  iobuf,u
+         ldy   #1
+         os9   I$GetStt
+         bcs   sat9
+         lda   iobuf,u
+         ldb   fcb+F_EXT,u
+         bpl   sat2
+         anda  #$ED                  read only: no write permission
+         bra   sat3
+sat2     ora   #$12                  read / write
+sat3     sta   iobuf,u
+         lda   tmp8,u
+         ldb   #SS.FD
+         leax  iobuf,u
+         ldy   #1
+         os9   I$SetStt
+sat9     pshs  cc,b
+         lda   tmp8,u
+         os9   I$Close
+         puls  cc,b
+         lbcs  fo_err
+         rts
 
 * The BIOS entries of the guest (z80shim.asm): 80h + the number in the jump table.  Only the console is real.
 bios     lda   func,u
@@ -1085,13 +1327,88 @@ v1       sta   r_bh,u
          stb   r_al,u
          rts
 
-f_seldsk rts
-f_curdsk rts
-f_user   rts
-f_ro     rts
-f_login  lda   #1
+* 13 reset disk system: the drive A
+f_reset  clr   curdrv,u
+         rts
+
+* 14 select disk (E = 0 for A ... 15 for P): 0, or 255 when no directory is mapped to that drive
+f_seldsk lda   parl,u
+         anda  #$0F
+         beq   sd_ok
+         lbsr  drvfind
+         bcs   sd_no
+sd_ok    lda   parl,u
+         anda  #$0F
+         sta   curdrv,u
+         rts
+sd_no    lda   #$FF
          sta   r_al,u
          sta   r_bl,u
+         rts
+
+* the entry of the drive A (A = 0 ... 15) in drvtab: X = entry; carry set when it is not mapped
+drvfind  inca
+         leax  drvtab,u
+         ldb   #NDRV
+df1      cmpa  ,x
+         beq   df9
+         leax  DRVSZ,x
+         decb
+         bne   df1
+         orcc  #1
+         rts
+df9      andcc #$FE
+         rts
+
+* 25 the current drive
+f_curdsk lda   curdrv,u
+         sta   r_al,u
+         lbra  retA
+
+* 32 user number: E = 255 gets it, 0 ... 15 sets it
+f_user   lda   parl,u
+         cmpa  #$FF
+         beq   fu_get
+         anda  #$0F
+         sta   curuser,u
+         rts
+fu_get   lda   curuser,u
+         sta   r_al,u
+         lbra  retA
+
+f_ro     rts
+
+* 24 login vector: the bits of the drives that exist (A, and the mapped ones)
+f_login  ldd   #1
+         std   tmp16,u
+         leay  drvtab,u
+         lda   #NDRV
+         sta   tmp8,u
+fl1      ldb   ,y
+         beq   fl4
+         decb                        B = the number of the drive: the shift count
+         ldx   #1
+fl2      tstb
+         beq   fl3
+         pshs  b
+         tfr   x,d
+         lslb
+         rola
+         tfr   d,x
+         puls  b
+         decb
+         bra   fl2
+fl3      tfr   x,d
+         ora   tmp16,u
+         orb   tmp16+1,u
+         std   tmp16,u
+fl4      leay  DRVSZ,y
+         dec   tmp8,u
+         bne   fl1
+         ldd   tmp16,u
+         sta   r_bh,u
+         stb   r_bl,u
+         stb   r_al,u
          rts
 f_unsup  lda   #$FF
          sta   r_al,u
@@ -1163,6 +1480,104 @@ mn4      lda   ,x+
          decb
          bne   mn4
 mn9      lda   #C$CR
+         sta   ,y
+* the directory of the drive and the user area in front of the name
+         lbsr  calcpfx
+addpfx   ldb   pfxlen,u                (also used by BDOS 18 after calcpfx: pname = a name found in the directory)
+         beq   mn99
+         leay  pname+12,u            move the name (12 characters and the CR) up by pfxlen
+         leax  b,y
+         ldb   #13
+mn5      lda   ,y
+         sta   ,x
+         leay  -1,y
+         leax  -1,x
+         decb
+         bne   mn5
+         leax  drvdir,u              the prefix in front of it
+         leay  pname,u
+         ldb   pfxlen,u
+mn6      lda   ,x+
+         sta   ,y+
+         decb
+         bne   mn6
+mn99     rts
+
+* drvdir / pfxlen = the directory of the drive of the FCB (0 = the current drive) and of the user area, with a / behind:
+*   drive A: the current directory;  a mapped drive: its directory;  a drive that is not mapped: /-/ (nothing is there)
+*   user 1 ... 15: the subdirectory U1 ... U15
+calcpfx  lda   fcb+F_DR,u
+         beq   cx0
+         deca
+         anda  #$0F
+         bra   cx1
+cx0      lda   curdrv,u
+cx1      pshs  a
+         leay  drvdir,u
+         inca
+         leax  drvtab,u
+         ldb   #NDRV
+cx2      cmpa  ,x
+         beq   cx5
+         leax  DRVSZ,x
+         decb
+         bne   cx2
+         tst   ,s                    not mapped: drive A is the current directory, the others are nowhere
+         beq   cx6
+         lda   #'/'
+         sta   ,y+
+         lda   #'-'
+         sta   ,y+
+         lda   #'/'
+         sta   ,y+
+         bra   cx7
+cx5      leax  1,x                   the path of the drive
+cx5a     lda   ,x+
+         beq   cx5b
+         sta   ,y+
+         bra   cx5a
+cx5b     lda   -1,y
+         cmpa  #'/'
+         beq   cx6
+         lda   #'/'
+         sta   ,y+
+cx6      lda   curuser,u
+         beq   cx7
+         ldb   #'U'
+         stb   ,y+
+         cmpa  #10
+         blo   cx6a
+         ldb   #'1'
+         stb   ,y+
+         suba  #10
+cx6a     adda  #'0'
+         sta   ,y+
+         lda   #'/'
+         sta   ,y+
+cx7      leas  1,s
+         leax  drvdir,u
+         tfr   y,d
+         pshs  x
+         subd  ,s++
+         stb   pfxlen,u
+         rts
+
+* dirpath = the directory for a scan (BDOS 17, 19, 15 with a wildcard): the prefix without the last /, or "."
+calcdir  lbsr  calcpfx
+         leay  dirpath,u
+         ldb   pfxlen,u
+         bne   cdr1
+         lda   #'.'
+         sta   ,y+
+         bra   cdr3
+cdr1      leax  drvdir,u
+         decb
+         beq   cdr3
+cdr2      lda   ,x+
+         sta   ,y+
+         decb
+         bne   cdr2
+cdr3      lda   #C$CR
          sta   ,y
          rts
 
@@ -1309,7 +1724,11 @@ err9     lda   #9                     invalid FCB
          lbra  retA
 
 * shared paths: shfind = the entry (X) whose name is the one of the FCB, carry set if none
-shfind   leax  shtab,u
+shfind   tst   pfxlen,u               (a name with a drive / user prefix is not shared: the table knows only the 11 bytes)
+         beq   shf0
+         orcc  #1
+         rts
+shf0     leax  shtab,u
          ldb   #NSH
 shq1      tst   1,x
          beq   shq3
@@ -1333,7 +1752,10 @@ shq3      leax  SHSZ,x
          rts
 
 * shadd: enter the path of the FCB under its name (no free entry: it is not shared)
-shadd    leax  shtab,u
+shadd    tst   pfxlen,u
+         beq   sha0
+         rts
+sha0     leax  shtab,u
          ldb   #NSH
 shw1      tst   1,x
          beq   shw2
@@ -1383,7 +1805,11 @@ f_open   lbsr  getfcb
          bcs   fo0
          lbsr  mkstd
          lbra  fo2
-fo0      lbsr  mkname
+fo0      lbsr  haswild
+         bcc   fo0w
+         lbsr  wildfind               a wildcard: the first file that matches
+         lbcs  fo_err
+fo0w     lbsr  mkname
          lbsr  shfind                 the name is open already: take its path
          bcs   fo0n
          lda   ,x
@@ -1503,8 +1929,22 @@ mk0      lbsr  mkname
          ldb   #READ.+WRITE.+PREAD.+PWRIT.
          leax  pname,u
          os9   I$Create
+         bcc   mkd1
+         cmpb  #E$PNNF
+         lbne  fo_err
+         tst   pfxlen,u
+         lbeq  fo_err
+         lbsr  calcdir               the user area is a subdirectory: make it, once
+         leax  dirpath,u
+         ldb   #$3F
+         os9   I$MakDir
          lbcs  fo_err
-         sta   fcb+F_PATH,u
+         lda   #UPDAT.
+         ldb   #READ.+WRITE.+PREAD.+PWRIT.
+         leax  pname,u
+         os9   I$Create
+         lbcs  fo_err
+mkd1     sta   fcb+F_PATH,u
          lda   #1
          sta   cvw,u
          lda   #2
@@ -1515,7 +1955,108 @@ mk3      clr   fcb+F_CR,u
          clr   fcb+F_RC,u
          lbra  putfcb
 
+* ? in the name of the FCB (the wildcard of CP/M; the program has put it there: * is ??? in the FCB).  Carry set: there is one.
+haswild  leax  fcb+F_NAME,u
+         ldb   #11
+hw1      lda   ,x+
+         anda  #$7F
+         cmpa  #'?'
+         beq   hw2
+         decb
+         bne   hw1
+         andcc #$FE
+         rts
+hw2      orcc  #1
+         rts
+
+* srchpat = the name of the FCB (without the attribute bits)
+loadpat  leax  fcb+F_NAME,u
+         leay  srchpat,u
+         ldb   #11
+lp1      lda   ,x+
+         anda  #$7F
+         sta   ,y+
+         decb
+         bne   lp1
+         rts
+
+* function 15 with a wildcard opens the first file that matches: its name goes into the FCB.  Carry set: none
+wildfind lbsr  loadpat
+         lbsr  calcdir
+         lda   #DIR.+READ.
+         leax  dirpath,u
+         os9   I$Open
+         bcs   wf9
+         pshs  a
+wf1      lda   ,s
+         leax  dirent,u
+         ldy   #32
+         os9   I$Read
+         bcs   wfno
+         cmpy  #32
+         bne   wfno
+         lda   dirent,u
+         beq   wf1
+         lbsr  dir2cpm
+         bcs   wf1
+         lbsr  matchpat
+         bcs   wf1
+         leax  iobuf,u
+         leay  fcb+F_NAME,u
+         ldb   #11
+wf2      lda   ,x+
+         sta   ,y+
+         decb
+         bne   wf2
+         lda   ,s+
+         os9   I$Close
+         andcc #$FE
+         rts
+wfno     lda   ,s+
+         os9   I$Close
+         ldb   #E$PNNF
+wf9      orcc  #1
+         rts
+
+* function 19 with a wildcard deletes every file that matches; 255 when there was none
+delwild  lbsr  loadpat
+         lbsr  calcdir
+         lda   #DIR.+READ.
+         leax  dirpath,u
+         os9   I$Open
+         lbcs  fo_err
+         pshs  a
+         clr   tmp16,u
+dw1      lda   ,s
+         leax  dirent,u
+         ldy   #32
+         os9   I$Read
+         bcs   dw9
+         cmpy  #32
+         bne   dw9
+         lda   dirent,u
+         beq   dw1
+         lbsr  dir2cpm
+         bcs   dw1
+         lbsr  matchpat
+         bcs   dw1
+         lda   #UPDAT.
+         leax  pname,u
+         os9   I$Delete
+         bcs   dw1
+         inc   tmp16,u
+         bra   dw1
+dw9      lda   ,s+
+         os9   I$Close
+         tst   tmp16,u
+         bne   dw8
+         ldb   #E$PNNF
+         lbra  fo_err
+dw8      rts
+
 f_delete lbsr  getfcb
+         lbsr  haswild
+         lbcs  delwild
          lbsr  mkname
          lbsr  shkill
          lda   #UPDAT.
@@ -1705,6 +2246,8 @@ fs1      ldd   posu,u
 
 * search for a file: first / next.  The matches are produced from the OS-9 directory `.`
 f_sfirst lbsr  getfcb
+         lda   fcb+F_DR,u
+         sta   srchdr,u               the drive of the search (BDOS 18 uses it)
          leax  fcb+F_NAME,u
          leay  srchpat,u
          ldb   #11
@@ -1718,13 +2261,16 @@ sf1      lda   ,x+
          lda   srchdir,u
          os9   I$Close
          clr   srchdir,u
-sf2      lda   #DIR.+READ.
-         leax  dotname,pcr
+sf2      lbsr  calcdir
+         lda   #DIR.+READ.
+         leax  dirpath,u
          os9   I$Open
          lbcs  fo_err
          sta   srchdir,u
-f_snext  lda   srchdir,u
+f_snext  lda   srchdir,u              (BDOS 18 has no valid FCB: STAT passes 0; the drive is that of BDOS 17)
          lbeq  fo_err
+         lda   srchdr,u
+         sta   fcb+F_DR,u
 sn1      lda   srchdir,u
          leax  dirent,u
          ldy   #32
@@ -1757,11 +2303,16 @@ sn3      lda   ,x+
          clr   sect+13,u
          clr   sect+14,u
          clr   sect+15,u
+         lbsr  calcpfx
+         lbsr  addpfx
          lda   #READ.
          leax  pname,u
          os9   I$Open
-         bcs   sn5
-         sta   tmp8b,u
+         bcc   sn4o
+         cmpb  #E$FNA                 a directory (U1, a mapped drive, ...) is not a CP/M file: it is not listed
+         lbeq  sn1
+         bra   sn5
+sn4o     sta   tmp8b,u
          ldb   #SS.Size
          pshs  u
          os9   I$GetStt
@@ -1769,7 +2320,20 @@ sn3      lda   ,x+
          puls  u
          std   posu,u
          stx   posx,u
+* a file that nobody may write is read only: R/O = the high bit of the first character of the type
          lda   tmp8b,u
+         ldb   #SS.FD
+         leax  iobuf+100,u
+         ldy   #1
+         os9   I$GetStt
+         bcs   sn4r
+         lda   iobuf+100,u
+         bita  #$12                  the write permission of the owner or of the public
+         bne   sn4r
+         lda   sect+9,u
+         ora   #$80
+         sta   sect+9,u
+sn4r     lda   tmp8b,u
          os9   I$Close
          ldd   posu,u
          addd  #127

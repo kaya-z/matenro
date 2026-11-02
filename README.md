@@ -35,7 +35,7 @@ sim09 は**読み取り専用**で使います (ディスクイメージはテ�
 |---|---|
 | `make test-z80` | Z80 の既知答えテスト 179 項目 |
 | `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 64 項目 |
-| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 40 項目 (`MATENRO_HTC` があれば 43 項目、`MATENRO_TP` (Turbo Pascal) もあれば 45 項目) |
+| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 48 項目 (`MATENRO_HTC` があれば 51 項目、`MATENRO_TP` (Turbo Pascal) もあれば 53 項目、`MATENRO_CPM` (DR のツールと MBASIC) もあれば 56 項目) |
 | `make test-asm` | 自作 Z80 アセンブラの既知の機械語 90 項目 |
 
 **テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で、シミュレータと**実機の FPGA** (7.5 MHz、約 3 時間) の両方で通しました (リポジトリには入れていません)。実機の 1 回目は、7 項目目のあとで出力が止まりましたが、同じ条件で 2 回やり直すと 2 回とも完走し、原因は分かっていません ([docs/FPGA.md](docs/FPGA.md) の 9.3)。8086 の公開テストは**走らせていません**。
@@ -104,7 +104,7 @@ Hello from CP/M-80 on the Z80
 ```
 
 8088 のときは `-sub 8088` で起動して `cpm hello86.cmd abc` です。CP/M の CCP/BDOS/BIOS の実物は動かさない BDOS レベルの互換で、実物のソフトは
-ZEXDOC (Z80 の命令、67 項目)、HI-TECH C 3.09 のコンパイラ、Turbo Pascal 3.0 (編集、コンパイル、実行、保存) で確かめました。制約と仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 12 章に書きました。
+ZEXDOC (Z80 の命令、67 項目)、HI-TECH C 3.09 のコンパイラ、Turbo Pascal 3.0 (編集、コンパイル、実行、保存)、Digital Research の `STAT` `ASM` `LOAD` `PIP` `ED` `DDT` と `MBASIC` 5.21 で確かめました。制約と仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 12 章に書きました。
 
 ### OS-9 のツールと CP/M のツールを続けて使う (`cpp` と `cc80`)
 
@@ -165,7 +165,7 @@ fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットスト
 * **8088 の FPGA 版**。8088 のコアは手元になく、見積もり (3,000〜6,000 LUT) だけです。9K には載らず、20K のボードが要ります (シミュレータでは動きます)。
 * FPGA 版の **HDMI の画面と RTC** (どちらも載せられますが、書いていません。9K の LUT は残り約 10% で HDMI は載りません)。
 * FPGA のタイミングの余裕は小さいです (67.5 MHz で 0.1〜0.5 ns)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
-* 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0 だけです (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
+* 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0、DR の標準ツールと MBASIC です (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
 * OS-9 のデバイスドライバ (`os9/xlink`、メモリを OS-9 の空き RAM から借りる) は doorbell を**割り込みで通知しません** (sim09 の Clock が割り込み表を調べないため。ポーリングで待ちます。docs/DESIGN.md の 14 章)。
 * メモリ競合 (2 つの CPU が同じ RAM を取り合うときの待ち) のモデル。
 * 8086 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。

@@ -221,6 +221,56 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     return r.stdout.decode(errors='replace'), d
 
 
+def os9_cpmapps(tmp):
+    """real CP/M programs, unchanged (not part of this project: set MATENRO_CPM to a directory with the Digital Research
+    tools ASM.COM LOAD.COM PIP.COM STAT.COM ED.COM DDT.COM and MBASIC.COM)"""
+    cp = os.environ.get('MATENRO_CPM')
+    if not os.path.isdir(OS9):
+        return
+    if not cp or not os.path.isdir(cp):
+        print('skip real CP/M programs (set MATENRO_CPM to the directory with ASM LOAD PIP STAT ED DDT MBASIC)')
+        return
+    files = {}
+    for n in os.listdir(cp):
+        if n.upper() in ('ASM.COM', 'LOAD.COM', 'PIP.COM', 'STAT.COM', 'ED.COM', 'DDT.COM', 'MBASIC.COM'):
+            files[n.lower()] = open(os.path.join(cp, n), 'rb').read()
+    files['hi.asm'] = (b'BDOS\tEQU\t5\n\tORG\t100H\n\tMVI\tC,9\n\tLXI\tD,MSG\n\tCALL\tBDOS\n\tRET\n'
+                       b"MSG:\tDB\t'ASM AND LOAD WORK',13,10,'$'\n\tEND\n")
+    out, d = os9_session(tmp, 'cpmapps', 'z80', files, [
+        'send "cpm stat.com\\r"', 'expect "OS9:"',
+        'send "cpm asm.com hi\\r"', 'expect "OS9:"', 'send "cpm load.com hi\\r"', 'expect "OS9:"', 'send "cpm hi.com\\r"', 'expect "OS9:"',
+        'send "cpm pip.com copy.asm=hi.asm\\r"', 'expect "OS9:"', 'send "cpm pip.com con:=copy.asm\\r"', 'expect "OS9:"',
+        'send "cpm stat.com *.asm\\r"', 'expect "OS9:"',
+        'send "cpm ed.com ednew.txt\\r"', 'expect "*"', 'send "I\\r"', 'sleep 500000', 'send "Hello from ED\\r\\x1a"', 'sleep 500000',
+        'send "E\\r"', 'expect "OS9:"', 'send "list ednew.txt\\r"', 'expect "OS9:"',
+        'send "cpm ddt.com hi.com\\r"', 'expect "-"', 'send "L100\\r"', 'sleep 800000', 'send "G0\\r"', 'expect "OS9:"',
+        'send "cpm mbasic.com\\r"', 'expect "Ok"', 'send "PRINT 2+3\\r"', 'expect "Ok"',
+        'send "10 FOR I=1 TO 3: PRINT I*I: NEXT I\\r"', 'sleep 800000', 'send "RUN\\r"', 'expect "Ok"',
+        'send "SAVE \\"T1.BAS\\"\\r"', 'expect "Ok"', 'send "NEW\\r"', 'expect "Ok"', 'send "LOAD \\"T1.BAS\\"\\r"', 'expect "Ok"',
+        'send "LIST\\r"', 'expect "Ok"', 'send "SYSTEM\\r"', 'expect "OS9:"'], timeout=400)
+    check('CP/M tools of Digital Research, unchanged: STAT (drive and free space), ASM + LOAD (an assembler source becomes a program that runs)',
+          'Space:' in out and 'ASM AND LOAD WORK' in out and 'END OF ASSEMBLY' in out and 'BYTES READ' in out, out[-1000:])
+    check('CP/M tools: PIP (copy a file, to the console), STAT with a pattern, ED (a new file is written and listed)',
+          'ASM AND LOAD WORK' in out and "COPY.ASM" in out and 'HELLO FROM ED' in out, out[-1000:])
+    check('CP/M tools: DDT (loads a program, lists it as 8080 code), MBASIC (calculates, runs a program, SAVE / LOAD of the tokenized form)',
+          'DDT VERS 2.2' in out and 'MVI  C,09' in out and 'BASIC-80 Rev. 5.21' in out and ' 5 ' in out
+          and ' 9 ' in out and out.count('10 FOR I=1 TO 3: PRINT I*I: NEXT I') >= 2, out[-1000:])
+
+
+def os9_drive(tmp):
+    """drives and user areas of cpm: B: is a directory (cpm -m=B:dir), C: is not mapped, BDOS 14 / 24 / 25 / 32, files in U3"""
+    if not os.path.isdir(OS9):
+        return
+    out, d = os9_session(tmp, 'drive', 'z80', {'drive.com': z80_com('drive', tmp), 'attr.com': z80_com('attr', tmp), 'alloc.com': z80_com('alloc', tmp)}, [
+        'send "chd /d1\\r"', 'expect "OS9:"', 'send "makdir /d1/drvb\\r"', 'expect "OS9:"',
+        'send "cpm -p=/v0 -m=B:/d1/drvb drive.com\\r"', 'expect "OS9:"', 'send "dir /d1\\r"', 'expect "OS9:"',
+        'send "dir /d1/drvb\\r"', 'expect "OS9:"', 'send "cpm -p=/v0 attr.com\\r"', 'expect "OS9:"', 'send "cpm -p=/v0 alloc.com\\r"', 'expect "OS9:"'])
+    check('cpm: BDOS 31 (the parameter block of a 4 MB disk) and 27 (the allocation vector: a file of 5120 bytes takes 3 blocks)', 'ALLOC OK' in out, out[-800:])
+    check('cpm: BDOS 30 (read only attribute, shown by BDOS 17 as the high bit of the type), BDOS 3 7 8', 'ATTR OK' in out, out[-800:])
+    check('cpm: drives (-m=B:dir, BDOS 14 24 25: A and B, C is not mapped), user areas (BDOS 32: the subdirectory U3), files by drive and user',
+          'DRIVE OK' in out, out[-800:])
+
+
 def os9_bdos(tmp):
     """the subroutine module bdos: an OS-9 program (tests/bdos/bdostest.asm) calls the CP/M BDOS by function number (console,
     FCB files: make, write, close, rename, open, read, delete); the FCB and the data are in the memory of the program"""
@@ -272,14 +322,14 @@ def os9_cpm80(tmp):
     """CP/M-80 programs on the Z80, started from OS-9 with the command cpm"""
     if not os.path.isdir(OS9):
         return
-    files = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio', 'line', 'stk6', 'share', 'kbpoll', 'bios', 'ren')}
+    files = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio', 'line', 'stk6', 'share', 'kbpoll', 'bios', 'ren', 'wild')}
     out, d = os9_session(tmp, 'cpm80', 'z80', files, [
         'send "cpm hello.com abc def\\r"', 'expect "OS9:"',
         'send "cpm fileio.com\\r"', 'expect "OS9:"',
         'send "cpm line.com\\r"', 'expect "Name? "', 'send "xyz\\r"', 'expect "]"', 'send "q"', 'expect "OS9:"',
         'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm hello.com again\\r"', 'expect "OS9:"',
         'send "cpm share.com\\r"', 'expect "OS9:"',
-        'send "cpm bios.com\\r"', 'expect "BIOS 0"', 'send "x"', 'expect "y"', 'send "\\x1b"', 'expect "OS9:"', 'send "cpm ren.com\\r"', 'expect "OS9:"',
+        'send "cpm bios.com\\r"', 'expect "BIOS 0"', 'send "x"', 'expect "y"', 'send "\\x1b"', 'expect "OS9:"', 'send "cpm ren.com\\r"', 'expect "OS9:"', 'send "cpm wild.com\\r"', 'expect "OS9:"',
         'send "chx /d0/cmds\\r"', 'expect "OS9:"', 'send "build /d0/p1\\r"', 'expect "?"', 'send "cpm kbpoll.com\\r"', 'expect "?"', 'send "echo AFTER1\\r"', 'expect "?"',
         'send "cpm kbpoll.com\\r"', 'expect "?"', 'send "echo AFTER2\\r"', 'expect "?"', 'send "\\r"', 'expect "OS9:"',
         'send "chx /v0/cmds\\r"', 'expect "OS9:"', 'send "shell </d0/p1\\r"', 'expect "AFTER2"', 'expect "OS9:"'])
@@ -288,6 +338,8 @@ def os9_cpm80(tmp):
           'BIOS 0 y' in out and 'ESC ok' in out and 'cpm ren.com' in out, out[-700:])
     check('CP/M-80: BDOS 23 (rename: new name made, old file copied and deleted; the old name is gone, a second rename fails)',
           'REN OK' in out, out[-600:])
+    check('CP/M-80: wildcards: BDOS 15 opens the first file that matches, BDOS 19 deletes all that match',
+          'WILD OK' in out, out[-600:])
     check('CP/M-80: the same file open through two FCBs (one shared OS-9 path, own positions)', 'SHARE OK' in out, out[-600:])
     check('CP/M-80: BDOS 6 / 11 key polls do not eat the procedure file that is the standard input (shell <file)',
           out.count('KBPOLL ok') == 2 and 'AFTER1' in out.split('shell </d0/p1')[-1] and 'AFTER2' in out.split('shell </d0/p1')[-1], out[-700:])
@@ -532,6 +584,8 @@ def main():
         os9_cpm80_text(tmp)
         os9_cpm86(tmp)
         os9_cpp(tmp)
+        os9_cpmapps(tmp)
+        os9_drive(tmp)
         os9_bdos(tmp)
         os9_etime(tmp)
         os9_reboot(tmp)

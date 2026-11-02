@@ -40,6 +40,8 @@ S_BUF    equ   8
 * which is small (some 6 KB are free): an open on a name that is open already takes the same path again (every read seeks to
 * the record, so the FCBs do not disturb each other).  shtab: NSH entries of path, count (0 = free) and the 11 bytes of the name.
 NSH      equ   6
+NDRV     equ   4                 drives B: ... that can be mapped to a directory (cpm -m=B:/d1): letter, path
+DRVSZ    equ   33
 SHSZ     equ   13
 
 RQZ80    equ   $FC80

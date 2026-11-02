@@ -55,7 +55,7 @@ name     fcs   /cpm/
 
          use   shims.inc
 
-msgusage fcc   "usage: cpm [-b -d -k -p=dir] file [arguments]"
+msgusage fcc   "usage: cpm [-b -d -k -p=dir -m=B:dir] file [arguments]"
          fcb   C$CR
 msgnosub fcc   "cpm: no Z80 or 8088 sub CPU"
          fcb   C$CR
@@ -96,7 +96,7 @@ idok2
          clr   keep,u
          clr   tooldir,u
          leax  slots,u               the data area is not cleared by OS-9: free all text slots
-         ldy   #954                  NSLOT * SLOTSZ + NT * 11 (tnames) + NT * 4 + NSH * SHSZ
+         ldy   #clrend-slots
 cls1     clr   ,x+
          leay  -1,y
          bne   cls1
@@ -108,7 +108,7 @@ opt1     lda   ,x+
          cmpa  #C$CR
          lbeq  usage
          cmpa  #'-'
-         bne   opt9
+         lbne  opt9
          lda   ,x+
          anda  #$DF
          cmpa  #'B'
@@ -123,7 +123,42 @@ opt1k    cmpa  #'K'
          bne   opt2
          inc   keep,u
          bra   opt1
-opt2     cmpa  #'P'
+opt2     cmpa  #'M'
+         bne   opt2p
+         lda   ,x+                   -m=B:/d1   drive B: is the directory /d1
+         lda   ,x+
+         lbsr  upcase
+         suba  #'A'
+         lbmi  usage
+         cmpa  #15
+         lbhi  usage
+         inca
+         pshs  a
+         leay  drvtab,u
+         ldb   #NDRV
+om1      tst   ,y
+         beq   om2
+         leay  DRVSZ,y
+         decb
+         bne   om1
+         leas  1,s
+         lbra  usage                 too many
+om2      puls  a
+         sta   ,y+
+         lda   ,x+                   ':'
+         ldb   #DRVSZ-2
+om3      lda   ,x
+         cmpa  #' '
+         beq   om4
+         cmpa  #C$CR
+         beq   om4
+         sta   ,y+
+         leax  1,x
+         decb
+         bne   om3
+om4      clr   ,y
+         lbra  opt1
+opt2p    cmpa  #'P'
          lbne  usage
          lda   ,x+                   '='
          leay  tooldir,u
@@ -136,7 +171,7 @@ opt3     lda   ,x
          leax  1,x
          bra   opt3
 opt4     clr   ,y
-         bra   opt1
+         lbra  opt1
 opt9     leax  -1,x
          lbsr  openprog              A = path, X behind the name
          lbcs  nofile

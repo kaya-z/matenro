@@ -60,6 +60,7 @@ in1      clr   ,x+
          bne   in1
          lda   #1                    the version of a Z80 system (0022h)
          sta   subty,u
+         sta   islib,u
          clra
          sta   stdi,u
          inca
