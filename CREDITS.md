@@ -43,6 +43,7 @@ sim09 自身が参考にしたもの (sim09 の `CREDITS.md` より。これら�
 
 * **ZEXDOC / ZEXALL** (Frank D. Cringle、Yaze 付属 / GPL v2、Ian Bartholomew 改) : `src/z80.c` の検証 (ZEXDOC 67 項目)。取得したのは一時ディレクトリで、リポジトリには入れていません。
 * **HI-TECH C 3.09 (Z80 CP/M)** (HI-TECH Software; 無償利用の許諾、Tony Nicholson の `agn453/HI-TECH-Z80-C`): `cc80` の検証。`MATENRO_HTC` で指すだけで、リポジトリには入れていません。
+* **Turbo Pascal 3.01A (CP/M-80)** (Borland): `cpm` の BIOS の入口と BDOS の名前変更の検証 (12.6 章)。`MATENRO_TP` で指すだけで、リポジトリには入れていません (`private/` は git 管理外)。
 
 ## sim09 の FPGA (new-sbc09/fpga/tn9k、MIT) から複製して変えたもの
 

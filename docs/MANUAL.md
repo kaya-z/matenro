@@ -20,7 +20,7 @@ OS-9 のコマンドから CP/M のプログラムを、そのまま動かせま
 3. [FPGA 版 (Tang Nano 9K) を使う](#4-fpga-版-tang-nano-9k-を使う)
 4. [OS-9 の起動のあと](#5-os-9-の起動のあと)
 5. [CP/M のプログラムを動かす (`cpm`)](#6-cp-m-のプログラムを動かす-cpm)
-6. [C で書く: `cpp` と `cc80`](#7-c-で書く-cpp-と-cc80)
+6. [C で書く: `cpp` と `cc80`、Turbo Pascal](#7-c-で書く-cpp-と-cc80)
 7. [`xrun` (サブ CPU に直接プログラムを渡す)](#8-xrun-サブ-cpu-に直接プログラムを渡す)
 8. [SD カードのイメージを作る](#9-sd-カードのイメージを作る)
 9. [FPGA のビットストリームを作る・書く](#10-fpga-のビットストリームを作る書く)
@@ -40,8 +40,8 @@ OS-9 のコマンドから CP/M のプログラムを、そのまま動かせま
 
 **できないこと (主なもの)**
 
-* CP/M の本物の CCP・BDOS・BIOS は動きません。OS-9 が BDOS の役をします (**BDOS レベルの互換**)。BIOS を直接呼ぶプログラム、ディスクのセクタを直接読むプログラムは動きません。
-* ドライブは 1 つ (A:)、ユーザ番号は無視、ワイルドカードの open/delete、リネーム、ファイルの属性は未対応です。
+* CP/M の本物の CCP・BDOS・BIOS は動きません。OS-9 が BDOS の役をします (**BDOS レベルの互換**)。BIOS は、コンソール (CONST/CONIN/CONOUT) の入口だけを用意してあります (Turbo Pascal が使います)。BIOS のディスクの入口を呼ぶプログラム、ディスクのセクタを直接読むプログラムは動きません。
+* ドライブは 1 つ (A:)、ユーザ番号は無視、ワイルドカードの open/delete、ワイルドカードの名前変更、ファイルの属性は未対応です。
 * 同時に動くサブ CPU は 1 つです。
 * FPGA 版に載っているのは Z80 だけです (8088 は 9K の FPGA に入りません)。HDMI の画面、電池つきの時計 (RTC)、`/v0` (ホストのファイルを見せる機能) もありません。
 * MS-DOS は対象外です。
@@ -290,6 +290,39 @@ Hello from Hi-Tech C on CP/M
 
 ---
 
+### 7.3 Turbo Pascal 3.0 (CP/M-80)
+
+Turbo Pascal 3.01A for CP/M-80 が動きます。**このリポジトリには入っていません** (ライセンス)。`TURBO.COM` `TURBO.MSG` `TURBO.OVR` (と、端末の設定に使う `TINST.COM` `TINST.DTA` `TINST.MSG`) を自分で用意してください。
+
+**1. 端末の設定** (最初の 1 回だけ。付属の `TURBO.COM` は別の端末向けです): `TINST` で ANSI を選びます。
+
+```
+OS9:cpm tinst.com
+  S                      画面の設定
+  6                      端末の番号 (6 = ANSI) と Enter
+  N                      定義は変更しない
+  8                      CPU の周波数 (MHz。待ち時間の調整に使うだけ) と Enter
+  Q                      終了 (ここで TURBO.COM に書かれます)
+```
+
+**2. 使う**: ソースのあるディレクトリで `TURBO.COM` を動かします (`TURBO.MSG` と `TURBO.OVR` は `-p=dir` で探せる場所に)。
+
+```
+OS9:chd /d1
+OS9:cpm -p=/d1/tp /d1/tp/turbo.com
+Include error messages (Y/N)? N
+```
+
+メニューのキーは、`W` 作業ファイル (`hello` と入力)、`E` 編集 (`^KD` で保存して抜ける)、`C` コンパイル、`R` 実行、`S` 保存 (古いファイルは `.BAK` になります)、`D` ディレクトリ、`Q` 終了、`O` コンパイラのオプションです。
+オプションで `Com-file` を選んでコンパイルすると、`HELLO.COM` ができて、`cpm hello.com` で単独で動きます。
+
+* `.PAS` と `.INC` はテキストファイルとして扱います (OS-9 の CR と CP/M の CR LF を変換します)。
+* TP は端末をプログラムで直接動かすので、動いている間は端末が生入力になります (エコーなし、`^C` が効かない)。`Q` で終わると元に戻ります。
+* 試験: `MATENRO_TP=<TURBO.COM のあるディレクトリ> python3 tests/matenro_test.py`。
+* SD カードのイメージに入れる: `TP=<ディレクトリ>` を指定して `mkdisk_d1.sh` を動かすと、`/d1/tp` に ANSI 用に設定した TP が入り、`/d1/hello.pas` も入ります (9 章)。
+
+---
+
 ## 8. `xrun` (サブ CPU に直接プログラムを渡す)
 
 CP/M ではなく、素のプログラムをサブ CPU に載せて走らせ、メールボックスで答えを受け取るコマンドです (主にテスト用)。
@@ -313,7 +346,7 @@ reply: BA 13 00 00
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
 | `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `xlink` `x0` `cpp` `cc80` ほか)、`hello.com` |
-| `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c` |
+| `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c`、`TP=` を指定したときは Turbo Pascal (`/d1/tp`) と `hello.pas` |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体 |
 
 ```sh
@@ -322,11 +355,12 @@ fpga/tn9k/scripts/mkdisk.sh fpga/tn9k/build/matenro_l2.dsk
 
 # /d1 とカード全体: HTC と ZEX を指定して作る
 HTC=<HI-TECH C のディレクトリ> ZEX=<zexdoc.com と zexall.com のディレクトリ> \
+  TP=<Turbo Pascal のディレクトリ (TURBO.COM TURBO.MSG TURBO.OVR TINST.*。省いてもよい)> \
   fpga/tn9k/scripts/mkdisk_d1.sh fpga/tn9k/build/matenro_l2.dsk fpga/tn9k/build/matenro_d1.dsk fpga/tn9k/build/matenro_card.img
 ```
 
 * `SIM09=<sim09 の場所>` の指定が要ります (既定は筆者の環境のパス)。
-* HI-TECH C と ZEXDOC/ZEXALL は、**このリポジトリに入っていません**。ZEXDOC は Frank D. Cringle の Z80 命令試験 (Yaze 付属、GPL v2) です。
+* HI-TECH C、ZEXDOC/ZEXALL、Turbo Pascal は、**このリポジトリに入っていません**。ZEXDOC は Frank D. Cringle の Z80 命令試験 (Yaze 付属、GPL v2) です。
 * 1 枚のディスクは**最大 2048 セクタ** (1 セクタの割り当て表の限界) です。
 * 書き込みは [4.2](#42-sd-カードを作る) の `dd` です。
 * `/d1` のファイルには `attr -s` を付けてあります。`s` 属性 (単一ユーザ) が付いていると、同じファイルを 2 回開けず、HI-TECH のリンカが `libc.lib: Can't open` で止まります。
@@ -416,7 +450,8 @@ Z80 の CP/M のメモリは、`0100h` から TPA (約 63KB)、`FC00h` 以降に
 | 20, 21, 33, 34, 35, 36 | 順次・乱数の読み書き、ファイルサイズ、乱数レコード番号の設定 |
 | 26 | DMA アドレスの設定 |
 | 51, 52 (CP/M-86) | DMA ベースの設定/取得 |
-| その他 | 何もしない (0)。リネーム (23) は 255 |
+| 23 | 名前の変更 (新しい名前で作ってコピーし、古いファイルを消す)。新しい名前がもうあるか、古いファイルがなければ 255 |
+| その他 | 何もしない (0) |
 
 ### 12.3 サブ CPU の入出力ポート (Z80 側から)
 

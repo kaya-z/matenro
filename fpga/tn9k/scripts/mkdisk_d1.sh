@@ -6,7 +6,9 @@
 #     fpga/tn9k/scripts/mkdisk_d1.sh D0.dsk D1.dsk CARD.img
 # D0.dsk is the output of mkdisk.sh.  D1.dsk (2048 sectors, the most a one sector allocation map can hold) is made here,
 # CARD.img (about 128 MB, mostly empty) is both of them in place: write it with dd to the whole card.
-# HI-TECH C, ZEXDOC and ZEXALL are not part of this repository (their own licenses: LICENSE files go with them).
+# TP=<dir with TURBO.COM TURBO.MSG TURBO.OVR> (Turbo Pascal 3.0 for CP/M-80, optional): /d1/tp, with hello.pas in /d1; run it with
+#   chd /d1 ; cpm -p=/d1/tp /d1/tp/turbo.com   (TURBO.COM is installed for the ANSI terminal here: see below)
+# HI-TECH C, ZEXDOC, ZEXALL and Turbo Pascal are not part of this repository (their own licenses: LICENSE files go with them).
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
@@ -29,6 +31,19 @@ python3 "$ROOT/tools/zexfrom.py" 8 "$ZEX/zexall.com" "$T/v0/zexall8.com"
 python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/bstress.asm" -o "$T/v0/bstress.com" > /dev/null
 cp "$ROOT/tests/cpp/demo.c" "$T/v0/demo.c"
 cp "$ROOT/tests/cpp/mandel.c" "$T/v0/mandel.c"      # floating point (cc80 links libf.lib)
+TPFILES=
+if [ -n "${TP:-}" ]; then
+  mkdir -p "$T/v0/tp"
+  for n in TURBO.COM TURBO.MSG TURBO.OVR TINST.COM TINST.DTA TINST.MSG; do cp "$TP/$n" "$T/v0/tp/"; done
+  cp "$ROOT/tests/cpm/hello.pas" "$T/v0/hello.pas"
+  # install TURBO.COM for an ANSI terminal (TINST: screen installation, 6 = ANSI, no changes, 8 MHz) in the simulator
+  printf 'timeout 8000000\nexpect "OS9:"\nsend "chx /d0/cmds\\r"\nexpect "OS9:"\nsend "chd /v0/tp\\r"\nexpect "OS9:"\nsend "cpm tinst.com\\r"\nexpect "[Q]uit"\nsend "s"\nexpect "exit):"\nsend "6\\r"\nexpect "(Y/N)?"\nsend "n"\nexpect "Change to:"\nsend "8\\r"\nexpect "[Q]uit"\nsleep 1000000\nsend "q"\nsleep 2000000\nquit\n' > "$T/tinst.txt"
+  cp "$D0" "$T/d0tmp.dsk"
+  "$ROOT/matenro" -max -m 1M -sub z80 -rom "$SIM09/os9/os9v2.rom" -0 "$T/d0tmp.dsk" -v "$T/v0" -script "$T/tinst.txt" > /dev/null 2>&1 || true
+  cmp -s "$TP/TURBO.COM" "$T/v0/tp/TURBO.COM" && { echo "TINST did not change TURBO.COM"; exit 1; }
+  rm -f "$T/v0/tp/TINST.COM" "$T/v0/tp/TINST.DTA" "$T/v0/tp/TINST.MSG"      # (the card has no room for them)
+  TPFILES="hello.pas"
+fi
 printf '#include <stdio.h>\n\nmain()\n{\n\tprintf("Hello from Hi-Tech C on CP/M\\n");\n\treturn 0;\n}\n' > "$T/v0/hello.c"
 cp "$D0" "$T/d0.dsk"
 cp "$SIM09/os9/WORK.dsk" "$D1"
@@ -38,7 +53,11 @@ python3 "$SIM09/tools/growdisk.py" "$D1" 2048 > /dev/null
   echo 'send "makdir /d1/htc\r"'; echo 'expect "OS9:"'
   # attr -s: a file with the "s" attribute (single user) can be open once; the HI-TECH linker opens its library twice
   for f in $(cd "$T/v0/htc" && ls); do echo "send \"copy /v0/htc/$f /d1/htc/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/htc/$f -s\\r\""; echo 'expect "OS9:"'; done
-  for f in zexdoc.com zexall.com zexdoc8.com zexall8.com bstress.com ZEX_LICENSE demo.c mandel.c hello.c; do echo "send \"copy /v0/$f /d1/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/$f -s\\r\""; echo 'expect "OS9:"'; done
+  if [ -n "$TPFILES" ]; then
+    echo 'send "makdir /d1/tp\r"'; echo 'expect "OS9:"'
+    for f in $(cd "$T/v0/tp" && ls); do echo "send \"copy /v0/tp/$f /d1/tp/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/tp/$f -s\\r\""; echo 'expect "OS9:"'; done
+  fi
+  for f in zexdoc.com zexall.com zexdoc8.com zexall8.com bstress.com ZEX_LICENSE demo.c mandel.c hello.c $TPFILES; do echo "send \"copy /v0/$f /d1/$f\\r\""; echo 'expect "OS9:"'; echo "send \"attr /d1/$f -s\\r\""; echo 'expect "OS9:"'; done
   echo 'send "dir /d1\r"'; echo 'expect "OS9:"'; echo 'send "free /d1\r"'; echo 'expect "OS9:"'; echo 'quit'
 } > "$T/s.txt"
 "$ROOT/matenro" -max -rom "$SIM09/os9/os9v2.rom" -0 "$T/d0.dsk" -1 "$D1" -v "$T/v0" -script "$T/s.txt" 2>&1 | tr '\r' '\n' | grep -i "error\|free\|can't\|zex\|hello.c" || true

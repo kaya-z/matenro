@@ -29,14 +29,52 @@ WAIT:   LD      A,(RQ+12)
         LD      A,(RQ+8)
         LD      B,H
         RET
-        ORG     0FC30H
+; The BIOS: a jump table like the one of a CP/M 2.2 BIOS, found through the address at 0001h (the warm boot entry).
+; Turbo Pascal calls CONST / CONIN / CONOUT this way instead of CALL 5.  Only the console is real; the disk
+; entries do nothing (SELDSK gives HL = 0: no such disk).  Each entry asks the 6809 for the function 80h + its number
+; (BC is the parameter, as DE is for CALL 5); the 6809 side is cpm.asm (bios).
+        ORG     0FC2DH
+        JP      WBOOT           ; 0 BOOT (the address at 1 is the next entry)
+        JP      WBOOT           ; 1 WBOOT
+        JP      BCONST          ; 2 CONST
+        JP      BCONIN          ; 3 CONIN
+        JP      BCONOUT         ; 4 CONOUT
+        JP      BNULL           ; 5 LIST
+        JP      BNULL           ; 6 PUNCH
+        JP      BREADER         ; 7 READER
+        JP      BNULL           ; 8 HOME
+        JP      BNULL           ; 9 SELDSK
+        JP      BNULL           ; 10 SETTRK
+        JP      BNULL           ; 11 SETSEC
+        JP      BNULL           ; 12 SETDMA
+        JP      BNULL           ; 13 READ
+        JP      BNULL           ; 14 WRITE
+        JP      BNULL           ; 15 LISTST
+        JP      BNULL           ; 16 SECTRAN
+; (RQ, the request block, is at FC80h..FC8Ch)
+        ORG     0FC90H
 WBOOT:  XOR     A               ; function 0: system reset (program end)
         LD      (RQ),A
-        JR      CALLIT
-        ORG     0FC40H
-START:  LD      HL,WBOOT        ; the loader wrote JP START at 0 (the Z80 starts there); now 0 becomes JP WBOOT
+        JP      CALLIT
+BCONST: LD      A,82H
+        JR      BIOSF
+BCONIN: LD      A,83H
+        JR      BIOSF
+BCONOUT: LD     A,84H
+        JR      BIOSF
+BREADER: LD     A,87H
+BIOSF:  LD      (RQ),A
+        LD      (RQ+1),BC
+        JP      CALLIT
+BNULL:  XOR     A
+        LD      H,A
+        LD      L,A
+        RET
+        ORG     0FCC0H
+START:  LD      HL,BIOS1        ; the loader wrote JP START at 0 (the Z80 starts there); now 0 becomes JP (1)
         LD      (1),HL
         LD      SP,0FC00H
         LD      HL,0
         PUSH    HL              ; a RET at the end of the program goes to 0 = warm boot
         JP      0100H
+BIOS1   EQU     0FC30H

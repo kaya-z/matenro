@@ -138,6 +138,7 @@ tcnt     rmb   1
 tlast    rmb   1
 tdst     rmb   2
 slots    rmb   816                  NSLOT * SLOTSZ
+tnames   rmb   44                   NT * 11: the FCB name of each open text file (BDOS 23 closes the file that is renamed)
 tslots   rmb   16                   NT * 4: real path, temp path, flags (bit7 used, bit1 writable, bit0 modified)
 shtab    rmb   78                   NSH * SHSZ: shared paths (see above)
 tname    rmb   12
@@ -153,6 +154,8 @@ srchpat  rmb   12                search first pattern
 srchdir  rmb   1                 path of the directory being searched (0 = none)
 srchcnt  rmb   1
 dirent   rmb   32
+rawf     rmb   1                 the terminal is in the raw mode (see rawon)
+oldopt   rmb   32                the options of the terminal before
 sect     rmb   128
 iobuf    rmb   256
          rmb   256               stack
@@ -177,6 +180,7 @@ msgbig   fcc   "cpm: program too big"
 * ------------------------------------------------------------------
 start    stx   argp,u
          clr   done,u
+         clr   rawf,u
          clr   srchdir,u
          lda   >XID
          cmpa  #1
@@ -203,7 +207,7 @@ idok2
          clr   keep,u
          clr   tooldir,u
          leax  slots,u               the data area is not cleared by OS-9: free all text slots
-         ldy   #910                  NSLOT * SLOTSZ + NT * 4 + NSH * SHSZ
+         ldy   #954                  NSLOT * SLOTSZ + NT * 11 (tnames) + NT * 4 + NSH * SHSZ
 cls1     clr   ,x+
          leay  -1,y
          bne   cls1
@@ -281,7 +285,7 @@ opt9     leax  -1,x
          lda   #1
          sta   >XCTL                 go
          bra   serve
-zp0      fcb   $C3,$40,$FC,$00,$00,$C3,$06,$FC
+zp0      fcb   $C3,$C0,$FC,$00,$00,$C3,$06,$FC
 
 * ---------------------------------------------------------------- main loop: serve BDOS calls
 serve    lbsr  waitrq
@@ -304,7 +308,8 @@ exit0    clrb
          os9   F$Exit
 
 * the program ended: close the text files it left open (a changed writable one is converted back first)
-cleanup  ldb   #1
+cleanup  lbsr  rawoff
+         ldb   #1
 cl1      pshs  b
          lbsr  tsx
          lda   2,x
@@ -1024,6 +1029,8 @@ textext  fcc   "C  "
          fcc   "BAS"
          fcc   "SUB"
          fcc   "HEX"
+         fcc   "PAS"
+         fcc   "INC"
          fcb   0
 
 * is the file of the FCB a text file?  Z set (carry clear) = text
@@ -1414,6 +1421,68 @@ al1      lda   2,x
 al2      andcc #$FE
          rts
 
+* X = the name of the text file number B
+tnx      leax  tnames,u
+         decb
+         beq   tn9
+tn1      leax  11,x
+         decb
+         bne   tn1
+tn9      rts
+
+* BDOS 23: a program that has read a file and does not close it (Turbo Pascal) renames it next; an open path would keep
+* OS-9 from reading and deleting it.  Close the open text file with the name of the FCB (its temporary copy is
+* converted back first if it was changed).
+rnclose  ldb   #1
+rc1      pshs  b
+         lbsr  tsx
+         lda   2,x
+         bpl   rc4
+         ldb   ,s
+         lbsr  tnx
+         leay  fcb+F_NAME,u
+         ldb   #11
+rc2      lda   ,x+
+         eora  ,y+
+         anda  #$7F
+         bne   rc4
+         decb
+         bne   rc2
+         ldb   ,s
+         lbsr  tcls
+rc4      puls  b
+         incb
+         cmpb  #NT+1
+         bne   rc1
+         rts
+
+* close the text file number B
+tcls     pshs  b
+         lbsr  tsx
+         lda   2,x
+         sta   cvfl,u
+         lda   ,x
+         sta   cvr,u
+         lda   1,x
+         sta   cvt,u
+         clr   2,x
+         lda   cvfl,u
+         anda  #3
+         cmpa  #3
+         bne   tcl2
+         lbsr  cvtout
+tcl2     lda   cvt,u
+         os9   I$Close
+         ldb   ,s
+         lbsr  tmpname
+         lda   #UPDAT.
+         leax  tname,u
+         os9   I$Delete
+         lda   cvr,u
+         os9   I$Close
+         puls  b
+         rts
+
 * X = entry for number B
 tsx      leax  tslots,u
          decb
@@ -1426,9 +1495,9 @@ ts9      rts
 * the FCB just got a real path in F_PATH: if it is a text file, build the temporary CP/M form.
 * tmp8b = 1 for an existing file (convert it), 2 for a new file.  Carry set: not made (the file stays binary).
 mktslot  lbsr  istext
-         bcs   mt_no
+         lbcs  mt_no
          lbsr  alloct
-         bcs   mt_no
+         lbcs  mt_no
          stb   fcb+F_TSLOT,u
          lda   fcb+F_PATH,u
          sta   cvr,u
@@ -1438,6 +1507,14 @@ mktslot  lbsr  istext
          beq   mt1
          lda   #$82
 mt1      sta   2,x
+         ldb   fcb+F_TSLOT,u
+         lbsr  tnx
+         leay  fcb+F_NAME,u
+         ldb   #11
+mt1n     lda   ,y+
+         sta   ,x+
+         decb
+         bne   mt1n
          ldb   fcb+F_TSLOT,u
          lbsr  tmpname
          lda   #UPDAT.
@@ -1631,6 +1708,8 @@ dispatch clr   r_al,u
          clr   r_bh,u
          clr   r_ah,u
          lda   func,u
+         cmpa  #$80
+         lbhs  bios
          cmpa  #36
          bhi   dsp2
          leax  jtab,pcr
@@ -1648,11 +1727,81 @@ dsp2     cmpa  #51
 jtab     fdb   f_boot-jtab,f_conin-jtab,f_conout-jtab,f_nop-jtab,f_nop-jtab,f_nop-jtab,f_dio-jtab
          fdb   f_nop-jtab,f_nop-jtab,f_prstr-jtab,f_rdbuf-jtab,f_const-jtab,f_vers-jtab,f_nop-jtab
          fdb   f_seldsk-jtab,f_open-jtab,f_close-jtab,f_sfirst-jtab,f_snext-jtab,f_delete-jtab
-         fdb   f_rdseq-jtab,f_wrseq-jtab,f_make-jtab,f_unsup-jtab,f_login-jtab,f_curdsk-jtab
+         fdb   f_rdseq-jtab,f_wrseq-jtab,f_make-jtab,f_rename-jtab,f_login-jtab,f_curdsk-jtab
          fdb   f_sdma-jtab,f_nop-jtab,f_nop-jtab,f_ro-jtab,f_nop-jtab,f_nop-jtab,f_user-jtab
          fdb   f_rdrnd-jtab,f_wrrnd-jtab,f_fsize-jtab,f_setrnd-jtab
 
 f_nop    rts
+
+* The BIOS entries of the guest (z80shim.asm): 80h + the number in the jump table.  Only the console is real.
+bios     lda   func,u
+         cmpa  #$80
+         lbeq  f_boot
+         cmpa  #$81
+         lbeq  f_boot
+         cmpa  #$82
+         beq   bi_st
+         cmpa  #$83
+         beq   bi_in
+         cmpa  #$84
+         beq   bi_out
+         cmpa  #$87
+         bne   bi_nop
+         lda   #$1A                  READER: end of file
+         sta   r_al,u
+         lbra  retA
+bi_nop   rts
+bi_st    lbsr  rawon
+         lbra  dio_st                CONST: FFh = a key is there
+bi_in    lbsr  rawon
+         lbra  f_conin               CONIN: wait for a key
+bi_out   lbsr  rawon
+         lbra  f_conout              CONOUT: the character in C (the low byte of the parameter)
+
+* A program that uses the BIOS for the console (Turbo Pascal) draws the screen and reads the keys itself: the terminal
+* must not echo, must not translate (upper case, line feed after CR) and must pass the control characters (^C ^E ^W are
+* the keys of its editor).  The options are changed when the first BIOS call comes, and put back by cleanup.
+* (offsets in the options of the path: PD.UPC 1, PD.EKO 4, PD.ALF 5, PD.PAU 7, PD.EOF 12, PD.PSC 15, PD.INT 16, PD.QUT 17)
+rawon    tst   rawf,u
+         bne   rw9
+         lda   stdi,u
+         ldb   #SS.Opt
+         leax  oldopt,u
+         os9   I$GetStt
+         bcs   rw9
+         leax  oldopt,u
+         leay  iobuf,u
+         ldb   #32
+rw1      lda   ,x+
+         sta   ,y+
+         decb
+         bne   rw1
+         lda   iobuf,u               PD.DTP: only a terminal (SCF)
+         bne   rw9
+         clr   iobuf+1,u
+         clr   iobuf+4,u
+         clr   iobuf+5,u
+         clr   iobuf+7,u
+         clr   iobuf+12,u            PD.EOF: ESC is the end of file character of OS-9, and the escape key of Turbo Pascal
+         clr   iobuf+15,u
+         clr   iobuf+16,u
+         clr   iobuf+17,u
+         lda   stdi,u
+         ldb   #SS.Opt
+         leax  iobuf,u
+         os9   I$SetStt
+         bcs   rw9
+         lda   #1
+         sta   rawf,u
+rw9      rts
+rawoff   tst   rawf,u
+         beq   rw8
+         clr   rawf,u
+         lda   stdi,u
+         ldb   #SS.Opt
+         leax  oldopt,u
+         os9   I$SetStt
+rw8      rts
 
 * function 0: system reset / program end
 f_boot   lda   #1
@@ -2243,6 +2392,73 @@ f_delete lbsr  getfcb
          lbsr  shkill
          lda   #UPDAT.
          leax  pname,u
+         os9   I$Delete
+         lbcs  fo_err
+         rts
+
+* function 23: rename.  The new name is in the FCB at +16 (drive, name, extension).  OS-9 renames by writing into the
+* directory entry; here the new file is made, the old one is copied into it and deleted.  Result 0, or 255 (the old file
+* is not there, or the new name exists already).  (Turbo Pascal renames the source to .BAK when it saves.)
+f_rename lbsr  getfcb
+         lbsr  rnclose
+         lbsr  mkname
+         lbsr  shkill
+         leax  pname,u
+         leay  cbuf,u
+rn1      lda   ,x+
+         sta   ,y+
+         cmpa  #C$CR
+         bne   rn1                   the old name is in cbuf
+         leax  fcb+17,u              the new name goes to the name and the extension of the FCB
+         leay  fcb+F_NAME,u
+         ldb   #11
+rn2      lda   ,x+
+         sta   ,y+
+         decb
+         bne   rn2
+         lbsr  mkname                pname = the new name
+         lda   #READ.
+         leax  pname,u
+         os9   I$Open
+         bcs   rn3
+         os9   I$Close               the new name exists already
+         ldb   #$FE
+         lbra  fo_err
+rn3      lda   #READ.
+         leax  cbuf,u
+         os9   I$Open
+         lbcs  fo_err
+         sta   tmp8,u
+         lda   #UPDAT.
+         ldb   #READ.+WRITE.+PREAD.+PWRIT.
+         leax  pname,u
+         os9   I$Create
+         bcc   rn4
+         pshs  b
+         lda   tmp8,u
+         os9   I$Close
+         puls  b
+         lbra  fo_err
+rn4      sta   tmp8b,u
+rn5      lda   tmp8,u
+         leax  iobuf,u
+         ldy   #256
+         os9   I$Read
+         bcs   rn7
+         lda   tmp8b,u
+         leax  iobuf,u
+         os9   I$Write               Y = the length that was read
+         bcc   rn5
+rn7      pshs  b                     the end of the file (E$EOF), or an error
+         lda   tmp8,u
+         os9   I$Close
+         lda   tmp8b,u
+         os9   I$Close
+         puls  b
+         cmpb  #E$EOF
+         lbne  fo_err
+         lda   #UPDAT.
+         leax  cbuf,u
          os9   I$Delete
          lbcs  fo_err
          rts

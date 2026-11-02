@@ -225,17 +225,22 @@ def os9_cpm80(tmp):
     """CP/M-80 programs on the Z80, started from OS-9 with the command cpm"""
     if not os.path.isdir(OS9):
         return
-    files = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio', 'line', 'stk6', 'share', 'kbpoll')}
+    files = {n + '.com': z80_com(n, tmp) for n in ('hello', 'fileio', 'line', 'stk6', 'share', 'kbpoll', 'bios', 'ren')}
     out, d = os9_session(tmp, 'cpm80', 'z80', files, [
         'send "cpm hello.com abc def\\r"', 'expect "OS9:"',
         'send "cpm fileio.com\\r"', 'expect "OS9:"',
         'send "cpm line.com\\r"', 'expect "Name? "', 'send "xyz\\r"', 'expect "]"', 'send "q"', 'expect "OS9:"',
         'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm stk6.com\\r"', 'expect "OS9:"', 'send "cpm hello.com again\\r"', 'expect "OS9:"',
         'send "cpm share.com\\r"', 'expect "OS9:"',
+        'send "cpm bios.com\\r"', 'expect "BIOS 0"', 'send "x"', 'expect "y"', 'send "\\x1b"', 'expect "OS9:"', 'send "cpm ren.com\\r"', 'expect "OS9:"',
         'send "chx /d0/cmds\\r"', 'expect "OS9:"', 'send "build /d0/p1\\r"', 'expect "?"', 'send "cpm kbpoll.com\\r"', 'expect "?"', 'send "echo AFTER1\\r"', 'expect "?"',
         'send "cpm kbpoll.com\\r"', 'expect "?"', 'send "echo AFTER2\\r"', 'expect "?"', 'send "\\r"', 'expect "OS9:"',
         'send "chx /v0/cmds\\r"', 'expect "OS9:"', 'send "shell </d0/p1\\r"', 'expect "AFTER2"', 'expect "OS9:"'])
     check('CP/M-80: stack at (6), JP 0 ends the program; later runs are not disturbed', out.count('stack at (6) ok') == 2 and 'AGAIN' in out, out[-600:])
+    check('CP/M-80: the console through the BIOS jump table (CONST, CONIN, CONOUT; Turbo Pascal), the terminal is back to normal after',
+          'BIOS 0 y' in out and 'ESC ok' in out and 'cpm ren.com' in out, out[-700:])
+    check('CP/M-80: BDOS 23 (rename: new name made, old file copied and deleted; the old name is gone, a second rename fails)',
+          'REN OK' in out, out[-600:])
     check('CP/M-80: the same file open through two FCBs (one shared OS-9 path, own positions)', 'SHARE OK' in out, out[-600:])
     check('CP/M-80: BDOS 6 / 11 key polls do not eat the procedure file that is the standard input (shell <file)',
           out.count('KBPOLL ok') == 2 and 'AFTER1' in out.split('shell </d0/p1')[-1] and 'AFTER2' in out.split('shell </d0/p1')[-1], out[-700:])
@@ -386,6 +391,44 @@ def os9_cc80(tmp):
           out.split('START2')[-1].count('big 36') == 1 and out.split('START2')[-1].count('small 36') == 1, out[-800:])
 
 
+def os9_turbo(tmp):
+    """Turbo Pascal 3.0 for CP/M-80 (not part of this project: set MATENRO_TP to a directory with TURBO.COM TURBO.MSG TURBO.OVR):
+    load a source, compile, run, save (the BDOS renames the source to .BAK).  Turbo Pascal calls the BIOS for the console."""
+    tp = os.environ.get('MATENRO_TP')
+    if not os.path.isdir(OS9):
+        return
+    if not tp or not os.path.isdir(tp):
+        print('skip Turbo Pascal (set MATENRO_TP to the directory with TURBO.COM TURBO.MSG TURBO.OVR)')
+        return
+    d = os.path.join(tmp, 'sess_tp')
+    os.mkdir(d)
+    for f in ('OS9.dsk', 'WORK.dsk'):
+        shutil.copy(os.path.join(OS9, f), d)
+    v0 = os.path.join(d, 'v0')
+    shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(v0, 'cmds'))
+    shutil.copy(os.path.join(tmp, 'cpmbuild', 'cpm'), os.path.join(v0, 'cmds', 'cpm'))
+    for n in os.listdir(tp):
+        if n.upper() in ('TURBO.COM', 'TURBO.MSG', 'TURBO.OVR'):
+            shutil.copy(os.path.join(tp, n), v0)
+    shutil.copy(os.path.join(HERE, 'cpm', 'hello.pas'), v0)
+    script = os.path.join(d, 'script.txt')
+    # (Turbo Pascal reads and drops the keys that come while it draws the screen: wait for the end of every screen)
+    open(script, 'w').write('timeout 9000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\n'
+                            'send "copy /v0/hello.pas /d1/hello.pas\\r"\nexpect "OS9:"\nsend "attr /d1/hello.pas -s\\r"\nexpect "OS9:"\n'
+                            'send "chd /d1\\r"\nexpect "OS9:"\nsend "cpm -p=/v0 /v0/turbo.com\\r"\nexpect "(Y/N)"\nsend "n"\n'
+                            'expect "F806)"\nsleep 1000000\nsend "w"\nexpect "name:"\nsleep 1000000\nsend "hello\\r"\n'
+                            'expect "Loading"\nsleep 1500000\nsend "c"\nsleep 4000000\nsend "r"\nsleep 4000000\n'
+                            'send "s"\nsleep 3000000\nsend "q"\nsleep 2500000\nsend "dir /d1\\r"\nsleep 1500000\n'
+                            'send "echo TPDONE\\r"\nexpect "TPDONE"\nsleep 500000\nquit\n')
+    r = run([SIM, '-max', '-m', '1M', '-sub', 'z80', '-rom', os.path.join(OS9, 'os9v2.rom'), '-0', os.path.join(d, 'OS9.dsk'),
+             '-1', os.path.join(d, 'WORK.dsk'), '-v', v0, '-script', script], timeout=900)
+    out = r.stdout.decode(errors='replace')
+    check('Turbo Pascal 3.0: load, compile, run (the BIOS console, the terminal in the raw mode)',
+          'Hello from Turbo Pascal 1' in out and 'Hello from Turbo Pascal 3' in out, out[-900:])
+    check('Turbo Pascal 3.0: save renames the source to .BAK (BDOS 23 with the file still open)',
+          'HELLO.BAK' in out.split('dir /d1')[-1] and 'HELLO.PAS' in out.split('dir /d1')[-1], out[-900:])
+
+
 def os9_driver(tmp):
     """the xlink driver (os9/xlink): the sub CPU memory comes from OS-9's own RAM (no -m 1M), the doorbell is an interrupt"""
     if not os.path.isdir(OS9):
@@ -443,6 +486,7 @@ def main():
         os9_cpm86(tmp)
         os9_cpp(tmp)
         os9_cc80(tmp)
+        os9_turbo(tmp)
         os9_driver(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
