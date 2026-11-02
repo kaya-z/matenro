@@ -37,6 +37,7 @@ struct machine;
 #define XE_WD     0x0d            /* window data, the window address increments after each access   */
 #define XE_KHZ    0x0e            /* 2 bytes big endian: sub CPU clock in kHz                       */
 #define XE_CLK    0x10            /* 4 bytes big endian: sub CPU clock counter (latched on a read of byte 0) */
+#define XE_US     0x14            /* 4 bytes big endian: microseconds since the reset (the time of the machine, 71 minutes round), latched on a read of byte 0 */
 
 /* XR_CTL bits */
 #define XC_RUN    0x01            /* 0 = sub CPU held in reset                      */
@@ -79,6 +80,7 @@ typedef struct xlink {
     uint8_t   idx;                /* extended register index */
     uint32_t  win;                /* window address */
     uint32_t  clk_latch;
+    uint32_t  us_latch;
     uint32_t  hz;
     uint64_t  period_ps;
     uint64_t  t_ps;               /* local time of the sub CPU */

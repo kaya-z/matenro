@@ -18,7 +18,8 @@
 // stalled while the memory port works).
 module xlink #(
     parameter [7:0]  SUB_ID  = 8'd1,        // 1 = Z80, 2 = 8088
-    parameter [15:0] SUB_KHZ = 16'd7500
+    parameter [15:0] SUB_KHZ = 16'd7500,
+    parameter [16:0] CLK_KHZ = 17'd67500     // the system clock (clk) in kHz: XE_US counts microseconds of it
 ) (
     input  wire        clk,
     input  wire        rst,                  // synchronous, high
@@ -29,6 +30,7 @@ module xlink #(
     input  wire [7:0]  m_wdata,
     output reg  [7:0]  m_rdata,
     output wire        m_wait,               // stall the 6809 (window access in progress)
+    output wire        m_win,                // XDAT selects the window now (a read of it comes late: the SoC takes the byte again when m_wait falls)
     output wire        irq_n_o,              // 6809 IRQ request (active high here)
     output wire        firq_o,               // 6809 FIRQ request
     output wire        shr_o,                // XC_SHR: 6809 MMU may map the pool
@@ -72,6 +74,8 @@ module xlink #(
     reg [6:0]  mi;
     reg [7:0]  svec;
     reg [31:0] clk_cnt, clk_latch;
+    reg [31:0] us_cnt, us_latch;          // microseconds since the reset (the real time: the 6809 may be stalled), XE_US
+    reg [16:0] us_acc;                    // phase: 1000 per clock, a microsecond every CLK_KHZ
     reg        win_busy, win_is_read;
     reg        win_c1, win_c2;                     // the carry of the window address is on its way (7 bits per clock)
 
@@ -83,6 +87,7 @@ module xlink #(
     assign firq_o    = pend_s2m & c_ien &  c_firq;
     assign s_vec     = svec;
     assign m_wait    = win_busy | win_c1 | win_c2;
+    assign m_win     = d_win;
 
     // ------------------------------------------------------------ SMMU (128 x 8)
     reg [7:0] smmu [0:127];
@@ -118,6 +123,10 @@ module xlink #(
             7'h11: ext_rd = clk_latch[23:16];
             7'h12: ext_rd = clk_latch[15:8];
             7'h13: ext_rd = clk_latch[7:0];
+            7'h14: ext_rd = us_cnt[31:24];
+            7'h15: ext_rd = us_latch[23:16];
+            7'h16: ext_rd = us_latch[15:8];
+            7'h17: ext_rd = us_latch[7:0];
             default: ext_rd = 8'hff;
         endcase
     end
@@ -135,12 +144,12 @@ module xlink #(
 
     wire dat_acc  = (m_re | m_we) & (m_addr == 3'd4);
     // the decode of the index in flip-flops (one clock after idx has changed)
-    reg d_m2s0, d_m2s1, d_m2s2, d_m2s3, d_mi, d_smmu, d_wa2, d_wa1, d_wa0, d_win, d_clk;
+    reg d_m2s0, d_m2s1, d_m2s2, d_m2s3, d_mi, d_smmu, d_wa2, d_wa1, d_wa0, d_win, d_clk, d_us;
     always @(posedge clk) begin
         d_m2s0 <= (ei == 7'h00); d_m2s1 <= (ei == 7'h01); d_m2s2 <= (ei == 7'h02); d_m2s3 <= (ei == 7'h03);
         d_mi   <= (ei == 7'h08); d_smmu <= (ei == 7'h09);
         d_wa2  <= (ei == 7'h0a); d_wa1  <= (ei == 7'h0b); d_wa0  <= (ei == 7'h0c);
-        d_win  <= (ei == 7'h0d); d_clk  <= (ei == 7'h10);
+        d_win  <= (ei == 7'h0d); d_clk  <= (ei == 7'h10); d_us <= (ei == 7'h14);
     end
     wire win_sel  = d_win;
 
@@ -151,6 +160,9 @@ module xlink #(
         pwr_we  <= 1'b0;
         rst_pulse <= 1'b0;
         if (sub_clk_en) clk_cnt <= clk_cnt + 32'd1;
+        // the microsecond counter
+        if (us_acc + 17'd1000 >= CLK_KHZ) begin us_acc <= us_acc + 17'd1000 - CLK_KHZ; us_cnt <= us_cnt + 32'd1; end
+        else us_acc <= us_acc + 17'd1000;
 
         // ---- window memory port
         if (win_busy && win_ack) begin
@@ -199,6 +211,7 @@ module xlink #(
         end
         if (m_re && m_addr == 3'd4) begin
             if (d_clk) clk_latch <= clk_cnt;
+            if (d_us)  us_latch  <= us_cnt;
             if (win_sel) begin win_req <= 1'b1; win_wr <= 1'b0; win_busy <= 1'b1; end
         end
         if (dat_acc && idx[7] && !win_sel) idx <= {1'b1, ei + 7'd1};
@@ -221,7 +234,7 @@ module xlink #(
             c_run <= 1'b0; c_hold <= 1'b0; c_shr <= 1'b0; c_firq <= 1'b0; c_ien <= 1'b0;
             pend_s2m <= 1'b0; pend_m2s <= 1'b0; idx <= 8'h00; mi <= 7'd0;
             svec <= 8'hff; win_req <= 1'b0; win_busy <= 1'b0; win_c1 <= 1'b0; win_c2 <= 1'b0; win_addr <= 21'd0; win_wr <= 1'b0;
-            clk_cnt <= 32'd0; m2s0 <= 0; m2s1 <= 0; m2s2 <= 0; m2s3 <= 0;
+            clk_cnt <= 32'd0; us_cnt <= 32'd0; us_acc <= 17'd0; m2s0 <= 0; m2s1 <= 0; m2s2 <= 0; m2s3 <= 0;
             s2m0 <= 0; s2m1 <= 0; s2m2 <= 0; s2m3 <= 0; win_wdata <= 8'h00;
         end
     end

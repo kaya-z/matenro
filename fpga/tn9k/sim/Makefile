@@ -23,7 +23,7 @@ endif
 
 run: $(B)/obj/Vsim_top
 	$(B)/obj/Vsim_top -nosd -c 40000000 | tee $(B)/out.txt
-	@grep -q "13BA" $(B)/out.txt && grep -q "0037" $(B)/out.txt && echo "matenro_soc: OK (13BA 0037)" || { echo "matenro_soc: FAILED"; exit 1; }
+	@grep -q "13BA" $(B)/out.txt && grep -q "0037" $(B)/out.txt && grep -q "1D4C" $(B)/out.txt && echo "matenro_soc: OK (13BA 0037 1D4C)" || { echo "matenro_soc: FAILED"; exit 1; }
 
 ifeq ($(ROM),boot)
 $(B)/rom.hex:

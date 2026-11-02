@@ -14,7 +14,8 @@
 // Credits: the TV80 core (Guy Hutchison, after T80 by Daniel Wallner, MIT) is not part of this repository
 // (see CREDITS.md).  Bus cycles follow the Z80 User Manual (UM0080).
 module z80_sub #(
-    parameter CLKDIV = 9                     // Z80 clock = clk / CLKDIV, 2 or more (67.5 MHz / 9 = 7.5 MHz)
+    parameter CLKDIV = 9,                    // Z80 clock = clk / CLKDIV, 2 or more (67.5 MHz / 9 = 7.5 MHz)
+    parameter [16:0] CLK_KHZ = 17'd67500     // clk in kHz (XE_US of the XLINK counts microseconds)
 ) (
     input  wire        clk,
     input  wire        rst,                  // synchronous, high
@@ -25,6 +26,7 @@ module z80_sub #(
     input  wire [7:0]  m_wdata,
     output reg  [7:0]  m_rdata,              // one clock late (the register read mux of the XLINK is a long path)
     output wire        m_wait,
+    output wire        m_win,
     output wire        irq_o,
     output wire        firq_o,
     // ---- window to the physical memory (served by the SoC)
@@ -117,9 +119,9 @@ module z80_sub #(
     wire [7:0] xl_rdata;
     always @(posedge clk) m_rdata <= xl_rdata;
 
-    xlink #(.SUB_ID(8'd1), .SUB_KHZ(16'd7500)) xl (
+    xlink #(.SUB_ID(8'd1), .SUB_KHZ(16'd7500), .CLK_KHZ(CLK_KHZ)) xl (
         .clk(clk), .rst(rst),
-        .m_addr(m_addr), .m_re(m_re), .m_we(m_we), .m_wdata(m_wdata), .m_rdata(xl_rdata), .m_wait(m_wait),
+        .m_addr(m_addr), .m_re(m_re), .m_we(m_we), .m_wdata(m_wdata), .m_rdata(xl_rdata), .m_wait(m_wait), .m_win(m_win),
         .irq_n_o(irq_o), .firq_o(firq_o), .shr_o(),
         .sub_rst_n(sub_rst_n), .sub_hold(sub_hold), .sub_int(sub_int), .sub_nmi(sub_nmi),
         .sub_halted(z80_halted), .sub_clk_en(cen),

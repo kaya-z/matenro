@@ -2,7 +2,9 @@
 * xltest.asm - test ROM for the Matenro SoC (fpga/tn9k, Level 1 mode, ROM at $FC00): the 6809 plays the part of xrun
 *   load the Z80 demo (os9/sub/sumz80.py, the same binary as in the C simulator) through the window of the XLINK,
 *   release the Z80, wait for "ready", send n = 100 and 10, wait for the reply, print S2M[0..1] in hex, power off ($A5).
-* Expected output:  13BA 0037
+*   then read XE_KHZ (the Z80 clock in kHz) with the auto increment of the index and print it: the SoC once took the
+*   byte of the next register (it read the byte again after the access, which is right for the window only).
+* Expected output:  13BA 0037  1D4C (7500 kHz)
 * Registers: XCTL=$E049 XSTAT=$E04A XID/BELL=$E04B XIDX=$E04C XDAT=$E04D
 
 ACIA     equ   $E001
@@ -48,6 +50,16 @@ ld1      lda   ,x+
          bsr   ask
          lda   #10
          bsr   ask
+         ldb   #$8E              XE_KHZ, auto increment
+         stb   XIDX
+         lda   XDAT
+         bsr   hex2
+         lda   XDAT
+         bsr   hex2
+         lda   #13
+         sta   ACIA
+         lda   #10
+         sta   ACIA
          lda   #$A5
          sta   POWER
 halt     bra   halt

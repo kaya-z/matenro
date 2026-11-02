@@ -9,7 +9,7 @@ module tb_xlink;
     reg         m_re = 1'b0, m_we = 1'b0;
     reg  [7:0]  m_wdata = 8'd0;
     wire [7:0]  m_rdata;
-    wire        m_wait, irq_n_o, firq_o, shr_o, sub_rst_n, sub_hold, sub_int, sub_nmi;
+    wire        m_wait, m_win, irq_n_o, firq_o, shr_o, sub_rst_n, sub_hold, sub_int, sub_nmi;
     reg         sub_halted = 1'b0, sub_clk_en = 1'b0;
     reg  [3:0]  s_port = 4'd0;
     reg         s_re = 1'b0, s_we = 1'b0;
@@ -123,6 +123,7 @@ module tb_xlink;
 
     integer k;
     reg [7:0] v, b0, b1, b2, b3;
+    reg [31:0] t1, t2;
 
     initial begin
         for (k = 0; k < 3; k = k + 1) tick;
@@ -205,6 +206,14 @@ module tb_xlink;
         sub_clk_en = 1'b0; tick;
         ext(8'h10, 1); mr(3'd4, b3); mr(3'd4, b2); mr(3'd4, b1); mr(3'd4, b0);
         check("clock counter", {b3, b2, b1, b0}, 1000);
+
+        // microsecond counter: 1 per 67.5 clocks (CLK_KHZ = 67500), latched on the read of byte 0
+        ext(8'h14, 1); mr(3'd4, b3); mr(3'd4, b2); mr(3'd4, b1); mr(3'd4, b0);
+        t1 = {b3, b2, b1, b0};
+        for (k = 0; k < 2000; k = k + 1) tick;
+        ext(8'h14, 1); mr(3'd4, b3); mr(3'd4, b2); mr(3'd4, b1); mr(3'd4, b0);
+        t2 = {b3, b2, b1, b0};
+        check("XE_US: about 30 microseconds in 2000+ clocks", (t2 - t1 >= 29) && (t2 - t1 <= 31), 1);
 
         // reset pulse
         mw0(3'd0, 8'h99);

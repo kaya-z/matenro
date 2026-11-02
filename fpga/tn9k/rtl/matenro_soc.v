@@ -118,7 +118,7 @@ module matenro_soc #(
     reg         nreset_cpu;
     wire        timer_irq;
     // MATENRO (declared here: they are used before the XLINK section)
-    wire        xl_irq, xl_firq, xl_wait;
+    wire        xl_irq, xl_firq, xl_wait, xl_win;
     wire [7:0]  xl_rdata;
     reg         xl_rcap = 1'b0;
     reg  [2:0]  xl_cnt  = 3'd0;
@@ -576,7 +576,7 @@ module matenro_soc #(
     always @(posedge clk) begin
         if (rst) begin xl_rcap <= 1'b0; xl_cnt <= 3'd0; end
         else begin
-            if (xl_re) begin xl_rcap <= 1'b1; xl_cnt <= 3'd4; end
+            if (xl_re && xl_win) begin xl_rcap <= 1'b1; xl_cnt <= 3'd4; end      // (only a window read comes late; the others are right at the access)
             else if (xl_cnt != 3'd0) xl_cnt <= xl_cnt - 1'b1;
             else if (xl_cap) xl_rcap <= 1'b0;                          // (rd_reg takes the byte in the main block)
         end
@@ -607,9 +607,9 @@ module matenro_soc #(
 
     // the Z80 and its memory port (master 3 of the arbiter)
     wire [7:0]  zm_rdata = zm_addr[0] ? zm_rdata_w[15:8] : zm_rdata_w[7:0];
-    z80_sub #(.CLKDIV(CZ_DIV)) sub (
+    z80_sub #(.CLKDIV(CZ_DIV), .CLK_KHZ(CLK_HZ / 1000)) sub (
         .clk(clk), .rst(rst),
-        .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait),
+        .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win),
         .irq_o(xl_irq), .firq_o(xl_firq),
         .win_req(win_req), .win_wr(win_wr), .win_addr(win_addr), .win_wdata(win_wdata), .win_ack(win_ack), .win_rdata(win_rdata),
         .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),

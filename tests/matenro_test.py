@@ -183,10 +183,10 @@ def os9_xrun(tmp):
 
 
 def build_cpm(tmp):
-    """assemble the OS-9 commands cpm, xrun, reboot and cpp (tools/build_cpm.sh); returns the output directory"""
+    """assemble the OS-9 commands cpm, xrun, reboot, etime and cpp (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 7:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 8:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -207,7 +207,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot'):
+    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
@@ -219,6 +219,26 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
            '-1', os.path.join(d, 'WORK.dsk'), '-v', os.path.join(d, 'v0'), '-script', script]
     r = run(cmd, timeout=timeout)
     return r.stdout.decode(errors='replace'), d
+
+
+def os9_etime(tmp):
+    """the OS-9 command etime: the time of a command from the microsecond counter of the cross link (XE_US), with -c the sub CPU clocks"""
+    if not os.path.isdir(OS9):
+        return
+    out, d = os9_session(tmp, 'etime', 'z80', {'hello.com': z80_com('hello', tmp), 'bstress.com': z80_com('bstress', tmp)}, [
+        'send "etime\\r"', 'expect "OS9:"',
+        'send "etime -c cpm hello.com abc\\r"', 'expect "OS9:"',
+        'send "etime nosuchcommand\\r"', 'expect "OS9:"',
+        'send "etime cpm bstress.com\\r"', 'expect "OS9:"'])
+    import re
+    m = re.findall(r'Elapsed +(\d+)\.(\d{6}) s', out)
+    c = re.search(r'Sub CPU (\d+) clocks \((\d+) ms at (\d+) kHz\)', out)
+    check('etime: usage, the elapsed time of a command (seconds and microseconds), -c: Z80 clocks, milliseconds and kHz; a missing command is an error',
+          'usage: etime' in out and len(m) == 2 and c is not None and int(c.group(1)) > 1000 and int(c.group(3)) == 8000
+          and abs(int(c.group(1)) // int(c.group(3)) - int(c.group(2))) <= 1 and 'Error #216' in out and out.count('Error #216') == 1 and 'Hello from CP/M-80' in out, out[-900:])
+    # the 3000 rounds of bstress take a measurable time (more than a tenth of a second of the machine)
+    check('etime: a longer command (bstress.com, 3000 rounds) takes a measurable time',
+          len(m) == 2 and (int(m[1][0]) * 1000000 + int(m[1][1])) > 100000, out[-500:])
 
 
 def os9_reboot(tmp):
@@ -499,6 +519,7 @@ def main():
         os9_cpm80_text(tmp)
         os9_cpm86(tmp)
         os9_cpp(tmp)
+        os9_etime(tmp)
         os9_reboot(tmp)
         os9_cc80(tmp)
         os9_turbo(tmp)
