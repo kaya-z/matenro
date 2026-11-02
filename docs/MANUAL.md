@@ -349,6 +349,24 @@ Include error messages (Y/N)? N
 
 ---
 
+### 7.4 OS-9 のプログラムから BDOS を呼ぶ (`bdos`)
+
+6809 のアセンブラで書く OS-9 のプログラムは、`bdos` というサブルーチンモジュールで、CP/M の BDOS を**関数番号で**呼べます (Z80 は使いません。FCB やバッファは、プログラム自身のメモリに置きます)。使い方は `os9/bdos/bdos.d` に、動く例は `bdostest` (SD にも入っています) にあります。
+
+```
+OS9:chx /d0/cmds
+OS9:load bdos
+OS9:bdostest
+BDOS lib: BDOS 9
+!BDOS LIB OK
+```
+
+* 呼ぶ前に `load bdos` します。
+* 作業領域 (`BDOSSZ` = 2500 バイト) は、呼び出し側が用意します。関数番号 `$FF` で初期化、`$FE` で終了 (開いたファイルを閉じる) を呼びます。
+* 詳しくは [DESIGN.md](DESIGN.md) の 16 章です。
+
+---
+
 ## 8. `xrun` (サブ CPU に直接プログラムを渡す)
 
 CP/M ではなく、素のプログラムをサブ CPU に載せて走らせ、メールボックスで答えを受け取るコマンドです (主にテスト用)。

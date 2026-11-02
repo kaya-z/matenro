@@ -183,10 +183,10 @@ def os9_xrun(tmp):
 
 
 def build_cpm(tmp):
-    """assemble the OS-9 commands cpm, xrun, reboot, etime and cpp (tools/build_cpm.sh); returns the output directory"""
+    """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos and cpp (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 8:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 10:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -207,7 +207,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime'):
+    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime', 'bdos'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
@@ -219,6 +219,19 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
            '-1', os.path.join(d, 'WORK.dsk'), '-v', os.path.join(d, 'v0'), '-script', script]
     r = run(cmd, timeout=timeout)
     return r.stdout.decode(errors='replace'), d
+
+
+def os9_bdos(tmp):
+    """the subroutine module bdos: an OS-9 program (tests/bdos/bdostest.asm) calls the CP/M BDOS by function number (console,
+    FCB files: make, write, close, rename, open, read, delete); the FCB and the data are in the memory of the program"""
+    if not os.path.isdir(OS9):
+        return
+    out_bin = os.path.join(tmp, 'cpmbuild', 'bdostest')
+    out, d = os9_session(tmp, 'bdos', 'z80', {'cmds/bdostest': open(out_bin, 'rb').read()}, [
+        'send "load bdos\\r"', 'expect "OS9:"', 'send "bdostest\\r"', 'expect "OS9:"', 'send "dir /v0\\r"', 'expect "OS9:"'])
+    after = out.split('dir /v0')[-1]
+    check('bdos module: an OS-9 program calls the BDOS (console, make, write, close, rename, open, read, delete with FCBs in its own memory)',
+          'BDOS LIB OK' in out and 'BDOS lib: BDOS 9' in out and 'BT.TMP' not in after.upper() and 'BU.TMP' not in after.upper(), out[-700:])
 
 
 def os9_etime(tmp):
@@ -519,6 +532,7 @@ def main():
         os9_cpm80_text(tmp)
         os9_cpm86(tmp)
         os9_cpp(tmp)
+        os9_bdos(tmp)
         os9_etime(tmp)
         os9_reboot(tmp)
         os9_cc80(tmp)
