@@ -77,6 +77,7 @@ module matenro_soc #(
     input  wire        ps_busy,
     // LEDs (active low), and the CPU for the test bench
     output wire [5:0]  led,
+    input  wire        led_mode,            // 0: heartbeat / running / card / power;  1: LED0 = the sub CPU is enabled, LED1-5 off (reserved)
     input  wire        term_busy,           // the HDMI screen has no room for more characters now
     // two more PSRAM masters (word reads) for a screen: not used on the 9K
     input  wire        x1_req,
@@ -118,7 +119,7 @@ module matenro_soc #(
     reg         nreset_cpu;
     wire        timer_irq;
     // MATENRO (declared here: they are used before the XLINK section)
-    wire        xl_irq, xl_firq, xl_wait, xl_win;
+    wire        xl_irq, xl_firq, xl_wait, xl_win, xl_on;
     wire [7:0]  xl_rdata;
     reg         xl_rcap = 1'b0;
     reg  [2:0]  xl_cnt  = 3'd0;
@@ -609,7 +610,7 @@ module matenro_soc #(
     wire [7:0]  zm_rdata = zm_addr[0] ? zm_rdata_w[15:8] : zm_rdata_w[7:0];
     z80_sub #(.CLKDIV(CZ_DIV), .CLK_KHZ(CLK_HZ / 1000)) sub (
         .clk(clk), .rst(rst),
-        .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win),
+        .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win), .sub_on(xl_on),
         .irq_o(xl_irq), .firq_o(xl_firq),
         .win_req(win_req), .win_wr(win_wr), .win_addr(win_addr), .win_wdata(win_wdata), .win_ack(win_ack), .win_rdata(win_rdata),
         .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
@@ -624,7 +625,8 @@ module matenro_soc #(
     always @(posedge clk) hb <= hb + 1'b1;
     // LED2: card ready (steady) / card failed (blinking); LED4: the OS has been started
     assign reboot_req = reboot_r;
-    assign led = ~{pwroff, osrun, sd_active, sd_fail ? hb[22] : sd_ready, run, hb[23]};
+    assign led = led_mode ? ~{5'b00000, xl_on}
+                          : ~{pwroff, osrun, sd_active, sd_fail ? hb[22] : sd_ready, run, hb[23]};
 
     // the status word of the debug UART (dbg_uart, DEBUG=1) and the watchdog of the board: what holds the CPU
     //   15 xl_wait  14 xl_rcap  13 xw_act  12 m0_req  11 zm_req  10 ps_busy  9 mem_pend  8 acia_pend

@@ -52,6 +52,8 @@ cat > "$B/tn9k_cfg.vh" <<EOT
 $( [ -n "$WDOG" ] && echo "\`define WATCHDOG 1" )
 EOT
 cat "$SIM09/constraints/tn9k.cst" > "$B/pins.cst"
+# S2, the second button of the board (S1 is the reset): pin 3, to ground when pressed
+printf 'IO_LOC "btn2" 3;\nIO_PORT "btn2" PULL_MODE=UP;\n' >> "$B/pins.cst"
 cat "$SIM09/constraints/tn9k.sdc" "$HERE/constraints/matenro.sdc" > "$B/timing.sdc"
 # SDC_SED="s/-multiply_by 5 -divide_by 2/-multiply_by 3 -divide_by 1/": constrain the system clock harder (81 MHz) to see how fast the design really can go
 # (the PLL is not changed: such a bitstream is for the timing report only)
@@ -62,6 +64,7 @@ add_file -type verilog $HERE/rtl/tn9k_top.v
 add_file -type verilog ${PLL:-$SIM09/rtl/tn9k_pll.v}
 add_file -type verilog $HERE/rtl/matenro_soc.v
 add_file -type verilog $HERE/rtl/psram_arb4.v
+add_file -type verilog $HERE/rtl/btn_toggle.v
 add_file -type verilog $HERE/../rtl/z80_sub.v
 add_file -type verilog $HERE/../rtl/xlink.v
 add_file -type verilog $B/tv80s_cen.v

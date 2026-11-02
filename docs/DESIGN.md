@@ -474,7 +474,7 @@ OS9:cpm hello.com abc           -m なしの 2MB のマシンで動く
 | `fpga/rtl/z80_soc.v` | `z80_sub.v` に試験用の RAM をつけたもの (Verilator 用) |
 | `fpga/tn9k/rtl/matenro_soc.v` | SoC。sim09 の SoC に XLINK、Z80、起動時のメモリ検査を足したもの。6809 コア、PSRAM コントローラ、UART、タイマ、SD ディスクは sim09 のものを読んで使う (複製しない。CREDITS.md) |
 | `fpga/tn9k/rtl/psram_arb4.v` | PSRAM の調停 (4 マスタ: 6809 側 / ディスク / ウィンドウ、Z80、画面用の 2 つ) |
-| `fpga/tn9k/rtl/tn9k_top.v` | トップ。PLL、PSRAM、UART、SD、LED。`WDOG=1` の診断ビルドでは、止まったときに 6809 と Z80 の状態を UART に出すウォッチドッグがつく |
+| `fpga/tn9k/rtl/tn9k_top.v` | トップ。PLL、PSRAM、UART、SD、LED。ボタン S2 (ピン 3、`btn_toggle.v`: 同期、15 ms のチャタリング除去、押すたびに反転) で LED の表示 A / B を切り替える (B: LED0 = サブ CPU が有効、`z80_sub.v` の `sub_on`)。`WDOG=1` の診断ビルドでは、止まったときに 6809 と Z80 の状態を UART に出すウォッチドッグがつく |
 | `fpga/tn9k/constraints/matenro.sdc` | Z80 のマルチサイクル制約 |
 | `fpga/tn9k/scripts/` | `build.sh` (ビットストリーム)、`mkdisk.sh` `mkdisk_d1.sh` (SD カードのイメージ) |
 

@@ -1,8 +1,11 @@
 # Verilator test of rtl/xlink.v   (make -C fpga/sim).  The test benches are pure Verilog (tb_*.v, run with --binary --timing).
-all: build/Vxlink
+all: build/Vxlink build_btn/Vbtn
 	@ulimit -c 0; build/Vxlink
+	@ulimit -c 0; build_btn/Vbtn
 build/Vxlink: ../rtl/xlink.v tb_xlink.v
 	verilator --binary --timing -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-WIDTH -Wno-fatal --top-module tb_xlink -Mdir build ../rtl/xlink.v tb_xlink.v -o Vxlink
+build_btn/Vbtn: ../tn9k/rtl/btn_toggle.v tb_btn.v
+	verilator --binary --timing -Wall -Wno-DECLFILENAME -Wno-fatal --top-module tb_btn -Mdir build_btn ../tn9k/rtl/btn_toggle.v tb_btn.v -o Vbtn
 .PHONY: all
 
 # Z80 + XLINK + RAM (rtl/z80_soc.v) running the same Z80 demo as the C simulator.

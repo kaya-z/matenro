@@ -16,6 +16,7 @@ module z80_soc #(
     output wire [7:0]  m_rdata,              // one clock late
     output wire        m_wait,
     output wire        m_win,
+    output wire        sub_on,
     output wire        irq_o,
     output wire        firq_o,
     output wire        con_we,

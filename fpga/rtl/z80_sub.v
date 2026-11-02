@@ -27,6 +27,7 @@ module z80_sub #(
     output reg  [7:0]  m_rdata,              // one clock late (the register read mux of the XLINK is a long path)
     output wire        m_wait,
     output wire        m_win,
+    output wire        sub_on,               // the Z80 is enabled: out of reset and not held (LED0 in the second LED mode)
     output wire        irq_o,
     output wire        firq_o,
     // ---- window to the physical memory (served by the SoC)
@@ -80,6 +81,7 @@ module z80_sub #(
         .halt_n(halt_n), .busak_n(busak_n), .A(A), .di(di_q), .dout(dout));
 
     assign z80_halted = ~halt_n;
+    assign sub_on     = sub_rst_n & ~sub_hold;
 
     reg [15:0] pc_m1;                        // the address of the last instruction fetch (debug)
     always @(posedge clk) if (~m1_n & ~mreq_n) pc_m1 <= A;

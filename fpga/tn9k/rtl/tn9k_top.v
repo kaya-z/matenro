@@ -9,6 +9,8 @@
 //   UART           the USB serial port of the board (BL702): 115200 baud, 8N1 - the console
 //   microSD slot   the disks (raw: drive 0 from block 0, drive 1 from 128 MB)
 //   LEDs           0 heartbeat, 1 running (PSRAM up and cleared), 2 card ready, 3 card busy, 4 card failed, 5 powered off
+//   S2 (pin 3)     toggles the LED display: the second one has LED0 = the sub CPU (Z80) is enabled, LED1-5 off (reserved);
+//                  the reset (S1, the reboot command) brings the first one back
 //
 //   HDMI (if `HDMI is defined in tn9k_cfg.vh)  the console on a monitor: 640x480, 80 x 25 characters (hdmi_*.v)
 //
@@ -19,6 +21,7 @@
 module tn9k_top (
     input  wire        sys_clk,                 // 27 MHz
     input  wire        sys_resetn,              // S1
+    input  wire        btn2,                    // S2: toggles the LED display (pin 3)
     input  wire        uart_rx,
     output wire        uart_tx,
     output wire [5:0]  led,
@@ -52,6 +55,7 @@ module tn9k_top (
 
     // reset: the button, and a short time after the PLL has locked
     wire       reboot_req;                  // from the SoC: the guest wrote $A7 to the power register
+    wire       led_mode;                    // S2 toggles it: 0 = the usual LEDs, 1 = LED0 shows that the sub CPU is enabled
     reg [2:0]  btn;
     reg [15:0] por = 16'd0;
     always @(posedge clk) begin
@@ -63,6 +67,8 @@ module tn9k_top (
     always @(posedge clk) resetn <= btn[2] && por == 16'hffff;
 
     assign O_psram_reset_n = {2{resetn}};
+
+    btn_toggle #(.DEB_BITS(20)) s2 (.clk(clk), .rst_n(resetn), .btn_n(btn2), .state(led_mode));       // 15 ms debounce
 
     wire [111:0] dbg_regs;
     wire [15:0]  dbg_status, dbg_disk;
@@ -137,7 +143,7 @@ module tn9k_top (
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy),
-        .led(led), .term_busy(term_busy), .reboot_req(reboot_req),
+        .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()

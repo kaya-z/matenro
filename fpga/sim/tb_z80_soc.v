@@ -14,7 +14,7 @@ module tb_z80_soc #(
     reg         m_re = 1'b0, m_we = 1'b0;
     reg  [7:0]  m_wdata = 8'd0;
     wire [7:0]  m_rdata;
-    wire        m_wait, m_win, irq_o, firq_o, con_we, pwr_we, z80_halted;
+    wire        m_wait, m_win, sub_on, irq_o, firq_o, con_we, pwr_we, z80_halted;
     wire [7:0]  con_data, pwr_data;
 
     z80_soc #(.CLKDIV(CLKDIV), .RAMLAT(RAMLAT)) dut (.*);
