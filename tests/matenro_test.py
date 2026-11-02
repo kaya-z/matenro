@@ -186,7 +186,7 @@ def build_cpm(tmp):
     """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos and cpp (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 10:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 11:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -207,7 +207,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime', 'bdos'):
+    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
@@ -302,6 +302,56 @@ def os9_etime(tmp):
     # the 3000 rounds of bstress take a measurable time (more than a tenth of a second of the machine)
     check('etime: a longer command (bstress.com, 3000 rounds) takes a measurable time',
           len(m) == 2 and (int(m[1][0]) * 1000000 + int(m[1][1])) > 100000, out[-500:])
+
+
+def duo_ref():
+    """the 25 rows of the picture of `duo`, in the Q8 fixed point arithmetic of os9/duo (Python integers)"""
+    def mulq(p, q):
+        neg = (p < 0) != (q < 0)
+        r = (abs(p) * abs(q)) >> 8
+        return -r if neg else r
+    rows = []
+    for y in range(-12, 13):
+        cb = y * 21
+        line = ''
+        for x in range(-39, 40):
+            ca = x * 12
+            a, b = ca, cb
+            a2, b2 = mulq(a, a), mulq(b, b)
+            i = 0
+            while i < 16:
+                t = a2 - b2 + ca
+                b = 2 * mulq(a, b) + cb
+                a = t
+                a2, b2 = mulq(a, a), mulq(b, b)
+                if a2 + b2 >= 1025:
+                    break
+                i += 1
+            line += '0123456789ABCDEF '[i]
+        rows.append(line)
+    return rows
+
+
+def os9_duo(tmp):
+    """the OS-9 command duo: a Mandelbrot picture computed by the 6809 and the Z80 together; same picture whoever computes a row"""
+    if not os.path.isdir(OS9):
+        return
+    out, d = os9_session(tmp, 'duo', 'z80', {}, [
+        'send "duo -n\r"', 'expect "OS9:"',
+        'send "duo -1 -n\r"', 'expect "OS9:"',
+        'send "duo -z -n\r"', 'expect "OS9:"',
+        'send "duo -q\r"', 'expect "OS9:"'])
+    import re
+    ref = duo_ref()
+    pics = out.split('\n')
+    runs = re.findall(r'6809: (\d+) rows +Z80: (\d+) rows +(\d+)\.(\d{3}) s', out)
+    found = [ln.rstrip('\r') for ln in pics if len(ln.rstrip('\r')) == 79 and set(ln.rstrip('\r')) <= set('0123456789ABCDEF ')]
+    same = len(found) == 75 and all(found[k * 25:(k + 1) * 25] == ref for k in range(3))
+    check('duo: the picture of both CPUs, of the 6809 only and of the Z80 only is the same as the reference in fixed point arithmetic',
+          same, out[-1500:])
+    check('duo: the rows are shared (6809 + Z80 = 25 rows, both work), -1: 25 rows by the 6809, -z: 25 rows by the Z80; usage for a bad option',
+          len(runs) == 3 and [int(r[0]) + int(r[1]) for r in runs] == [25, 25, 25] and int(runs[0][0]) > 0 and int(runs[0][1]) > 0
+          and runs[1][:2] == ('25', '0') and runs[2][:2] == ('0', '25') and 'usage: duo' in out, str(runs))
 
 
 def os9_reboot(tmp):
@@ -588,6 +638,7 @@ def main():
         os9_drive(tmp)
         os9_bdos(tmp)
         os9_etime(tmp)
+        os9_duo(tmp)
         os9_reboot(tmp)
         os9_cc80(tmp)
         os9_turbo(tmp)

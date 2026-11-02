@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 # Assemble the OS-9 command `cpm` (and the shims it embeds).
-#   tools/build_cpm.sh OUTDIR          -> OUTDIR/cpm, OUTDIR/xrun, OUTDIR/reboot, OUTDIR/etime, OUTDIR/bdos, OUTDIR/bdostest (a sample program that calls it), OUTDIR/cpp, OUTDIR/cc80, OUTDIR/xlink (driver), OUTDIR/x0 (descriptor)
+#   tools/build_cpm.sh OUTDIR          -> OUTDIR/cpm, OUTDIR/xrun, OUTDIR/reboot, OUTDIR/etime, OUTDIR/duo (Mandelbrot on both CPUs), OUTDIR/bdos, OUTDIR/bdostest (a sample program that calls it), OUTDIR/cpp, OUTDIR/cc80, OUTDIR/xlink (driver), OUTDIR/x0 (descriptor)
 # Needs a09 (A09=...), the NitrOS-9 definition files (OS9DIR=.../os9, used read only), nasm and python3.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,6 +23,8 @@ BS=$(sed -n 's/^BDOSSZ *equ *\([0-9]*\).*/\1/p' bdos/bdos.d)
 [ "$((0x$SZ))" -le "$BS" ] || { echo "bdos: the data area ($((0x$SZ)) bytes) is bigger than BDOSSZ ($BS)"; exit 1; }
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/reboot.lst" -o "$OUT/reboot" reboot/reboot.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/etime.lst" -o "$OUT/etime" etime/etime.asm
+python3 "$ROOT/os9/duo/mkduoz80.py" "$OUT/duoz80.inc"
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -l "$OUT/duo.lst" -o "$OUT/duo" duo/duo.asm
 cd "$ROOT/os9"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cpp.lst" -o "$OUT/cpp" cpp/cpp.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cc80.lst" -o "$OUT/cc80" cc80/cc80.asm

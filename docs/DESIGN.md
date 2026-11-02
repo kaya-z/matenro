@@ -47,7 +47,7 @@
 | `src/z80.c` `src/i8088.c` | サブ CPU の実装 (各 1 ファイル) |
 | `src/xlink.c` `xlink.h` | 共有メモリ、SMMU、メールボックス、ドアベル、サブ CPU のスケジューラ、CPU の一覧 |
 | `src/main.c` | コマンドライン (`-sub` など) |
-| `os9/` | OS-9 側 (6809 のアセンブラ): `xrun.asm`、`cpm/` (`cpm` コマンド: `cpm.asm` は Z80 との受け渡し、`cpmengine.asm` は BDOS の実装、`cpmdefs.asm` `cpmdata.asm` は定義とデータの配置。サブ CPU 側のスタブ)、`bdos/` (サブルーチンモジュール `bdos`、16 章)、`reboot/` `etime/`、`cpp/` `cc80/`、`xlink/` (ドライバ `xlink` とデスクリプタ `x0`)、`sub/` (デモのサブ CPU プログラム) |
+| `os9/` | OS-9 側 (6809 のアセンブラ): `xrun.asm`、`cpm/` (`cpm` コマンド: `cpm.asm` は Z80 との受け渡し、`cpmengine.asm` は BDOS の実装、`cpmdefs.asm` `cpmdata.asm` は定義とデータの配置。サブ CPU 側のスタブ)、`bdos/` (サブルーチンモジュール `bdos`、16 章)、`reboot/` `etime/` `duo/` (二つの CPU で描くマンデルブロ。Z80 側 `duoz80.asm` は `mkduoz80.py` で組み込む)、`cpp/` `cc80/`、`xlink/` (ドライバ `xlink` とデスクリプタ `x0`)、`sub/` (デモのサブ CPU プログラム) |
 | `fpga/` | FPGA 版: `rtl/` (XLINK `xlink.v`、Z80 `z80_sub.v` `z80_soc.v`)、`tn9k/` (Tang Nano 9K の SoC、制約、ビルド、シミュレーション)、`sim/` (Verilator のテスト) |
 | `tests/` `tools/` | テスト、Z80 のアセンブラ `z80asm.py`、`.CMD` を作る `mkcmd.py`、SD イメージを作るスクリプト |
 
