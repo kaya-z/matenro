@@ -69,6 +69,9 @@ typedef struct machine {
     uint8_t *mem;                  /* L1: mem1, L2: phymem + 0x70000       */
     uint32_t romstart;             /* L1: first protected address; L2: >=  */
     uint32_t rommemsize;
+    char    *rom_file;             /* the ROM image and its start, to load it again at a reboot */
+    long     rom_arg;
+    int      reboot_req;           /* the guest wrote $A7 to the power register: power cycle at the next slice */
     uint8_t *mmu;                  /* L2: currently active MMU map (8 bytes) */
 
     /* peripherals */
@@ -129,6 +132,7 @@ typedef struct machine {
 /* creation / configuration */
 machine_t *machine_create(int level2, size_t memsize);
 int  machine_load_rom(machine_t *m, const char *file, long romstart);
+void machine_reboot(machine_t *m);       /* power cycle: RAM cleared, ROM image loaded again, everything reset (disks and console stay) */
 int  machine_memtest(machine_t *m, long fault, char *out, size_t outsz);   /* power-on RAM test of the sim09 board (memtest.c) */
 void machine_reset(machine_t *m);
 void machine_set_timer(machine_t *m, long hz, int irq_line, int mode);

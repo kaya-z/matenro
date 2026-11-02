@@ -87,6 +87,7 @@ module matenro_soc #(
     input  wire [21:0] x2_addr,
     output wire        x2_ack,
     output wire [15:0] x2_rdata,
+    output wire        reboot_req,          // the guest wrote $A7 to the power register: the top level does what the reset button does
     output wire        term_stb,            // a byte the guest wrote to the console (for the HDMI screen)
     output wire [7:0]  term_byte,
     output wire [111:0] dbg_regs,
@@ -162,6 +163,7 @@ module matenro_soc #(
     wire      ps_busy_m;
     wire [15:0] ps_dout_m;           // the word the arbiter read for master 0 (the CPU, the disk)
     reg       pwroff;
+    reg       reboot_r;             // $A7 in the power register (cleared by the reset it causes)
     reg       osrun;                // the boot ROM wrote $A4 to the power register: the OS has been started (LED4)
     reg       acia_pend;            // a character for a busy transmitter: the CPU waits
     // The byte read from the PSRAM lands in rd_reg on the clock where mem_pend falls.  The core takes its
@@ -450,7 +452,7 @@ module matenro_soc #(
         disk_busy_d <= disk_busy;
         if (disk_busy_d && !disk_busy) e040 <= disk_result;
         if (rst) begin
-            mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
+            mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
             for (mk = 0; mk < 8; mk = mk + 1) begin map_s[mk] <= 8'hff; map_u[mk] <= 8'hff; end
             map_s[7] <= 8'h3f; tr <= 1'b0; tr_raw <= 8'hff; l2 <= 1'b0;
             rd_reg <= 8'h00; e040 <= 8'h00; d_drive <= 0; d_lsn2 <= 0; d_lsn1 <= 0; d_lsn0 <= 0;
@@ -467,6 +469,7 @@ module matenro_soc #(
                         else begin
                             if (io_power && cpu_d_out == 8'ha5) begin pwroff <= 1'b1; osrun <= 1'b0; end      // shutdown: LED5 on, LED4 off
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
+                            if (io_power && cpu_d_out == 8'ha7) reboot_r <= 1'b1;      // reboot: the same as the reset button
                             if (io_modr) begin
                                 if (cpu_d_out == 8'ha2 && !l2) begin           // to the Level 2 mode: the identity map for the blocks 0-6
                                     l2 <= 1'b1; tr <= 1'b0; tr_raw <= 8'hff;
@@ -620,6 +623,7 @@ module matenro_soc #(
     reg [23:0] hb;
     always @(posedge clk) hb <= hb + 1'b1;
     // LED2: card ready (steady) / card failed (blinking); LED4: the OS has been started
+    assign reboot_req = reboot_r;
     assign led = ~{pwroff, osrun, sd_active, sd_fail ? hb[22] : sd_ready, run, hb[23]};
 
     // the status word of the debug UART (dbg_uart, DEBUG=1) and the watchdog of the board: what holds the CPU

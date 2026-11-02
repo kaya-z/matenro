@@ -133,7 +133,7 @@ Z80 は先頭の 8 個 (64KB)、8088 は 128 個全部 (1MB) を使います。6
 
 | 場所 | 変更 |
 |---|---|
-| `machine.h` `machine.c` | 物理 RAM を常に 2MB に (`physsize`)、6809 が見える範囲を `mainlimit` に (`memsize` または `XC_SHR` のとき `physsize`)。IRQ/FIRQ を**タイマとドアベルの OR** で決める `machine_update_irq()`。XLINK レジスタの I/O 振り分け。`machine_run` にサブ CPU の追従 (`xlink_catch_up`) と、追従中の時間刻み (`quantum`) の制限。パワーレジスタ (`$FF8F`) に `$A6` (終了コード 1) を追加 |
+| `machine.h` `machine.c` | 物理 RAM を常に 2MB に (`physsize`)、6809 が見える範囲を `mainlimit` に (`memsize` または `XC_SHR` のとき `physsize`)。IRQ/FIRQ を**タイマとドアベルの OR** で決める `machine_update_irq()`。XLINK レジスタの I/O 振り分け。`machine_run` にサブ CPU の追従 (`xlink_catch_up`) と、追従中の時間刻み (`quantum`) の制限。パワーレジスタ (`$FF8F`) に `$A6` (終了コード 1) と `$A7` (再起動、`machine_reboot`) を追加 |
 | `main.c` | `-sub -subclock -xbase -xload -xrun -xt -xcon -xquantum -L1`。既定が Level 2。6809 のクロックの既定が 2 MHz (sim09 は 1.8432 MHz) |
 | それ以外 (`m6809.c` `dis6809.c` `console.c` `net.c` `vdisk.c` `dbg.c`) | 無変更 |
 
@@ -203,7 +203,7 @@ I/O ポートの**下位 8 ビット**を見て、`$00`-`$0F` だけが有効で
 | `$08`-`$0B` | メールボックス サブ CPU → 6809 | 同左 |
 | `$0C` | 割り込み受け付けで返すバイト (Z80 の IM 2 のベクタ、IM 0 の命令、8088 のベクタ番号)。既定 `$FF` | 同左 |
 | `$0E` | | デバッグコンソール: 1 バイトをホストへ出す (`-xcon file`、既定は stderr) |
-| `$0F` | | `$A5` = シミュレータを終了 (コード 0)、`$A6` = 終了 (コード 1)。テスト用 |
+| `$0F` | | `$A5` = シミュレータを終了 (コード 0)、`$A6` = 終了 (コード 1)。テスト用。**`$A7` = 再起動** (OS-9 の `reboot`): シミュレータは RAM を消して ROM イメージを読み直し、CPU・サブ CPU・タイマを初期化する (ディスクとコンソールはそのまま)。FPGA 版は S1 を押したのと同じ全体リセット (`tn9k_top` の電源投入時リセットの計数をやり直す) |
 
 6809 → サブ CPU のドアベルは **INT 線をレベルで立てます** (サブ CPU が ACK するまで)。NMI は `XID` への書き込みの bit 7 で 1 回だけ
 パルスを出します。

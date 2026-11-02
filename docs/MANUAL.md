@@ -62,7 +62,7 @@ git clone https://github.com/kaya-z/sim09 ~/sim09
 export A09=~/sim09/tools/a09
 export OS9DIR=~/sim09/os9            # テスト用。FPGA のスクリプトは SIM09=~/sim09
 make                                 # ./matenro ができる
-make os9cmds                         # build/os9/ に cpm xrun cpp cc80 (OS-9 のコマンド) ができる
+make os9cmds                         # build/os9/ に cpm xrun reboot cpp cc80 (OS-9 のコマンド) ができる
 ```
 
 テストは `make test` です (Z80 179 項目、8088 64 項目、統合テスト、OS-9 上の `cpm` など。`MATENRO_HTC` を設定すると HI-TECH C の試験も走ります)。
@@ -182,8 +182,10 @@ OS9:load x0             ドライバのデスクリプタ
 OS9:chd /d1             カレントのデータディレクトリを /d1 に (HI-TECH C や ZEXDOC を置いた場所)
 ```
 
-* `/d0` は OS-9 のシステムディスク (360KB) で、`cmds` に `cpm` `xrun` `cpp` `cc80` と、sim09 のコマンド (`dir` `copy` `attr` `mdir` `mfree` など) があります。`/d0/hello.com` も入っています。
+* `/d0` は OS-9 のシステムディスク (360KB) で、`cmds` に `cpm` `xrun` `reboot` `cpp` `cc80` と、sim09 のコマンド (`dir` `copy` `attr` `mdir` `mfree` など) があります。`/d0/hello.com` も入っています。
 * `/d1` は 2 つ目のディスク (512KB) で、HI-TECH C、ZEXDOC などを置きます ([9 章](#9-sd-カードのイメージを作る))。
+* `reboot` は機械を再起動します (電源を入れ直したのと同じ。FPGA 版は S1 を押したのと同じで、メモリ検査から SD からの読み込みまでやり直すので約 5 秒かかります。ディスクの内容はそのまま。開いたまま書いていないファイルの内容は失われます)。
+  シミュレータでは、RAM を消して ROM イメージを読み直します。
 * `Error #216` は「ファイルまたはコマンドが見つからない」です。`chx` が合っているか、ファイル名を確かめてください。
 
 ---
@@ -345,7 +347,7 @@ reply: BA 13 00 00
 
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
-| `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `xlink` `x0` `cpp` `cc80` ほか)、`hello.com` |
+| `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `reboot` `xlink` `x0` `cpp` `cc80` ほか)、`hello.com` |
 | `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c`、`TP=` を指定したときは Turbo Pascal (`/d1/tp`) と `hello.pas` |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体 |
 

@@ -51,11 +51,12 @@ module tn9k_top (
     tn9k_pll pll (.clkin(sys_clk), .clkout(clk), .clkoutp(clk_p), .lock(locked));
 
     // reset: the button, and a short time after the PLL has locked
+    wire       reboot_req;                  // from the SoC: the guest wrote $A7 to the power register
     reg [2:0]  btn;
     reg [15:0] por = 16'd0;
     always @(posedge clk) begin
         btn <= {btn[1:0], sys_resetn};
-        if (!locked) por <= 16'd0;
+        if (!locked || reboot_req) por <= 16'd0;         // (reboot_req: $A7 written to the power register = the reset button)
         else if (por != 16'hffff) por <= por + 1'b1;
     end
     reg  resetn = 1'b0;
@@ -136,7 +137,7 @@ module tn9k_top (
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy),
-        .led(led), .term_busy(term_busy),
+        .led(led), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()

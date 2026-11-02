@@ -183,10 +183,10 @@ def os9_xrun(tmp):
 
 
 def build_cpm(tmp):
-    """assemble the OS-9 commands cpm, xrun and cpp (tools/build_cpm.sh); returns the output directory"""
+    """assemble the OS-9 commands cpm, xrun, reboot and cpp (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 6:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 7:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -207,7 +207,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0'):
+    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
@@ -219,6 +219,20 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
            '-1', os.path.join(d, 'WORK.dsk'), '-v', os.path.join(d, 'v0'), '-script', script]
     r = run(cmd, timeout=timeout)
     return r.stdout.decode(errors='replace'), d
+
+
+def os9_reboot(tmp):
+    """the OS-9 command reboot: $A7 in the power register, the machine starts again (RAM cleared, ROM image loaded), disks stay"""
+    if not os.path.isdir(OS9):
+        return
+    out, d = os9_session(tmp, 'reboot', 'z80', {}, [
+        'send "chx /d0/cmds\\r"', 'expect "OS9:"', 'send "build /d1/mark\\r"', 'expect "?"', 'send "hello\\r"', 'expect "?"', 'send "\\r"', 'expect "OS9:"',
+        'send "chx /v0/cmds\\r"', 'expect "OS9:"', 'send "reboot\\r"', 'expect "Rebooting"', 'expect "OS9:"',
+        'send "chx /v0/cmds\\r"', 'expect "OS9:"', 'send "dir /d1\\r"', 'expect "OS9:"', 'send "list /d1/mark\\r"', 'expect "OS9:"',
+        'send "echo REBOOTED\\r"', 'expect "OS9:"'])
+    after = out.split('Rebooting')[-1]
+    check('OS-9 reboot: the machine starts again (the banner twice), the disk files are still there, the shell works',
+          out.count('NitrOS-9/6809 Level 2') == 2 and 'mark' in after and 'hello' in after and 'REBOOTED' in after, out[-900:])
 
 
 def os9_cpm80(tmp):
@@ -485,6 +499,7 @@ def main():
         os9_cpm80_text(tmp)
         os9_cpm86(tmp)
         os9_cpp(tmp)
+        os9_reboot(tmp)
         os9_cc80(tmp)
         os9_turbo(tmp)
         os9_driver(tmp)

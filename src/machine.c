@@ -76,6 +76,8 @@ int machine_load_rom(machine_t *m, const char *file, long romstart)
     FILE *f = fopen(file, "rb");
     long len;
     if (!f) return -1;
+    if (m->rom_file != file) { free(m->rom_file); m->rom_file = strdup(file); }
+    m->rom_arg = romstart;
     fseek(f, 0, SEEK_END);
     len = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -99,6 +101,15 @@ int machine_load_rom(machine_t *m, const char *file, long romstart)
     }
     fclose(f);
     return 0;
+}
+
+/* $A7 in the power register: the same as the reset button of the board (a power cycle) */
+void machine_reboot(machine_t *m)
+{
+    if (m->level2) memset(m->phymem, 0, m->physsize + 0x2000);
+    else memset(m->mem1, 0, sizeof m->mem1);
+    if (m->rom_file) machine_load_rom(m, m->rom_file, m->rom_arg);
+    machine_reset(m);
 }
 
 void machine_set_timer(machine_t *m, long hz, int irq_line, int mode)
@@ -233,6 +244,7 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
         }
         if (off == 0x0f) {                       /* power control: $A5 = power off ($A6: power off, exit code 1) */
             if (v == 0xa5 || v == 0xa6) { m->stop = 1; m->quit = 1; m->exit_code = (v == 0xa6); }
+            if (v == 0xa7) m->reboot_req = 1;        /* reboot: done between two slices (machine_run) */
             return;
         }
         if (off >= 0x30 && off < 0x40) { do_timer_write(m, off - 0x30, v); return; }
@@ -537,6 +549,7 @@ int machine_run(machine_t *m, uint64_t max_cycles)
         }
         dev_tick(m);
         if (m->xl) xlink_catch_up(m->xl);
+        if (m->reboot_req) { m->reboot_req = 0; machine_reboot(m); }
 
         if (m->realtime && m->cpu.state == M6809_RUN) {
             uint64_t target = host_t0 + (m->cpu.total_cycles - cyc_t0) * 1000000000ull / (uint64_t)m->clock_hz;
