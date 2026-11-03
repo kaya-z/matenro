@@ -228,7 +228,7 @@ static uint8_t ext_read(xlink_t *x, int i)
     case XE_CLK + 1:  return (uint8_t)(x->clk_latch >> 16);
     case XE_CLK + 2:  return (uint8_t)(x->clk_latch >> 8);
     case XE_CLK + 3:  return (uint8_t)x->clk_latch;
-    case XE_US:       x->us_latch = (uint32_t)(x->m->cpu.total_cycles * 1000000ull / (uint64_t)x->m->clock_hz);
+    case XE_US:       x->us_latch = (uint32_t)(machine_time_ps(x->m) / 1000000ull);
                       return (uint8_t)(x->us_latch >> 24);
     case XE_US + 1:   return (uint8_t)(x->us_latch >> 16);
     case XE_US + 2:   return (uint8_t)(x->us_latch >> 8);

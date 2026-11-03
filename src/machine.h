@@ -123,6 +123,11 @@ typedef struct machine {
     /* Manhattan: the second CPU */
     xlink_t *xl;                   /* NULL when no sub CPU is plugged in      */
     uint64_t p6809_ps;             /* 6809 clock period in picoseconds        */
+    /* FPGA wait states (-hw): the real time of the board.  The 6809 waits for the PSRAM (docs/DESIGN.md, chapter 17);
+     * stall_ps is the time the CPU was held, on top of total_cycles (executed cycles: the timer counts those, like the board). */
+    int      hw_waits;
+    uint64_t stall_ps;
+    uint64_t hw_insn;              /* insn_count of the last instruction that was charged for its fetch */
 
     /* hooks into the other modules */
     void    *vdisk;

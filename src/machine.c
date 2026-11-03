@@ -259,8 +259,36 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
     io[addr & 0x1ff] = v;
 }
 
+/* FPGA wait states of the 6809 (measured on the RTL of the board, fpga/tn9k/test/timing.asm): a bus cycle that reads the
+ * PSRAM takes about 10 system clocks (67.5 MHz) longer than the 36 of an E cycle, one that writes it 5; an instruction that
+ * is fetched from the PSRAM costs 29 more (the fetch of the opcode stalls twice), its operand bytes nothing; the ROM and the
+ * I/O page are not waited for.  The clock counts are those of the RTL; hw_clk_ps is the period of the system clock. */
+#define HW_CLK_PS   14815ull
+#define HW_RD_CLK   10.4
+#define HW_WR_CLK   5.4
+#define HW_FETCH_CLK 34.0
+
+static int hw_ram(const machine_t *m, uint16_t addr)
+{
+    if (m->level2) return (addr & 0xfe00) != 0xfe00;            /* the ROM image is in the PSRAM too */
+    return (addr & 0xfe00) != (m->iopage & 0xfe00) && addr < m->romstart;
+}
+
+static void hw_wait(machine_t *m, uint16_t addr, int is_write)
+{
+    double clk;
+    if (!is_write && addr == m->cpu.insn_pc && m->cpu.insn_count != m->hw_insn) {          /* the opcode */
+        m->hw_insn = m->cpu.insn_count;
+        clk = HW_FETCH_CLK;
+    } else if (!is_write && addr > m->cpu.insn_pc && addr <= (uint16_t)(m->cpu.insn_pc + 4) && m->hw_insn == m->cpu.insn_count) {
+        return;                                                                           /* an operand byte of the RAM instruction */
+    } else clk = is_write ? HW_WR_CLK : HW_RD_CLK;
+    m->stall_ps += (uint64_t)(clk * (double)HW_CLK_PS);
+}
+
 uint8_t machine_read(machine_t *m, uint16_t addr)
 {
+    if (m->hw_waits && hw_ram(m, addr)) hw_wait(m, addr, 0);
     if (!m->level2) {
         if ((addr & 0xfe00) == (m->iopage & 0xfe00)) return io_read(m, addr);
         return m->mem1[addr];
@@ -274,6 +302,7 @@ uint8_t machine_read(machine_t *m, uint16_t addr)
 
 void machine_write(machine_t *m, uint16_t addr, uint8_t v)
 {
+    if (m->hw_waits && hw_ram(m, addr)) hw_wait(m, addr, 1);
     if (m->watch_hi && addr >= m->watch_lo && addr <= m->watch_hi)
         fprintf(stderr, "WATCH write [%04X]=%02X by pc=%04X (opcode %02X) S=%04X\n", addr, v,
                 m->cpu.insn_pc, m->cpu.opcode, m->cpu.s);
@@ -346,7 +375,7 @@ void machine_update_irq(machine_t *m)
 
 uint64_t machine_time_ps(const machine_t *m)
 {
-    return m->cpu.total_cycles * m->p6809_ps;
+    return m->cpu.total_cycles * m->p6809_ps + m->stall_ps;
 }
 
 void machine_irq_ack(m6809_t *c, int line)
