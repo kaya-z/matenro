@@ -176,6 +176,14 @@ module matenro_soc #(
     reg [5:0] settle = 6'd0;
     always @(posedge clk) settle <= {settle[4:0], mem_pend | disk_busy};
     wire      stall = mem_pend | disk_busy | pwroff | acia_pend | (|settle) | xl_wait | xl_rcap;
+    // The phase counter looks at the window of the XLINK through a register: xl_wait / xl_rcap start at acc2, two phases before
+    // the clock of ph 0 that is held (a clock late is still in time), and come from the deep logic of the XLINK (they were on
+    // the slowest paths into the counter); their release is a clock later.  The PSRAM and the others act at once (the 6809 runs
+    // from the PSRAM: a clock more on each access would make it 6 % slower).
+    // The disk, the ACIA and the power-off are slow sources too (registered the same way: they start at acc2 or later by a few clocks).
+    reg       xlst_q = 1'b0;
+    always @(posedge clk) xlst_q <= xl_wait | xl_rcap | disk_busy | acia_pend | pwroff;
+    wire      stall_ph = mem_pend | (|settle) | xlst_q;
 
     always @(posedge clk) begin
         ecyc   <= 1'b0;
@@ -185,7 +193,7 @@ module matenro_soc #(
             div <= 0; ph <= 0; e <= 1'b1; q <= 1'b0;
         end else if (div != PH_DIV - 1) begin
             div <= div + 1'b1;
-        end else if (!(ph == 2'd0 && stall)) begin
+        end else if (!(ph == 2'd0 && stall_ph)) begin
             div <= 0;
             ph  <= ph + 1'b1;
             case (ph)
@@ -329,21 +337,26 @@ module matenro_soc #(
     // physical address gives the registers of the clock too.  (pa is declared below: it is the physical address of a.)
     reg  [21:0] pa_r;                                          // pa, a clock late: the decode of the alias is a clock later than the others (the address is stable long before it is used)
     always @(posedge clk) pa_r <= pa;
-    wire        ta     = l2 && !in_io && (pa_r[21:3] == 19'h0fff6) && (pa_r[2:0] <= 3'd6);
+    wire        ta     = l2 && !in_io_q && (pa_r[21:3] == 19'h0fff6) && (pa_r[2:0] <= 3'd6);
+    // the page and the offset, a clock late too: the decode below is then a second stage (two clocks after the address,
+    // which is stable for more than 15 clocks before acc2)
+    reg         in_io_q;
+    reg  [8:0]  off_q;
+    always @(posedge clk) begin in_io_q <= in_io; off_q <= off; end
     always @(posedge clk) begin
         io_ta    <= ta;
-        io_modr  <= in_io && off == 9'h00e;                        // the mode register
-        io_acia  <= in_io && off[8:1] == 8'd0;                   // $E000, $E001
-        io_power <= in_io && off == 9'h00f;
-        io_timer <= in_io && off >= 9'h030 && off <= 9'h036;
-        io_disk  <= in_io && off >= 9'h040 && off <= 9'h047;
-        io_xl    <= in_io && off >= 9'h049 && off <= 9'h04d;                 // the cross link
-        io_mmu   <= l2 && in_io && off == 9'h011;            // the task register
-        io_map   <= l2 && in_io && off >= 9'h020 && off <= 9'h02f;   // the system map, the user map
-        io_hit   <= (in_io && ((off[8:1] == 8'd0) || off == 9'h00f || off == 9'h00e || (off >= 9'h030 && off <= 9'h036) || (off >= 9'h040 && off <= 9'h047)
-                              || (off >= 9'h049 && off <= 9'h04d)
-                              || (l2 && (off == 9'h011 || (off >= 9'h020 && off <= 9'h02f))))) || ta;
-        io_quiet <= !l2 && in_io && off < 9'h080 && !((off[8:1] == 8'd0) || off == 9'h00f || off == 9'h00e || (off >= 9'h030 && off <= 9'h036) || (off >= 9'h040 && off <= 9'h047) || (off >= 9'h049 && off <= 9'h04d));
+        io_modr  <= in_io_q && off_q == 9'h00e;                        // the mode register
+        io_acia  <= in_io_q && off_q[8:1] == 8'd0;                   // $E000, $E001
+        io_power <= in_io_q && off_q == 9'h00f;
+        io_timer <= in_io_q && off_q >= 9'h030 && off_q <= 9'h036;
+        io_disk  <= in_io_q && off_q >= 9'h040 && off_q <= 9'h047;
+        io_xl    <= in_io_q && off_q >= 9'h049 && off_q <= 9'h04d;                 // the cross link
+        io_mmu   <= l2 && in_io_q && off_q == 9'h011;            // the task register
+        io_map   <= l2 && in_io_q && off_q >= 9'h020 && off_q <= 9'h02f;   // the system map, the user map
+        io_hit   <= (in_io_q && ((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047)
+                              || (off_q >= 9'h049 && off_q <= 9'h04d)
+                              || (l2 && (off_q == 9'h011 || (off_q >= 9'h020 && off_q <= 9'h02f))))) || ta;
+        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || (off_q >= 9'h049 && off_q <= 9'h04d));
         rom_sel  <= !l2 && (a >= ROM_BASE);
     end
 
@@ -413,7 +426,7 @@ module matenro_soc #(
     );
 
     // io read data
-    reg [7:0] io_rdata;
+    reg [7:0] io_rdata, io_rdata_d;
     always @(*) begin
         io_rdata = 8'h00;
         if (io_acia)       io_rdata = off[0] ? acia_rdata : acia_status;
@@ -421,23 +434,31 @@ module matenro_soc #(
         else if (io_xl)    io_rdata = xl_rdata;
         else if (io_mmu)   io_rdata = tr_raw;
         else if (io_map)   io_rdata = off[3] ? map_u[off[2:0]] : map_s[off[2:0]];
-        else if (io_disk)
-            case (off[2:0])
-                3'd0: io_rdata = e040;
-                3'd1: io_rdata = d_drive;
-                3'd2: io_rdata = d_lsn2;
-                3'd3: io_rdata = d_lsn1;
-                3'd4: io_rdata = d_lsn0;
-                3'd5: io_rdata = d_bufh;
-                3'd6: io_rdata = d_bufl;
-                default: io_rdata = d_47;
-            endcase
     end
+    always @(*)
+        case (off[2:0])
+            3'd0: io_rdata_d = e040;
+            3'd1: io_rdata_d = d_drive;
+            3'd2: io_rdata_d = d_lsn2;
+            3'd3: io_rdata_d = d_lsn1;
+            3'd4: io_rdata_d = d_lsn0;
+            3'd5: io_rdata_d = d_bufh;
+            3'd6: io_rdata_d = d_bufl;
+            default: io_rdata_d = d_47;
+        endcase
 
     // The address is stable long before the access (see above), so the read data of the registers are registered first:
     // the mux (the maps are RAM, the clock, the XLINK) and the choice of rd_reg were one long path.
-    reg [7:0] io_rdata_q;
-    always @(posedge clk) io_rdata_q <= io_rdata;
+    // (two stages: the disk registers and the others are chosen a clock before the last choice; the data at acc2 is then two
+    // clocks old, which is right for all of them: none changes in the clocks before a read of it by the CPU)
+    reg [7:0] io_rdata_q, io_rd_o, io_rd_dk;
+    reg       io_rd_isdk;
+    always @(posedge clk) begin
+        io_rd_o    <= io_rdata;
+        io_rd_dk   <= io_rdata_d;
+        io_rd_isdk <= io_disk;
+        io_rdata_q <= io_rd_isdk ? io_rd_dk : io_rd_o;
+    end
 
     // a write to the disk registers: noted at the access, done one clock later (c_wdata holds the byte)
     reg       w_disk = 1'b0;
@@ -445,6 +466,20 @@ module matenro_soc #(
     always @(posedge clk) begin
         w_disk <= acc2 && vma_pend && !cpu_rnw && io_disk;
         w_off  <= off[2:0];
+    end
+
+    // A write of the 6809 to the map ($FFA0-$FFAF) or to the mode register ($A2 / $A3), decided at acc_go (one clock before
+    // acc2, when the access is done): vma_pend, the decoded address and the data are stable by then.
+    reg        mw_s = 1'b0, mw_u = 1'b0, mo_a2 = 1'b0, mo_a3 = 1'b0;
+    reg [2:0]  mw_i;
+    reg [7:0]  mw_d;
+    always @(posedge clk) begin
+        mw_s  <= acc_go && vma_pend && !cpu_rnw && io_map && !off[3];
+        mw_u  <= acc_go && vma_pend && !cpu_rnw && io_map &&  off[3];
+        mo_a2 <= acc_go && vma_pend && !cpu_rnw && io_modr && cpu_d_out == 8'ha2;
+        mo_a3 <= acc_go && vma_pend && !cpu_rnw && io_modr && cpu_d_out == 8'ha3;
+        mw_i  <= off[2:0];
+        mw_d  <= cpu_d_out;
     end
 
     always @(posedge clk) begin
@@ -473,20 +508,7 @@ module matenro_soc #(
                             if (io_power && cpu_d_out == 8'ha5) begin pwroff <= 1'b1; osrun <= 1'b0; end      // shutdown: LED5 on, LED4 off
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
                             if (io_power && cpu_d_out == 8'ha7) reboot_r <= 1'b1;      // reboot: the same as the reset button
-                            if (io_modr) begin
-                                if (cpu_d_out == 8'ha2 && !l2) begin           // to the Level 2 mode: the identity map for the blocks 0-6
-                                    l2 <= 1'b1; tr <= 1'b0; tr_raw <= 8'hff;
-                                    for (mk = 0; mk < 7; mk = mk + 1) map_s[mk] <= mk[7:0];
-                                    map_s[7] <= 8'h3f;
-                                end
-                                if (cpu_d_out == 8'ha3 && l2) begin             // reset the CPU with the maps of the reset
-                                    go_req <= 1'b1; tr <= 1'b0; tr_raw <= 8'hff;
-                                    for (mk = 0; mk < 8; mk = mk + 1) begin map_s[mk] <= 8'hff; map_u[mk] <= 8'hff; end
-                                    map_s[7] <= 8'h3f;
-                                end
-                            end
                             if (io_mmu) begin tr_raw <= cpu_d_out; tr <= cpu_d_out[0]; end
-                            if (io_map) begin if (off[3]) map_u[off[2:0]] <= cpu_d_out; else map_s[off[2:0]] <= cpu_d_out; end
                             if (io_acia && off[0]) begin
                                 acia_pend <= 1'b1;                  // the guest does not look at TDRE: wait for it here
                                 acia_byte <= cpu_d_out;
@@ -520,6 +542,20 @@ module matenro_soc #(
                     3'd6: d_bufl  <= c_wdata;
                     default: d_47 <= c_wdata;
                 endcase
+            // the map registers and the mode register: written with the strobes of the clock before (mw_*, mo_*: registered at
+            // acc_go, so the long decode of the access is not in front of the 32 map registers)
+            if (mw_s) map_s[mw_i] <= mw_d;
+            if (mw_u) map_u[mw_i] <= mw_d;
+            if (mo_a2 && !l2) begin                                   // to the Level 2 mode: the identity map for the blocks 0-6
+                l2 <= 1'b1; tr <= 1'b0; tr_raw <= 8'hff;
+                for (mk = 0; mk < 7; mk = mk + 1) map_s[mk] <= mk[7:0];
+                map_s[7] <= 8'h3f;
+            end
+            if (mo_a3 && l2) begin                                    // reset the CPU with the maps of the reset
+                go_req <= 1'b1; tr <= 1'b0; tr_raw <= 8'hff;
+                for (mk = 0; mk < 8; mk = mk + 1) begin map_s[mk] <= 8'hff; map_u[mk] <= 8'hff; end
+                map_s[7] <= 8'h3f;
+            end
             if (acia_wr) acia_pend <= 1'b0;
             if (xl_cap) rd_reg <= xl_rdata;                           // MATENRO: after a window read
             if (mem_pend) begin
@@ -573,9 +609,13 @@ module matenro_soc #(
     // 6809 side: a read or a write of $49-$4D is one clock pulse at the access (acc2); after a read the data are taken
     // again when the window (if it was a read of XDAT) is done, so the CPU waits (xl_rcap) until then.
     wire [2:0]  xl_a   = off[2:0] - 3'd1;                         // $49..$4D -> 0..4
-    wire        xl_acc = acc2 && vma_pend && io_xl;
-    wire        xl_re  = xl_acc && cpu_rnw;
-    wire        xl_we  = xl_acc && !cpu_rnw;
+    // the read / write strobes of the XLINK at acc2, decided at acc_go (registers: vma_pend and the decode were in front of the
+    // window address counter); the register number and the data stay live (stable long before)
+    reg         xl_re = 1'b0, xl_we = 1'b0;
+    always @(posedge clk) begin
+        xl_re <= acc_go && vma_pend && io_xl &&  cpu_rnw;
+        xl_we <= acc_go && vma_pend && io_xl && !cpu_rnw;
+    end
     always @(posedge clk) begin
         if (rst) begin xl_rcap <= 1'b0; xl_cnt <= 3'd0; end
         else begin

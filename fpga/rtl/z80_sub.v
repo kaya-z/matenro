@@ -54,16 +54,22 @@ module z80_sub #(
 );
     // ------------------------------------------------------------ clock enable and stall
     reg  [7:0] cnt;
-    wire       cen_raw = (cnt == CLKDIV - 1);
+    (* syn_maxfan = 32 *) reg cen_raw = 1'b0;                // cnt == CLKDIV - 1, decided a clock earlier (a register: it fans out to the whole core)
     // The registers of the bus wrapper (RD, WR, MREQ, IORQ, the data latch) take their new value from the core once in a
     // Z80 clock, UPD clocks after the clock enable, when the logic of the core has settled (the paths are multicycle paths
     // for the timing tool, fpga/tn9k/constraints/matenro.sdc).
     localparam UPD = (CLKDIV >= 7) ? 4 : (CLKDIV - 1);
     wire       upd = (cnt == UPD);
-    always @(posedge clk) cnt <= (rst || cen_raw) ? 8'd0 : cnt + 8'd1;
-    reg        zstall;                       // a memory access of the Z80 is under way
+    always @(posedge clk) begin
+        cnt     <= (rst || cen_raw) ? 8'd0 : cnt + 8'd1;
+        cen_raw <= !rst && !cen_raw && (cnt == CLKDIV - 2);
+    end
+    (* syn_maxfan = 32 *) reg zstall;                       // a memory access of the Z80 is under way
     wire       rd_start, wr_end;
-    wire       cen = cen_raw & ~zstall & ~rd_start & ~wr_end;
+    // rd_start / wr_end come one clock after the outputs of the core changed (UPD clocks after the enable); with CLKDIV >= 7
+    // they are over before the next enable (zstall is set by then), so they are left out of cen: it fans out to every register
+    // of the core and was on the slowest paths of the design.
+    wire       cen = cen_raw & ~zstall & ((CLKDIV >= 7) ? 1'b1 : (~rd_start & ~wr_end));
 
     // ------------------------------------------------------------ Z80
     wire        sub_rst_n, sub_hold, sub_int, sub_nmi;
@@ -110,7 +116,10 @@ module z80_sub #(
     reg [7:0]  dout_q;
     reg [7:0]  a_q;
     always @(posedge clk) if (io_wr) begin dout_q <= dout; a_q <= A[7:0]; end
-    wire s_we = io_wr_q & ~io_wr;
+    // the I/O write strobe for the XLINK, one clock after the end of the write (s_we: a register, so IORQ of the core is not in
+    // front of the port mux and of the read data register s_rdata_q)
+    reg  s_we = 1'b0;
+    always @(posedge clk) s_we <= io_wr_q & ~io_wr;
     wire [3:0] s_port = s_we ? a_q[3:0] : A[3:0];
     wire port_ok = s_we ? (a_q[7:4] == 4'h0) : (A[7:4] == 4'h0);   // only $00-$0F are decoded
 
