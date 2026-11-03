@@ -2,7 +2,7 @@
 ********************************************************************
 * duo - a Mandelbrot picture drawn by both CPUs of the Matenro machine at the same time
 *
-*   duo [-1] [-z] [-n]
+*   duo [-1] [-z] [-n] [-i]
 *
 *   The 6809 and the Z80 take the 25 rows of the picture one by one from a common counter: when the Z80 has
 *   finished a row it gets the next one, the 6809 computes a row itself in the meantime.  The Z80 program
@@ -12,6 +12,10 @@
 *   of the 6809 in yellow, then the number of rows of each CPU and the time of the computation.
 *
 *   -1   the 6809 only (the time to compare)      -z   the Z80 only      -n   no colours (plain text)
+*   -i   also write the number of doorbell interrupts that the xlink driver (/x0) has serviced
+*
+* The doorbell of the Z80 interrupts the Z80 (it halts between two rows); the doorbell of the Z80 wakes the 6809 through the driver
+* /x0 (SS.XWait) when it is loaded; without the driver the 6809 sleeps one tick at a time and looks at the doorbell flag.
 *
 * The time comes from the microsecond counter XE_US of the cross link (see etime).
 * Credits: the module layout follows the sample commands of the NitrOS-9 project (GPL v2), as in os9/xrun.asm.  The code is original.
@@ -40,6 +44,8 @@ XE_MD    equ   $09
 XE_WA    equ   $0A
 XE_WD    equ   $0D
 XE_US    equ   $14
+SS.XInfo equ   $B0
+SS.XWait equ   $B1
 NROWS    equ   25
 NCOLS    equ   79
 
@@ -48,6 +54,9 @@ NCOLS    equ   79
          org   0
 mode     rmb   1                 bit 0: the 6809 works, bit 1: the Z80 works
 color    rmb   1
+xpath    rmb   1                 path of /x0 (the xlink driver), 0 = not loaded
+showi    rmb   1                 -i
+irqs     rmb   2
 next     rmb   1                 the next row nobody has taken
 cur      rmb   1
 zrow     rmb   1                 the row of the Z80
@@ -84,9 +93,9 @@ name     fcs   /duo/
 
 msgnosub fcc   "duo: no Z80 sub CPU"
          fcb   C$CR
-msgtmo   fcc   "duo: the Z80 did not answer"
-         fcb   C$CR
-msgusage fcc   "usage: duo [-1] [-z] [-n]"
+msgtmo   fcc   "duo: the Z80 did not answer, XCTL XSTAT row: "
+         fcb   0
+msgusage fcc   "usage: duo [-1] [-z] [-n] [-i]"
          fcb   C$CR
 msg68    fcc   "6809: "
          fcb   0
@@ -96,6 +105,10 @@ msgrows  fcc   " rows   "
          fcb   0
 msgs     fcc   " s"
          fcb   0
+msgi     fcc   "doorbell interrupts: "
+         fcb   0
+x0name   fcc   "/x0"
+         fcb   C$CR
 
          use   duoz80.inc
 
@@ -104,6 +117,7 @@ start    lda   #3
          sta   mode,u
          lda   #1
          sta   color,u
+         clr   showi,u
          clr   next,u
          clr   zbusy,u
          clr   n68,u
@@ -125,11 +139,23 @@ o2       cmpa  #'z'
          sta   mode,u
          bra   opt
 o3       cmpa  #'n'
-         lbne  usage
+         bne   o4
          clr   color,u
+         bra   opt
+o4       cmpa  #'i'
+         lbne  usage
+         lda   #1
+         sta   showi,u
          bra   opt
 optend   cmpa  #C$CR
          lbne  usage
+         clr   xpath,u             the driver: the doorbell wakes the process
+         leax  x0name,pcr
+         lda   #UPDAT.
+         os9   I$Open
+         bcs   noxd
+         sta   xpath,u
+noxd
          lda   >XID
          cmpa  #1                  1: Z80 sub CPU
          beq   hasz
@@ -173,14 +199,37 @@ done     lbsr  rdus1
          clr   >XCTL               stop the Z80
          lbsr  picture
          lbsr  report
+         tst   showi,u
+         beq   done2
+         lbsr  repirq
+done2
          clrb
          os9   F$Exit
 
 nosub    leax  msgnosub,pcr
          bra   perr
-timeout  clr   >XCTL
+timeout  leay  out,u              what the cross link says: XCTL XSTAT and the row of the Z80
          leax  msgtmo,pcr
-         bra   perr
+         lbsr  puts
+         lda   >XCTL
+         lbsr  put2h
+         lda   #' '
+         sta   ,y+
+         lda   >XSTAT
+         lbsr  put2h
+         lda   #' '
+         sta   ,y+
+         lda   zrow,u
+         lbsr  put2h
+         lda   #C$CR
+         sta   ,y+
+         clr   >XCTL
+         leax  out,u
+         lda   #2
+         ldy   #80
+         os9   I$WritLn
+         ldb   #1
+         os9   F$Exit
 usage    leax  msgusage,pcr
 perr     lda   #2
          ldy   #80
@@ -257,9 +306,16 @@ w1       lda   >XSTAT
          bita  #1
          bne   w2
          pshs  y
-         ldx   #1
+         tst   xpath,u
+         beq   w3
+         lda   xpath,u
+         ldb   #SS.XWait
+         ldx   #3
+         os9   I$GetStt
+         bra   w4
+w3       ldx   #1
          os9   F$Sleep
-         puls  y
+w4       puls  y
          leay  -1,y
          bne   w1
          orcc  #1
@@ -528,6 +584,56 @@ rp4      lda   ,x+
          leax  msgs,pcr
          lbsr  puts
          lbra  wrline
+
+* "doorbell interrupts: n" (SS.XInfo of the driver: R$U)
+repirq   tst   xpath,u
+         beq   ri9
+         lda   xpath,u
+         ldb   #SS.XInfo
+         pshs  u
+         os9   I$GetStt
+         tfr   u,d
+         puls  u
+         std   irqs,u
+         leay  out,u
+         leax  msgi,pcr
+         lbsr  puts
+         ldd   irqs,u
+         std   num+2,u
+         clr   num,u
+         clr   num+1,u
+         lbsr  u32dec
+         leax  dig,u
+         ldb   #9
+ri1      lda   ,x
+         cmpa  #'0'
+         bne   ri2
+         leax  1,x
+         decb
+         bne   ri1
+ri2      incb
+ri3      lda   ,x+
+         sta   ,y+
+         decb
+         bne   ri3
+         lbra  wrline
+ri9      rts
+
+* A as two hex digits at Y
+put2h    pshs  a
+         lsra
+         lsra
+         lsra
+         lsra
+         bsr   p2h
+         puls  a
+         anda  #$0F
+p2h      adda  #'0'
+         cmpa  #'9'
+         bls   p2h2
+         adda  #7
+p2h2     sta   ,y+
+         rts
 
 * A (0-99) as one or two digits at Y
 put2     clrb

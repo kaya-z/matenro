@@ -352,6 +352,15 @@ def os9_duo(tmp):
     check('duo: the rows are shared (6809 + Z80 = 25 rows, both work), -1: 25 rows by the 6809, -z: 25 rows by the Z80; usage for a bad option',
           len(runs) == 3 and [int(r[0]) + int(r[1]) for r in runs] == [25, 25, 25] and int(runs[0][0]) > 0 and int(runs[0][1]) > 0
           and runs[1][:2] == ('25', '0') and runs[2][:2] == ('0', '25') and 'usage: duo' in out, str(runs))
+    # with the xlink driver (/x0): the memory comes from OS-9, the doorbell of the Z80 interrupts the 6809 (the IRQ polling table, the
+    # Clock module calls it) and the doorbell of the 6809 interrupts the Z80
+    out, d = os9_session(tmp, 'duoirq', 'z80', {}, ['send "duo -z -n -i\\r"', 'expect "OS9:"'], driver=True)
+    pics = [ln.rstrip('\r') for ln in out.split('\n')]
+    found = [ln for ln in pics if len(ln) == 79 and set(ln) <= set('0123456789ABCDEF ')]
+    m = re.search(r'6809: (\d+) rows +Z80: (\d+) rows', out)
+    n = re.search(r'doorbell interrupts: (\d+)', out)
+    check('duo with the xlink driver: the same picture, the Z80 does the 25 rows, the 6809 sleeps in the driver and the doorbell interrupts wake it (one per row)',
+          found == ref and m is not None and m.groups() == ('0', '25') and n is not None and int(n.group(1)) >= 25, out[-600:])
 
 
 def os9_reboot(tmp):

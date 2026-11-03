@@ -25,6 +25,7 @@ module tn9k_top (
     input  wire        uart_rx,
     output wire        uart_tx,
     output wire [5:0]  led,
+    output wire [7:0]  dbus,                // the data bus of the 6809 on pins (D0 = pin 25 ... D7 = pin 34: see scripts/build.sh)
     output wire        sd_clk,
     output wire        sd_mosi,
     input  wire        sd_miso,
@@ -146,7 +147,7 @@ module tn9k_top (
         .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
-        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma()
+        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall), .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma(), .dbg_dbus(dbus)
     );
 
     assign flash_csb = 1'b1, flash_clk = 1'b0, flash_mosi = 1'b0;     // (flash_miso is not read)

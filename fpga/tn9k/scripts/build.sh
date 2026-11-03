@@ -54,6 +54,9 @@ EOT
 cat "$SIM09/constraints/tn9k.cst" > "$B/pins.cst"
 # S2, the second button of the board (S1 is the reset): pin 3, to ground when pressed
 printf 'IO_LOC "btn2" 3;\nIO_PORT "btn2" PULL_MODE=UP;\n' >> "$B/pins.cst"
+# the data bus of the 6809 (8 outputs, D0 first): the header pins 25 26 27 28 29 30 33 34 (D0 = 25 ... D7 = 34)
+i=0
+for p in 25 26 27 28 29 30 33 34; do printf 'IO_LOC "dbus[%d]" %d;\nIO_PORT "dbus[%d]" IO_TYPE=LVCMOS33;\n' $i $p $i >> "$B/pins.cst"; i=$((i+1)); done
 cat "$SIM09/constraints/tn9k.sdc" "$HERE/constraints/matenro.sdc" > "$B/timing.sdc"
 # SDC_SED="s/-multiply_by 5 -divide_by 2/-multiply_by 3 -divide_by 1/": constrain the system clock harder (81 MHz) to see how fast the design really can go
 # (the PLL is not changed: such a bitstream is for the timing report only)

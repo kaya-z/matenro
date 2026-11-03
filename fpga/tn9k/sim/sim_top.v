@@ -61,7 +61,7 @@ module sim_top #(
         .led(led), .led_mode(1'b0), .reboot_req(), .dbg_status(), .dbg_disk(), .term_busy(term_busy),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
-        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_lic(dbg_lic), .dbg_addr(dbg_addr), .dbg_acc(dbg_acc), .dbg_din(dbg_din), .dbg_rnw(dbg_rnw), .dbg_vma(dbg_vma)
+        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_lic(dbg_lic), .dbg_addr(dbg_addr), .dbg_acc(dbg_acc), .dbg_din(dbg_din), .dbg_rnw(dbg_rnw), .dbg_vma(dbg_vma), .dbg_dbus()
     );
 
 `ifdef HDMI

@@ -101,7 +101,8 @@ module matenro_soc #(
     output wire [15:0] dbg_disk,
     output wire [7:0]  dbg_din,
     output wire        dbg_rnw,
-    output wire        dbg_vma
+    output wire        dbg_vma,
+    output wire [7:0]  dbg_dbus             // the data bus of the 6809: the byte read (RnW high) or written
 );
 
     localparam ECYC_PER_SEC  = CLK_HZ / (4 * PH_DIV);
@@ -151,6 +152,7 @@ module matenro_soc #(
     assign dbg_din = cpu_d_in;
     assign dbg_rnw = cpu_rnw;
     assign dbg_vma = vma_pend;
+    assign dbg_dbus = cpu_rnw ? cpu_d_in : cpu_d_out;
 
     // ---------------------------------------------------------------- clock phases
     reg [7:0] div;

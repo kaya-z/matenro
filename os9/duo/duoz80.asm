@@ -1,7 +1,7 @@
 ; SPDX-License-Identifier: MIT
 ; duoz80.asm - the Z80 worker of the OS-9 command `duo` (Mandelbrot on both CPUs of 摩天楼), assembled with tools/z80asm.py
-; Protocol (the doorbell of os9/sub/sumz80.py, but polled, no interrupt): after the start it rings the 6809 ("ready").
-; Then, for each row the 6809 gives it (M2S[0] = 0..24, doorbell): computes the 79 characters of the row into the shared RAM
+; Protocol (the doorbell of os9/sub/sumz80.py): after the start it rings the 6809 ("ready") and halts.
+; Then, for each row the 6809 gives it (M2S[0] = 0..24, doorbell = interrupt, IM 1): computes the 79 characters of the row into the shared RAM
 ; at 0200h and rings the 6809 again.  Fixed point with 8 fraction bits (Q8), the same arithmetic as the 6809 part (duo.asm):
 ;   ca = x*12 (x = -39..39)   cb = y*21 (y = -12..12)   a,b := a*a-b*b+ca, 2*a*b+cb   escape when a*a+b*b > 4
 ; The characters are "0123456789ABCDEF " [iteration count].  The code is original.
@@ -23,12 +23,14 @@ QL      EQU     0314H
 ACC     EQU     0315H
         ORG     0
         LD      SP,4000H
+        IM      1
         XOR     A
         OUT     (03H),A
         OUT     (02H),A         ; ready
-WAITR:  IN      A,(01H)
-        AND     1
-        JR      Z,WAITR
+        EI
+IDLE:   HALT                    ; the doorbell of the 6809 interrupts (RST 38h)
+        JR      IDLE
+        ORG     38H
         IN      A,(04H)         ; the row 0..24
         LD      B,A
         XOR     A
@@ -115,7 +117,8 @@ PUT:    LD      HL,(OP)
         LD      (XC),A
         JP      NZ,PIX
         OUT     (02H),A         ; the row is ready
-        JP      WAITR
+        EI
+        RETI
 
 ; HL = HL*HL (Q8)
 SQ:     LD      D,H

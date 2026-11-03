@@ -11,7 +11,8 @@
 *   Term   stops the sub CPU, (takes the service routine out and) gives the memory back.
 *   GetStat $B0 (SS.XInfo)  R$A = XID, R$X = first physical block, R$Y = number of blocks
 *           $B1 (SS.XWait)  wait for the doorbell of the sub CPU: R$X = time-out in ticks (0 = 100); the process sleeps
-*                           2 ticks at a time (IRQMODE 1: the doorbell interrupt wakes it at once).
+*                           2 ticks at a time (IRQMODE 1: the doorbell interrupt wakes it at once; this needs a Clock module that
+*                           polls the devices, see below).
 *                           R$A = 1 doorbell pending, 0 time-out.
 *   Read / Write / SetStat are not used (the commands `xrun` and `cpm` use the registers directly, they are visible
 *   in every task).
@@ -34,7 +35,7 @@ SS.XWait equ   $B1
 * IRQMODE 1: the doorbell interrupt wakes the waiting process (needs a Clock module that calls the IRQ polling table,
 * D.Poll; sim09's clock.asm does not, so the interrupt would never be serviced).  0: SS.XWait sleeps 2 ticks at a time
 * and looks at the doorbell flag.
-IRQMODE  equ   0
+IRQMODE  equ   1
 XE_MI    equ   $08
 XE_MD    equ   $09
 
@@ -42,6 +43,7 @@ XE_MD    equ   $09
 sbase    rmb   1                 first physical block of the sub CPU memory
 nblk     rmb   1
 waitpid  rmb   1                 process that sleeps in SS.XWait (0 = none)
+irqcnt   rmb   2                 doorbell interrupts serviced (SS.XInfo: R$U)
 xid      rmb   1
 tmp      rmb   2
 PST      equ   .
@@ -66,6 +68,8 @@ IRQPckt  fcb   0                 flip
 
 * ------------------------------------------------------------------
 INIT     clr   waitpid,u
+         clr   irqcnt,u
+         clr   irqcnt+1,u
          ldx   V.PORT,u
          lda   2,x               XID
          beq   noxlink
@@ -136,6 +140,9 @@ IRQSvc   ldx   V.PORT,u
          beq   notmine           (the doorbell may stay pending without an enable: not our interrupt)
          anda  #$EF
          sta   ,x
+         ldd   irqcnt,u
+         addd  #1
+         std   irqcnt,u
          lda   waitpid,u
          beq   mine
          clr   waitpid,u
@@ -172,7 +179,9 @@ GETSTA   ldx   PD.Rgs,y
          rts
 gs_ok    clrb
          rts
-gs_info  lda   xid,u
+gs_info  ldd   irqcnt,u
+         std   R$U,x
+         lda   xid,u
          sta   R$A,x
          clra
          ldb   sbase,u

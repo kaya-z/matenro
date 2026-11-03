@@ -74,8 +74,15 @@ module xlink #(
     reg [6:0]  mi;
     reg [7:0]  svec;
     reg [31:0] clk_cnt, clk_latch;
-    reg [31:0] us_cnt, us_latch;          // microseconds since the reset (the real time: the 6809 may be stalled), XE_US
-    reg [16:0] us_acc;                    // phase: 1000 per clock, a microsecond every CLK_KHZ
+    // microseconds since the reset (the real time: the 6809 may be stalled), XE_US.  A counter of 2 microseconds
+    // (WRAP = 2*CLK_KHZ/1000 clocks: 135 at 67.5 MHz) and a flag for the second half: no adder / comparator in the loop.
+    localparam [8:0] WRAP = (CLK_KHZ * 2) / 1000;
+    localparam [8:0] HALF = WRAP / 2;
+    reg [30:0] us2;                       // 2 microsecond units
+    reg [8:0]  us_ph;                     // clocks in the unit
+    reg        us_hf;                     // second microsecond of the unit
+    reg [31:0] us_latch;
+    wire [31:0] us_cnt = {us2, us_hf};
     reg        win_busy, win_is_read;
     reg        win_c1, win_c2;                     // the carry of the window address is on its way (7 bits per clock)
 
@@ -161,8 +168,11 @@ module xlink #(
         rst_pulse <= 1'b0;
         if (sub_clk_en) clk_cnt <= clk_cnt + 32'd1;
         // the microsecond counter
-        if (us_acc + 17'd1000 >= CLK_KHZ) begin us_acc <= us_acc + 17'd1000 - CLK_KHZ; us_cnt <= us_cnt + 32'd1; end
-        else us_acc <= us_acc + 17'd1000;
+        if (us_ph == WRAP - 9'd1) begin us_ph <= 9'd0; us_hf <= 1'b0; us2 <= us2 + 31'd1; end
+        else begin
+            us_ph <= us_ph + 9'd1;
+            if (us_ph == HALF - 9'd1) us_hf <= 1'b1;
+        end
 
         // ---- window memory port
         if (win_busy && win_ack) begin
@@ -234,7 +244,7 @@ module xlink #(
             c_run <= 1'b0; c_hold <= 1'b0; c_shr <= 1'b0; c_firq <= 1'b0; c_ien <= 1'b0;
             pend_s2m <= 1'b0; pend_m2s <= 1'b0; idx <= 8'h00; mi <= 7'd0;
             svec <= 8'hff; win_req <= 1'b0; win_busy <= 1'b0; win_c1 <= 1'b0; win_c2 <= 1'b0; win_addr <= 21'd0; win_wr <= 1'b0;
-            clk_cnt <= 32'd0; us_cnt <= 32'd0; us_acc <= 17'd0; m2s0 <= 0; m2s1 <= 0; m2s2 <= 0; m2s3 <= 0;
+            clk_cnt <= 32'd0; us2 <= 31'd0; us_ph <= 9'd0; us_hf <= 1'b0; m2s0 <= 0; m2s1 <= 0; m2s2 <= 0; m2s3 <= 0;
             s2m0 <= 0; s2m1 <= 0; s2m2 <= 0; s2m3 <= 0; win_wdata <= 8'h00;
         end
     end
