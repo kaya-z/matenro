@@ -346,9 +346,14 @@ void xlink_catch_up(xlink_t *x)
             x->ops->dump(x->cpu, x->trace);
             fputc('\n', x->trace);
         }
-        c = x->ops->step(x->cpu);
-        x->nmi_req = 0;
-        x->t_ps += (uint64_t)c * x->period_ps;
+        {
+            uint64_t r0 = x->sub_reads, w0 = x->sub_writes;
+            c = x->ops->step(x->cpu);
+            x->nmi_req = 0;
+            x->t_ps += (uint64_t)c * x->period_ps;
+            if (x->m->hw_waits && x->ops->id == 1)       /* the Z80 waits for the PSRAM */
+                x->t_ps += machine_hw_sub_extra(x->m, x->t_ps, (unsigned)(x->sub_reads - r0), (unsigned)(x->sub_writes - w0));
+        }
         x->clocks += (uint64_t)c;
         if (x->m->stop) break;
     }

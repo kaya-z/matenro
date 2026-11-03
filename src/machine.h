@@ -128,6 +128,8 @@ typedef struct machine {
     int      hw_waits;
     uint64_t stall_ps;
     uint64_t hw_insn;              /* insn_count of the last instruction that was charged for its fetch */
+    uint64_t psram_start[2][32];   /* the last PSRAM accesses of the 6809 (0) and of the sub CPU (1): when they started */
+    unsigned psram_n[2];
 
     /* hooks into the other modules */
     void    *vdisk;
@@ -155,6 +157,8 @@ uint8_t machine_peek_phys(machine_t *m, uint32_t paddr);
 void machine_update_irq(machine_t *m);
 /* time of the 6809 in picoseconds (sub CPU scheduling) */
 uint64_t machine_time_ps(const machine_t *m);
+uint64_t machine_hw_sub_extra(machine_t *m, uint64_t t_ps, unsigned reads, unsigned writes);   /* ps a Z80 step is held by the PSRAM */
+uint64_t machine_psram_wait(machine_t *m, int who, uint64_t t_ps);   /* ps the access at t_ps has to wait for the other CPU */
 
 /* scheduler */
 int  machine_run(machine_t *m, uint64_t max_cycles);  /* returns when stop set / cycles done */

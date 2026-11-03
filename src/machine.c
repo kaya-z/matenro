@@ -268,6 +268,39 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
 #define HW_WR_CLK   5.4
 #define HW_FETCH_CLK 34.0
 
+/* The PSRAM does one access at a time (about 19 system clocks): an access that starts while the other CPU is in the middle
+ * of one waits for it.  The accesses are remembered (the CPUs run one after the other in slices, so the other CPU's accesses
+ * are in the "future" of this one's catch-up). */
+#define HW_PSRAM_CLK 24ull
+uint64_t machine_psram_wait(machine_t *m, int who, uint64_t t)
+{
+    const uint64_t busy = HW_PSRAM_CLK * HW_CLK_PS;
+    uint64_t t0 = t;
+    int other = 1 - who, again = 1, rounds = 0;
+    while (again && rounds++ < 8) {
+        unsigned k, n = m->psram_n[other] < 32 ? m->psram_n[other] : 32;
+        again = 0;
+        for (k = 0; k < n; k++) {
+            uint64_t s = m->psram_start[other][k];
+            if (t < s + busy && t + busy > s) { t = s + busy; again = 1; }
+        }
+    }
+    m->psram_start[who][m->psram_n[who]++ & 31] = t;
+    return t - t0;
+}
+
+/* The Z80 (measured on the RTL, fpga/tn9k/test/timing6809.asm + zbench.asm): the clock of the Z80 is held 27 system clocks
+ * (3 Z80 clocks) for each memory read, the fetch of an opcode too, and 18 (2 Z80 clocks) for each write; I/O is not waited for. */
+#define HW_Z80_RD_CLK 27ull
+#define HW_Z80_WR_CLK 18ull
+uint64_t machine_hw_sub_extra(machine_t *m, uint64_t t_ps, unsigned reads, unsigned writes)
+{
+    uint64_t acc = 0;
+    while (reads--)  acc += machine_psram_wait(m, 1, t_ps + acc) + HW_Z80_RD_CLK * HW_CLK_PS;
+    while (writes--) acc += machine_psram_wait(m, 1, t_ps + acc) + HW_Z80_WR_CLK * HW_CLK_PS;
+    return acc;
+}
+
 static int hw_ram(const machine_t *m, uint16_t addr)
 {
     if (m->level2) return (addr & 0xfe00) != 0xfe00;            /* the ROM image is in the PSRAM too */
@@ -284,6 +317,7 @@ static void hw_wait(machine_t *m, uint16_t addr, int is_write)
         return;                                                                           /* an operand byte of the RAM instruction */
     } else clk = is_write ? HW_WR_CLK : HW_RD_CLK;
     m->stall_ps += (uint64_t)(clk * (double)HW_CLK_PS);
+    m->stall_ps += machine_psram_wait(m, 0, machine_time_ps(m));
 }
 
 uint8_t machine_read(machine_t *m, uint16_t addr)
