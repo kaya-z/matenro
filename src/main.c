@@ -37,7 +37,8 @@ static void usage(const char *prog)
 "  -sub name          plug in a sub CPU: z80 or 8088 (shares the RAM with the 6809)\n"
 "  -subclock hz       sub CPU clock (default: the maximum of the part, 8 MHz)\n"
 "  -xbase blk         first physical 8KB block of the sub CPU memory (default 0x80 = 1MB)\n"
-"  -hw                time of the board: wait states of the 6809 for the PSRAM (docs/DESIGN.md, chapter 17)\n"
+"  -hw / -nohw        time of the board (default): wait states for the PSRAM, E clock 1.875 MHz; -nohw: the ideal machine,\n"
+"                     6809 at -clock (default 2 MHz) without waits, one instruction per Z80 step (docs/DESIGN.md, chapter 17)\n"
 "  -xload file@addr   load a binary into the sub CPU address space (hex addr, repeatable)\n"
 "  -xrun              release the sub CPU from reset at power on\n"
 "  -xt file           sub CPU instruction trace    -xcon file  sub CPU debug console (default stderr)\n"
@@ -82,7 +83,7 @@ static long parse_size(const char *s)
 
 int main(int argc, char **argv)
 {
-    int level2 = 1, i, hw_waits = 0;
+    int level2 = 1, i, hw_waits = 1, clock_set = 0;
     const char *subname = NULL, *xt = NULL, *xcon = NULL, *xload[8];
     int nxload = 0, xrun = 0, xbase = 0x80, xquantum = 16;
     long subclock = 0;
@@ -116,6 +117,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "-2")) level2 = 1;
         else if (!strcmp(a, "-L1")) level2 = 0;
         else if (!strcmp(a, "-hw")) hw_waits = 1;
+        else if (!strcmp(a, "-nohw")) hw_waits = 0;
         else if (!strcmp(a, "-sub")) subname = NEXT();
         else if (!strcmp(a, "-subclock")) subclock = parse_size(NEXT());
         else if (!strcmp(a, "-xbase")) xbase = (int)strtol(NEXT(), 0, 0);
@@ -138,7 +140,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "-nt")) { start_mon = 1; notimer = 1; }
         else if (!strcmp(a, "-e")) escch = (int)strtol(NEXT(), 0, 0);
         else if (!strcmp(a, "-hz")) hz = strtol(NEXT(), 0, 0);
-        else if (!strcmp(a, "-clock")) clock_hz = parse_size(NEXT());
+        else if (!strcmp(a, "-clock")) { clock_hz = parse_size(NEXT()); clock_set = 1; }
         else if (!strcmp(a, "-max")) realtime = 0;
         else if (!strcmp(a, "-kanji")) {
             char *k = NEXT();
@@ -178,6 +180,7 @@ int main(int argc, char **argv)
     if (!m) { fprintf(stderr, "out of memory\n"); return 2; }
     m->hw_waits = hw_waits;
     if (memtest) machine_memtest(m, memfault, memmsg, sizeof memmsg);    /* before anything is stored in the RAM */
+    if (hw_waits && !clock_set) clock_hz = 1875000;       /* the E clock of the board: 67.5 MHz / 36 */
     m->clock_hz = clock_hz;
     m->realtime = realtime;
     if (icount) { m->det_icount = (int)icount; m->det_next = (uint64_t)icount; }
