@@ -197,6 +197,25 @@ int main(void)
     ops->step(cpu);
     EXPECT("TF: single step trap after NOP", R("ip"), 0x3200);
 
+    /* ---- 4. the bus interface unit (set_timing): the 4 byte prefetch queue, 4 clocks per byte on the 8 bit bus ---- */
+    {
+        int i, total;
+        unsigned rd, wr, rds = 0;
+        setup();
+        ops->set_timing(cpu, 1);
+        memset(mem + 0x100, 0x90, 64);                           /* 64 NOPs: fetch limited, 4 clocks each (3 without the BIU) */
+        i8088_set_reg(cpu, "cs", 0); i8088_set_reg(cpu, "ip", 0x100);
+        for (total = 0, i = 0; i < 40; i++) { total += ops->step(cpu); ops->bus_cycles(cpu, &rd, &wr); rds += rd; }
+        EXPECT("BIU: 40 NOPs: 4 clocks per byte after the 4 queued", total >= 140 && total <= 152, 1);
+        EXPECT("BIU: about one bus cycle per 4 clocks", rds >= 34 && rds <= 40, 1);
+        setup();
+        ops->set_timing(cpu, 1);
+        for (i = 0; i < 20; i++) { mem[0x100 + 2 * i] = 0x89; mem[0x101 + 2 * i] = 0xd8; }     /* MOV AX,BX x 20: 2 bytes in 2 clocks */
+        i8088_set_reg(cpu, "cs", 0); i8088_set_reg(cpu, "ip", 0x100);
+        for (total = 0, i = 0; i < 20; i++) total += ops->step(cpu);
+        EXPECT("BIU: 20 MOV AX,BX: fetch limited (2 bytes = 8 clocks each)", total >= 140 && total <= 152, 1);
+    }
+
     printf("8088: %d checks, %d failed\n", checks, fails);
     ops->destroy(cpu);
     return fails ? 1 : 0;

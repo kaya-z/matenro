@@ -56,6 +56,11 @@ typedef struct sub_cpu_ops {
     uint32_t (*pc)(void *cpu);              /* linear address of the next instruction */
     uint64_t (*insn_count)(void *cpu);
     void    (*dump)(void *cpu, FILE *f);    /* one line register dump                  */
+    /* optional: the timing of the real bus (the board's time, simulator option -hw).  set_timing(1) turns the bus interface
+     * unit of the CPU on (prefetch queue); bus_cycles() gives the byte-wide bus cycles of the last step: reads (opcode
+     * prefetches and data) and writes. */
+    void    (*set_timing)(void *cpu, int on);
+    void    (*bus_cycles)(void *cpu, unsigned *rd, unsigned *wr);
 } sub_cpu_ops_t;
 
 extern const sub_cpu_ops_t sub_cpu_z80;

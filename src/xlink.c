@@ -179,6 +179,7 @@ xlink_t *xlink_create(machine_t *m, const char *name, uint32_t hz)
     for (int i = 0; i < XL_BLOCKS; i++) x->map[i] = (uint8_t)(0x80 + i);   /* upper 1MB of the physical RAM */
     x->svec = 0xff;
     ops->reset(x->cpu);
+    if (m->hw_waits && ops->set_timing) ops->set_timing(x->cpu, 1);       /* -hw: the bus interface unit (prefetch queue) */
     return x;
 }
 
@@ -351,8 +352,11 @@ void xlink_catch_up(xlink_t *x)
             c = x->ops->step(x->cpu);
             x->nmi_req = 0;
             x->t_ps += (uint64_t)c * x->period_ps;
-            if (x->m->hw_waits && x->ops->id == 1)       /* the Z80 waits for the PSRAM */
-                x->t_ps += machine_hw_sub_extra(x->m, x->t_ps, (unsigned)(x->sub_reads - r0), (unsigned)(x->sub_writes - w0));
+            if (x->m->hw_waits) {                         /* the sub CPU waits for the PSRAM */
+                unsigned rd = (unsigned)(x->sub_reads - r0), wr = (unsigned)(x->sub_writes - w0);
+                if (x->ops->bus_cycles) x->ops->bus_cycles(x->cpu, &rd, &wr);     /* the real bus cycles (prefetch) */
+                x->t_ps += machine_hw_sub_extra(x->m, x->t_ps, rd, wr);
+            }
         }
         x->clocks += (uint64_t)c;
         if (x->m->stop) break;

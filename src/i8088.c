@@ -57,6 +57,12 @@ typedef struct i8088 {
     int      ovr;              /* segment override: -1 none                */
     uint16_t start_ip;
     uint32_t cs_ip_start;
+    /* bus interface unit (set_timing): the prefetch queue of the 8088 holds 4 bytes, a bus cycle on the 8 bit bus takes 4 clocks */
+    int      biu;
+    int      q;                /* bytes in the queue                        */
+    int      credit;           /* clocks of the byte that the BIU is fetching */
+    int      nfetch, ndr, ndw; /* instruction bytes, data reads, data writes of this step */
+    unsigned bus_rd, bus_wr;   /* bus cycles of the last step               */
 } i8088_t;
 
 static uint8_t parity_tab[256];
@@ -77,8 +83,8 @@ static void init_tab(void)
 /* memory                                                            */
 /* ---------------------------------------------------------------- */
 static inline uint32_t lin(uint16_t seg, uint16_t off) { return (((uint32_t)seg << 4) + off) & 0xfffff; }
-static inline uint8_t  rd8(i8088_t *z, uint16_t seg, uint16_t off) { return z->bus.mem_read(z->bus.ctx, lin(seg, off)); }
-static inline void     wr8(i8088_t *z, uint16_t seg, uint16_t off, uint8_t v) { z->bus.mem_write(z->bus.ctx, lin(seg, off), v); }
+static inline uint8_t  rd8(i8088_t *z, uint16_t seg, uint16_t off) { z->ndr++; return z->bus.mem_read(z->bus.ctx, lin(seg, off)); }
+static inline void     wr8(i8088_t *z, uint16_t seg, uint16_t off, uint8_t v) { z->ndw++; z->bus.mem_write(z->bus.ctx, lin(seg, off), v); }
 static inline uint16_t rd16(i8088_t *z, uint16_t seg, uint16_t off)
 {
     z->t += 4;                               /* 8 bit bus: second bus cycle */
@@ -90,7 +96,7 @@ static inline void wr16(i8088_t *z, uint16_t seg, uint16_t off, uint16_t v)
     wr8(z, seg, off, (uint8_t)v);
     wr8(z, seg, (uint16_t)(off + 1), (uint8_t)(v >> 8));
 }
-static inline uint8_t fetch8(i8088_t *z) { return rd8(z, z->seg[CS], z->ip++); }
+static inline uint8_t fetch8(i8088_t *z) { z->nfetch++; return z->bus.mem_read(z->bus.ctx, lin(z->seg[CS], z->ip++)); }
 static inline uint16_t fetch16(i8088_t *z)
 {
     uint16_t lo = fetch8(z);
@@ -720,7 +726,7 @@ static void exec(i8088_t *z, uint8_t op, int rep, int *repeat)
     }
 }
 
-static int i8088_step(void *vz)
+static int i8088_step_eu(void *vz)
 {
     i8088_t *z = vz;
     int inh = z->inhibit;
@@ -773,6 +779,46 @@ static int i8088_step(void *vz)
     }
     return z->t;
 }
+
+/* The bus interface unit: the clock counts of the execution unit (Intel's tables) assume that the instruction bytes are in the
+ * queue.  The BIU fills the 4 byte queue with one bus cycle (4 clocks) per byte in the clocks in which the EU does not use the
+ * bus, so short instructions are limited by the fetch (NOP: 4 clocks, not 3), and a jump empties the queue (Intel's counts for
+ * the jumps include the fetch of the first byte at the target). */
+static int i8088_step(void *vz)
+{
+    i8088_t *z = vz;
+    int cont = z->rep_resume;                       /* the next round of a REP: the instruction bytes are not fetched again */
+    uint32_t before = lin(z->seg[CS], z->ip);
+    int e, nf, nd, stall = 0, idle, flush;
+    unsigned fetched = 0;
+    z->nfetch = z->ndr = z->ndw = 0;
+    e = i8088_step_eu(vz);
+    if (!z->biu) return e;
+    nf = cont ? 0 : z->nfetch;
+    nd = z->ndr + z->ndw;
+    flush = !z->rep_resume && !z->halted && lin(z->seg[CS], z->ip) != ((before + (uint32_t)z->nfetch) & 0xfffff);
+    if (nf > z->q) {                                /* the EU waits for the rest: the BIU may have started the next byte already */
+        int need = nf - z->q;
+        fetched = (unsigned)need;
+        stall = 4 * need - z->credit;
+        if (stall < 0) stall = 0;
+        z->q = 0; z->credit = 0;
+    } else z->q -= nf;
+    idle = e - 4 * nd;
+    if (idle < 0) idle = 0;
+    if (flush) { z->q = 1; z->credit = 0; }
+    else {
+        z->credit += idle;
+        while (z->credit >= 4 && z->q < 4) { z->q++; z->credit -= 4; fetched++; }
+        if (z->q >= 4) z->credit = 0;
+    }
+    z->bus_rd = fetched + (unsigned)z->ndr;
+    z->bus_wr = (unsigned)z->ndw;
+    return e + stall;
+}
+
+static void i8088_set_timing(void *vz, int on) { i8088_t *z = vz; z->biu = on; z->q = 4; z->credit = 0; }
+static void i8088_bus_cycles(void *vz, unsigned *rd, unsigned *wr) { i8088_t *z = vz; *rd = z->bus_rd; *wr = z->bus_wr; }
 
 /* ---------------------------------------------------------------- */
 /* plug-in interface                                                 */
@@ -860,4 +906,6 @@ const sub_cpu_ops_t sub_cpu_i8088 = {
     .pc = i8088_pc,
     .insn_count = i8088_insns,
     .dump = i8088_dump,
+    .set_timing = i8088_set_timing,
+    .bus_cycles = i8088_bus_cycles,
 };
