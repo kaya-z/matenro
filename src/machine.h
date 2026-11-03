@@ -127,7 +127,10 @@ typedef struct machine {
      * stall_ps is the time the CPU was held, on top of total_cycles (executed cycles: the timer counts those, like the board). */
     int      hw_waits;
     uint64_t stall_ps;
-    uint64_t hw_insn;              /* insn_count of the last instruction that was charged for its fetch */
+    uint64_t hw_insn;              /* insn_count of the last instruction whose opcode was fetched (-hw) */
+    uint64_t hw_start;             /* total_cycles at that fetch */
+    uint16_t hw_op;                /* its opcode (with the second byte for the prefixes 10 and 11) */
+    int      hw_code_ram, hw_have, hw_prevram;   /* it was fetched from the PSRAM; there is one; the last bus cycle was a PSRAM access */
     uint64_t psram_start[2][32];   /* the last PSRAM accesses of the 6809 (0) and of the sub CPU (1): when they started */
     unsigned psram_n[2];
 

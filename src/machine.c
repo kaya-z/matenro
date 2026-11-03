@@ -266,12 +266,11 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
 #define HW_CLK_PS   14815ull
 #define HW_RD_CLK   10.4
 #define HW_WR_CLK   5.4
-#define HW_FETCH_CLK 34.0
 
 /* The PSRAM does one access at a time (about 19 system clocks): an access that starts while the other CPU is in the middle
  * of one waits for it.  The accesses are remembered (the CPUs run one after the other in slices, so the other CPU's accesses
  * are in the "future" of this one's catch-up). */
-#define HW_PSRAM_CLK 24ull
+#define HW_PSRAM_CLK 9ull
 uint64_t machine_psram_wait(machine_t *m, int who, uint64_t t)
 {
     const uint64_t busy = HW_PSRAM_CLK * HW_CLK_PS;
@@ -307,22 +306,87 @@ static int hw_ram(const machine_t *m, uint16_t addr)
     return (addr & 0xfe00) != (m->iopage & 0xfe00) && addr < m->romstart;
 }
 
-static void hw_wait(machine_t *m, uint16_t addr, int is_write)
+/* The bus cycles of the instructions (from the RTL: src/m6809hw.h) and what they cost.  Extra system clocks over the 36 of an E
+ * cycle, by kind of cycle and by whether the cycle before was a PSRAM access too (measured on the RTL for `duo -1`,
+ * fpga/tn9k/test/m6809_patterns.txt and the class table in docs/DESIGN.md 17.8):
+ *     fetch of the opcode   12.2 / 15.2     read 11.3 / 17.2     write 6.0 / 6.9     I/O read 11.5     no access 0 */
+#include "m6809hw.h"
+
+static const char *hw_pattern(uint16_t op, int n)
 {
-    double clk;
-    if (!is_write && addr == m->cpu.insn_pc && m->cpu.insn_count != m->hw_insn) {          /* the opcode */
-        m->hw_insn = m->cpu.insn_count;
-        clk = HW_FETCH_CLK;
-    } else if (!is_write && addr > m->cpu.insn_pc && addr <= (uint16_t)(m->cpu.insn_pc + 4) && m->hw_insn == m->cpu.insn_count) {
-        return;                                                                           /* an operand byte of the RAM instruction */
-    } else clk = is_write ? HW_WR_CLK : HW_RD_CLK;
-    m->stall_ps += (uint64_t)(clk * (double)HW_CLK_PS);
+    size_t lo = 0, hi = M6809_NPAT;
+    while (lo < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (m6809_pat[mid].op < op || (m6809_pat[mid].op == op && m6809_pat[mid].n < n)) lo = mid + 1; else hi = mid;
+    }
+    if (lo < M6809_NPAT && m6809_pat[lo].op == op && m6809_pat[lo].n == n) return m6809_pat[lo].pat;
+    return NULL;
+}
+
+/* the instruction before has ended: charge it for its bus cycles (called at the fetch of the next opcode) */
+static void hw_settle(machine_t *m)
+{
+    char fb[48];
+    const char *p;
+    int n = (int)(m->cpu.total_cycles - m->hw_start), prev = m->hw_prevram;
+    double acc = 0;
+    uint64_t cont = 0, t = machine_time_ps(m);
+    if (!m->hw_have || !m->hw_code_ram || n <= 0 || n > 40) { m->hw_prevram = 0; return; }
+    p = hw_pattern(m->hw_op, n);
+    if (!p) {                                       /* an instruction that the RTL trace did not show: F, one read, no access */
+        int i;
+        fb[0] = 'F';
+        for (i = 1; i < n && i < 47; i++) fb[i] = (i == 1) ? 'r' : 'd';
+        fb[i] = 0;
+        p = fb;
+    }
+    for (; *p; p++) {
+        double e = 0;
+        int ram = 0;
+        switch (*p) {
+        case 'F': e = prev ? 15.2 : 12.2; ram = 1; break;
+        case 'r': e = prev ? 17.2 : 11.3; ram = 1; break;
+        case 'w': e = prev ? 6.9 : 6.0; ram = 1; break;
+        case 'i': e = 11.5; break;
+        case 'j': e = 6.0; break;
+        default: break;
+        }
+        if (ram) cont += machine_psram_wait(m, 0, t + cont + (uint64_t)(acc * (double)HW_CLK_PS));
+        acc += e;
+        prev = ram;
+    }
+    m->hw_prevram = prev;
+    m->stall_ps += (uint64_t)(acc * (double)HW_CLK_PS) + cont;
+}
+
+/* code in the ROM (Level 1 test programs): the accesses to the PSRAM one by one (the microbenchmarks of docs 17.4) */
+static void hw_wait(machine_t *m, int is_write)
+{
+    m->stall_ps += (uint64_t)((is_write ? HW_WR_CLK : HW_RD_CLK) * (double)HW_CLK_PS);
     m->stall_ps += machine_psram_wait(m, 0, machine_time_ps(m));
 }
 
-uint8_t machine_read(machine_t *m, uint16_t addr)
+static void hw_read_hook(machine_t *m, uint16_t addr, uint8_t v)
 {
-    if (m->hw_waits && hw_ram(m, addr)) hw_wait(m, addr, 0);
+    if (addr == m->cpu.insn_pc && m->cpu.insn_count != m->hw_insn) {              /* the opcode of a new instruction */
+        hw_settle(m);
+        m->hw_insn = m->cpu.insn_count;
+        m->hw_start = m->cpu.total_cycles;
+        m->hw_op = v;
+        m->hw_code_ram = hw_ram(m, addr);
+        m->hw_have = 1;
+        return;
+    }
+    if (m->hw_have && m->hw_insn == m->cpu.insn_count && m->hw_op < 0x100 && (m->hw_op == 0x10 || m->hw_op == 0x11)
+        && addr == (uint16_t)(m->cpu.insn_pc + 1)) {
+        m->hw_op = (uint16_t)((m->hw_op << 8) | v);                                  /* the second opcode */
+        return;
+    }
+    if (!m->hw_code_ram && hw_ram(m, addr)) hw_wait(m, 0);
+}
+
+static uint8_t machine_read_raw(machine_t *m, uint16_t addr)
+{
     if (!m->level2) {
         if ((addr & 0xfe00) == (m->iopage & 0xfe00)) return io_read(m, addr);
         return m->mem1[addr];
@@ -334,9 +398,16 @@ uint8_t machine_read(machine_t *m, uint16_t addr)
     }
 }
 
+uint8_t machine_read(machine_t *m, uint16_t addr)
+{
+    uint8_t v = machine_read_raw(m, addr);
+    if (m->hw_waits) hw_read_hook(m, addr, v);
+    return v;
+}
+
 void machine_write(machine_t *m, uint16_t addr, uint8_t v)
 {
-    if (m->hw_waits && hw_ram(m, addr)) hw_wait(m, addr, 1);
+    if (m->hw_waits && !m->hw_code_ram && hw_ram(m, addr)) hw_wait(m, 1);
     if (m->watch_hi && addr >= m->watch_lo && addr <= m->watch_hi)
         fprintf(stderr, "WATCH write [%04X]=%02X by pc=%04X (opcode %02X) S=%04X\n", addr, v,
                 m->cpu.insn_pc, m->cpu.opcode, m->cpu.s);
