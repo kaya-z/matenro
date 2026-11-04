@@ -336,3 +336,44 @@ NitrOS-9/6809 Level 2 V1.0.1
 
 **時間の流れ方の違い** (シミュレータの `-hw` の元): 実時間 (`XE_US`) は `clk81` で進み、止まらない。6809 の E とタイマと Z80 のクロックは、PSRAM などの待ちで止まる。そのため、OS-9 の時計は実時間より遅れる (待ちが多いほど)。
 
+### 9.10 割り込み線の系統図 (2026-11-04)
+
+6809 の `nIRQ` / `nFIRQ` と、Z80 (TV80) の `int_n` / `nmi_n` が割り込み線のすべてです (6809 の `nNMI` は 1 に固定)。すべて `clk81` に同期した信号で、割り込みの線に非同期の入力はありません。
+
+```
+  matenro_soc.v                      xlink.v (soc/sub/xl)                         z80_sub.v (TV80)
+  --------------------------      -----------------------------------      ---------------------------------
+
+  timer_rtc.v                       c_ien, c_firq <- XCTL ($FFC9) bit4, bit3
+    pending: tick 50 Hz で 1           |
+    0 に戻る: iack                     |        Z80 の OUT $02 (s_port 2)
+    (cpu_bs & !cpu_ba)                 |                 |
+        |                              |                 v
+     timer_irq                         |            pend_s2m (XSTAT bit0)
+        |                              v                 |    0 に戻る: 6809 が XSTAT に書く (ACK)
+        |             irq_n_o = pend_s2m & c_ien & ~c_firq --> xl_irq  --+
+        |             firq_o  = pend_s2m & c_ien &  c_firq --> xl_firq --|--+
+        |                                                                |  |
+        +--> nIRQ  = ~(timer_irq | xl_irq)  <----------------------------+  |      (FREERUN = 0)
+             nFIRQ = ~xl_firq               <-------------------------------+
+                |
+                v
+           mc6809i --> IRQ ベクタ --> OS-9 のカーネル --> D.SvcIRQ (Clock) --> D.Poll --> xlink ドライバ
+
+
+                                    6809 が XID ($FFCA) に書く
+                                      | bit7 = 0              | bit7 = 1
+                                      v                       v
+                                 pend_m2s (XSTAT bit1)    sub_nmi (1 クロックのパルス)
+                                      | sub_int                 |
+                                      |   0 に戻る:             v
+                                      |   Z80 の OUT $03     nmi_pend (次の cen まで保持)
+                                      |   (s_port 3, ACK)       | nmi_n <= ~nmi_pend
+                                      v                         v
+                              .int_n(~sub_int)           .nmi_n(nmi_n)  --> TV80
+```
+
+* **IRQ の合成**: タイマと XLINK の OR は `matenro_soc.v` の `mc6809i` のポート接続の 1 か所だけです。`FREERUN = 1` (v09 のモニタ ROM) のときだけタイマが FIRQ になります。
+* **XLINK の IRQ / FIRQ** は、レジスタ 3 つ (`pend_s2m`、`c_ien`、`c_firq`) の AND で、組み合わせ論理は 1 段です。
+* **Z80 の INT** は `pend_m2s` のレベルをそのまま渡します。ACK するまで立ち続けるので、TV80 が `cen` の立ったクロックでしか見なくても取りこぼしません。NMI は XLINK が 1 クロックのパルスしか出さないため、`z80_sub.v` の `nmi_pend` が次の `cen` まで保持します。
+* 8088 は FPGA にありません。シミュレータは Z80 と同じ構造です (`SUB_INT`、`SUB_NMI`: DESIGN.md 7.1)。
