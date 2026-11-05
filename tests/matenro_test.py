@@ -207,7 +207,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo'):
+    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
@@ -361,6 +361,50 @@ def os9_duo(tmp):
     n = re.search(r'doorbell interrupts: (\d+)', out)
     check('duo with the xlink driver: the same picture, the Z80 does the 25 rows, the 6809 sleeps in the driver and the doorbell interrupts wake it (one per row)',
           found == ref and m is not None and m.groups() == ('0', '25') and n is not None and int(n.group(1)) >= 25, out[-600:])
+
+
+def os9_dos(tmp):
+    """MS-DOS 1.25 on the 8088 (the OS-9 command dos): the kernel and COMMAND are assembled from the source that Microsoft published
+    (not part of this project: set MATENRO_DOS_SRC to .../MS-DOS/v1.25/source, and UASM to a MASM compatible assembler)"""
+    src = os.environ.get('MATENRO_DOS_SRC')
+    uasm = os.environ.get('UASM')
+    if not os.path.isdir(OS9):
+        return
+    if not src or not os.path.isdir(src) or not uasm:
+        print('skip MS-DOS (set MATENRO_DOS_SRC to the MS-DOS 1.25 source and UASM to the assembler)')
+        return
+    bd = os.path.join(tmp, 'dosbin')
+    r = run(['env', 'MSDOS_SRC=' + src, 'UASM=' + uasm, 'sh', os.path.join(ROOT, 'tools', 'build_dosbin.sh'), bd])
+    check('MS-DOS: the kernel and COMMAND assemble from the published source', r.returncode == 0, r.stdout.decode(errors='replace')[-800:])
+    if r.returncode != 0:
+        return
+    hello = b'Hello from a file on the DOS disk.\r\nSecond line.\r\n'
+    hp = os.path.join(tmp, 'hello.txt')
+    open(hp, 'wb').write(hello)
+    img = os.path.join(tmp, 'a.img')
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), img, '160', os.path.join(bd, 'command.com'), hp])
+    assert r.returncode == 0, r.stdout
+    files = {'msdos.sys': open(os.path.join(bd, 'msdos.sys'), 'rb').read(), 'a.img': open(img, 'rb').read()}
+    script = ['send "dos -a=a.img\\r"', 'expect "Enter new date:"', 'send "\\r"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A:"',
+              'send "dir\\r"', 'expect "2 File(s)"', 'send "type hello.txt\\r"', 'expect "Second line."',
+              'send "copy hello.txt copy.txt\\r"', 'expect "1 File(s) copied"', 'send "dir\\r"', 'expect "3 File(s)"',
+              'send "type copy.txt\\r"', 'expect "Second line."', 'send "del copy.txt\\r"', 'sleep 1500000', 'send "dir\\r"', 'expect "2 File(s)"',
+              'send "\\x1d"', 'expect "OS9:"']
+    for tag, drv in (('dos', False), ('dosdrv', True)):
+        out, d = os9_session(tmp, tag, '8088', files, script, driver=drv, timeout=500)
+        out = out.replace('\r', '')
+        why = ' (with the xlink driver)' if drv else ''
+        check('MS-DOS 1.25 boots%s: banner, COMMAND, the clock of OS-9 (day count and time)' % why,
+              'MS-DOS version 1.25' in out and 'Command v. 1.17H' in out and 'Current date is' in out and 'Current time is' in out, out[-900:])
+        check('MS-DOS%s: DIR lists the files of the disk image, TYPE reads one' % why,
+              'COMMAND  COM' in out and 'HELLO    TXT' in out and '2 File(s)' in out and 'Hello from a file on the DOS disk.' in out, out[-900:])
+        check('MS-DOS%s: COPY writes the image (the new file is listed and can be typed), DEL removes it' % why,
+              '3 File(s)' in out and out.count('Second line.') == 2 and out.count('2 File(s)') == 2, out[-900:])
+        check('MS-DOS%s: ^] leaves DOS and the terminal is back (the next OS-9 prompt)' % why, out.rstrip().endswith('OS9:'), out[-300:])
+        if not drv:
+            back = open(os.path.join(d, 'v0', 'a.img'), 'rb').read()
+            check('MS-DOS: the disk image file of the host holds the changes (COPY wrote, DEL marked the entry as deleted)',
+                  back != files['a.img'] and b'\xe5OPY    TXT' in back, '')
 
 
 def os9_reboot(tmp):
@@ -652,6 +696,7 @@ def main():
         os9_cc80(tmp)
         os9_turbo(tmp)
         os9_driver(tmp)
+        os9_dos(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print('%d tests, %d failed' % (total, fails))

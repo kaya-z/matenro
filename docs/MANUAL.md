@@ -322,6 +322,21 @@ duo [-1] [-z] [-n]
 
 シミュレータでの例: 二つの CPU で 4.1 s (6809 が 17 行、Z80 が 8 行)、`-1` で 5.6 s、`-z` で 10.6 s。Z80 にかけ算命令がないので、Z80 一つでは 6809 の約半分の速さです。
 
+### 6.8 MS-DOS 1.25 を 8088 で動かす (`dos`、シミュレータのみ)
+
+```
+dos [-k=カーネル] -a=イメージ [-b=イメージ] [-c=イメージ] [-d=イメージ]
+```
+
+`-sub 8088` のシミュレータで、MS-DOS 1.25 (カーネルと `COMMAND`) が動きます。MS-DOS は Microsoft が公開したソース (`github.com/microsoft/MS-DOS`、MIT ライセンス) から、`tools/build_dosbin.sh` で組みます (MASM 互換のアセンブラ UASM が要ります。ソースもアセンブラもこのリポジトリには入っていません)。
+
+```
+MSDOS_SRC=.../MS-DOS/v1.25/source UASM=.../uasm tools/build_dosbin.sh dosbin      -> dosbin/msdos.sys dosbin/command.com
+python3 tools/mkdosimg.py a.img 160 dosbin/command.com 他のファイル...            160 KB のディスクイメージ (320 と 8192 もある)
+```
+
+`msdos.sys` と `a.img` を OS-9 から見える場所に置き (`-v` で見せたホストのディレクトリなど)、`dos -a=a.img` を実行します。A: の `COMMAND.COM` が読まれて、日付と時刻を聞かれ (Enter でそのまま)、プロンプト `A:` が出ます。`DIR`、`TYPE`、`COPY`、`DEL` と、イメージに入れた `.COM` のプログラム (`CHKDSK` など) が使えます。キーボードは DOS がそのまま受けます (OS-9 は端末の変換を止めます)。**DOS を終わるキーは `^]` (Ctrl-]) です。**ディスクのイメージは OS-9 の普通のファイルで、DOS が書いた内容はそこに残ります。使えるメモリは 256 KB です。詳しくは [DESIGN.md](DESIGN.md) の 18 章。
+
 ## 7. C で書く: `cpp` と `cc80`
 
 ### 7.1 `cpp` (C のプリプロセッサ)

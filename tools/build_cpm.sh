@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 # Assemble the OS-9 command `cpm` (and the shims it embeds).
-#   tools/build_cpm.sh OUTDIR          -> OUTDIR/cpm, OUTDIR/xrun, OUTDIR/reboot, OUTDIR/etime, OUTDIR/duo (Mandelbrot on both CPUs), OUTDIR/bdos, OUTDIR/bdostest (a sample program that calls it), OUTDIR/cpp, OUTDIR/cc80, OUTDIR/xlink (driver), OUTDIR/x0 (descriptor)
+#   tools/build_cpm.sh OUTDIR          -> OUTDIR/cpm, OUTDIR/xrun, OUTDIR/reboot, OUTDIR/etime, OUTDIR/duo (Mandelbrot on both CPUs), OUTDIR/bdos, OUTDIR/bdostest (a sample program that calls it), OUTDIR/cpp, OUTDIR/cc80, OUTDIR/xlink (driver), OUTDIR/x0 (descriptor), OUTDIR/dos (MS-DOS on the 8088)
 # Needs a09 (A09=...), the NitrOS-9 definition files (OS9DIR=.../os9, used read only), nasm and python3.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,3 +30,5 @@ echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cpp.lst" -o "$OUT/cpp" 
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cc80.lst" -o "$OUT/cc80" cc80/cc80.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/xlink.lst" -o "$OUT/xlink" xlink/xlink.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/x0.lst" -o "$OUT/x0" xlink/x0.asm
+PYTHONUTF8=1 python3 "$ROOT/os9/dos/mkbios.py" "$OUT/bios.inc"
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/cpm/" -l "$OUT/dos.lst" -o "$OUT/dos" dos/dos.asm
