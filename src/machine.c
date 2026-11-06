@@ -233,7 +233,7 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
     if (off >= 0 && off < 0x80) {
         int ai = acia_index(off);
         if (ai >= 0 && (ai == 0 || m->acia[ai].kind)) {
-            if (off & 1) acia_write(m, ai, 1, v);
+            acia_write(m, ai, off & 1, v);
             return;
         }
         if (m->xl && off >= XL_BASE && off < XL_END) { xlink_main_write(m->xl, off, v); return; }
@@ -467,10 +467,13 @@ error:
 /* ------------------------------------------------------------------ */
 /* devices advance                                                     */
 /* ------------------------------------------------------------------ */
-/* the IRQ / FIRQ inputs are the OR of all interrupt sources: the timer and the sub CPU doorbell */
+static int acia_irq_pending(machine_t *m);
+
+/* the IRQ / FIRQ inputs are the OR of all interrupt sources: the timer, the console ACIA and the sub CPU doorbell */
 void machine_update_irq(machine_t *m)
 {
     int irq = 0, firq = 0, xl;
+    if (acia_irq_pending(m)) irq = 1;
     if (m->timer_pending) { if (m->timer_irq_line == M6809_FIRQ_LINE) firq = 1; else irq = 1; }
     xl = m->xl ? xlink_main_irq(m->xl) : -1;
     if (xl == 0) irq = 1; else if (xl == 1) firq = 1;
@@ -549,6 +552,7 @@ int dev_tick(machine_t *m)
 {
     int changed = dev_timer(m);
     dev_io(m);
+    machine_update_irq(m);                       /* a character that came in, or whose pacing time is over */
     return changed;
 }
 
@@ -557,6 +561,32 @@ int dev_tick(machine_t *m)
 /* ------------------------------------------------------------------ */
 static int rx_avail(acia_t *a) { return a->rxhead != a->rxtail; }
 
+/* RDRF: a character is there and the baud rate pacing lets the guest see it */
+static int rx_ready(machine_t *m, acia_t *a)
+{
+    return rx_avail(a) && m->cpu.total_cycles >= a->next_rx_cycle;
+}
+
+/* the interrupt request of the console ACIA (6850): receive (RIE and RDRF) or transmit (TIE and TDRE; the transmitter of the
+ * simulator is always empty).  The network ports raise none. */
+static int acia_irq_pending(machine_t *m)
+{
+    acia_t *a = &m->acia[0];
+    if (a->kind != ACIA_STDIO) return 0;
+    if ((a->cr & 3) == 3) return 0;              /* master reset */
+    if ((a->cr & 0x80) && rx_ready(m, a)) return 1;
+    if ((a->cr & 0x60) == 0x20) return 1;
+    return 0;
+}
+
+/* the cycles until the receiver of the console may raise an interrupt: 0 = none to wait for */
+static uint64_t acia_irq_wait(machine_t *m)
+{
+    acia_t *a = &m->acia[0];
+    if (a->kind != ACIA_STDIO || (a->cr & 0x83) == 0x03 || !(a->cr & 0x80) || !rx_avail(a)) return 0;
+    return m->cpu.total_cycles >= a->next_rx_cycle ? 0 : a->next_rx_cycle - m->cpu.total_cycles;
+}
+
 uint8_t acia_read(machine_t *m, int idx, int reg)
 {
     acia_t *a = &m->acia[idx];
@@ -564,9 +594,9 @@ uint8_t acia_read(machine_t *m, int idx, int reg)
     if (!rx_avail(a)) console_poll(m, idx);
     if (reg == 0) {
         /* status: RDRF only once the baud rate pacing allows the next character */
-        int ready = rx_avail(a) && m->cpu.total_cycles >= a->next_rx_cycle;
         uint8_t st = 0x02;                       /* TDRE always set     */
-        if (ready) st |= 0x01;                   /* RDRF                */
+        if (rx_ready(m, a)) st |= 0x01;          /* RDRF                */
+        if (a->kind == ACIA_STDIO && acia_irq_pending(m)) st |= 0x80;   /* IRQ */
         if (a->kind == ACIA_NET) st |= net_status_bits(m, idx);
         if (a->kind == ACIA_STDIO) a->last_rx = st & 3;   /* like the reference: an empty data register returns the last status */
         return st;
@@ -579,6 +609,7 @@ uint8_t acia_read(machine_t *m, int idx, int reg)
                                          (unsigned long long)m->cpu.total_cycles, m->cpu.insn_pc);
         a->rxtail = (a->rxtail + 1) % sizeof a->rxq;
         a->next_rx_cycle = m->cpu.total_cycles + a->baud_cycles;
+        if (idx == 0) machine_update_irq(m);
     } else if (a->kind == ACIA_NET) {
         net_hup_ack(m, idx);                  /* reading an empty data register acks HUP */
     }
@@ -588,8 +619,15 @@ uint8_t acia_read(machine_t *m, int idx, int reg)
 void acia_write(machine_t *m, int idx, int reg, uint8_t v)
 {
     acia_t *a = &m->acia[idx];
-    (void)reg;
     if (!a->kind) return;
+    if (reg == 0) {                              /* control register: the interrupts of the console */
+        if (ACIA_DEBUG()) fprintf(stderr, "acia%d ctl %02x at cycle %llu pc=%04x\n", idx, v, (unsigned long long)m->cpu.total_cycles, m->cpu.insn_pc);
+        if (idx == 0 && a->kind == ACIA_STDIO) {
+            a->cr = (v & 3) == 3 ? 3 : v;        /* master reset: the interrupts are off until the next write */
+            machine_update_irq(m);
+        }
+        return;
+    }
     if (ACIA_DEBUG()) {
         uint16_t sp = m->cpu.s;
         fprintf(stderr, "acia%d tx %02x at cycle %llu pc=%04x s=%04x stack:", idx, v,
@@ -625,6 +663,8 @@ static uint64_t cycles_to_event(machine_t *m, uint64_t slice)
         uint64_t d = m->timer_next > now ? m->timer_next - now : 1;
         if (d < lim) lim = d;
     }
+    uint64_t w = acia_irq_wait(m);
+    if (w && w < lim) lim = w;
     return lim ? lim : 1;
 }
 

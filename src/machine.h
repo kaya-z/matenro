@@ -52,6 +52,7 @@ typedef struct acia {
     uint64_t next_rx_cycle;   /* pacing: earliest cycle of next RX byte */
     uint64_t baud_cycles;     /* cycles per character (0 = unlimited)   */
     int      last_rx;         /* last byte presented on data register    */
+    uint8_t  cr;              /* 6850 control register: bit7 RIE, bits6-5 = 01 TIE, bits1-0 = 11 master reset (ACIA0 only) */
 } acia_t;
 
 typedef struct machine {

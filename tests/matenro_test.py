@@ -183,10 +183,10 @@ def os9_xrun(tmp):
 
 
 def build_cpm(tmp):
-    """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos and cpp (tools/build_cpm.sh); returns the output directory"""
+    """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos, cpp and dos (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 11:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 12:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -492,21 +492,27 @@ def os9_dos2(tmp):
     # the other disk formats of 2.0: 360 KB (9 sectors per track) with a CONFIG.SYS (SYSINIT reads it: FILES= is known, BOGUS= is
     # reported), and the 8 MB hard disk image
     cfg = os.path.join(tmp, 'CONFIG.SYS')
-    open(cfg, 'wb').write(b'FILES=20\r\nBOGUS=1\r\n')
-    for tag, fmt, extra in (('dos2f360', '360', [cfg]), ('dos2f8m', '8192', [])):
+    open(cfg, 'wb').write(b'FILES=20\r\nDEVICE=MYDRV.SYS\r\nBOGUS=1\r\n')
+    drv = os.path.join(tmp, 'mydrv.sys')
+    r = run(['nasm', '-f', 'bin', os.path.join(ROOT, 'tests', 'dos', 'mydrv.asm'), '-o', drv])
+    assert r.returncode == 0, r.stdout
+    for tag, fmt, extra in (('dos2f360', '360', [cfg, drv]), ('dos2f8m', '8192', [])):
         im = os.path.join(tmp, tag + '.img')
         r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), im, fmt, os.path.join(bd, 'command.com'), hp] + extra)
         assert r.returncode == 0, r.stdout
         fl = {'msdos.sys': files['msdos.sys'], 'bios2.bin': files['bios2.bin'], 'a.img': open(im, 'rb').read()}
         sc = ['send "dos -v=2 -a=a.img\\r"', 'expect "Enter new date:"', 'send "\\r"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A>"',
               'send "copy hello2.txt copy.txt\\r"', 'expect "1 File(s) copied"', 'send "dir\\r"', 'expect "bytes free"',
-              'send "type copy.txt\\r"', 'expect "Second line."', 'send "\\x1d"', 'expect "OS9:"']
+              'send "type copy.txt\\r"', 'expect "Second line."']
+        if fmt == '360':
+            sc += ['send "copy hello2.txt mydev\\r"', 'expect "1 File(s) copied"']
+        sc += ['send "\\x1d"', 'expect "OS9:"']
         out, d = os9_session(tmp, tag, '8088', fl, sc, timeout=400)
         out = out.replace('\r', '')
-        what = '360 KB disk with a CONFIG.SYS' if fmt == '360' else '8 MB hard disk image'
+        what = '360 KB disk with a CONFIG.SYS (FILES=, DEVICE=MYDRV.SYS: a device driver that is loaded and written to, BOGUS= reported)' if fmt == '360' else '8 MB hard disk image'
         ok = 'HELLO2   TXT' in out and 'COPY     TXT' in out and out.count('Second line.') == 1 and out.rstrip().endswith('OS9:')
         if fmt == '360':
-            ok = ok and 'Unrecognized command in CONFIG.SYS' in out
+            ok = ok and 'Unrecognized command in CONFIG.SYS' in out and 'MYDRV loaded' in out and out.count('1 File(s) copied') == 2
         check('MS-DOS 2.0: boot from a %s, DIR, COPY, TYPE' % what, ok, out[-900:])
 
 

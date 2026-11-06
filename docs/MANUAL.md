@@ -349,7 +349,7 @@ python3 tools/mkdosimg.py a.img 320 dos2bin/command.com 他のファイル...
 dos -v=2 -a=a.img          (BIOS は bios2.bin、カーネルは msdos.sys がカレントのデータディレクトリにあること)
 ```
 
-2.0 ではサブディレクトリ (`MKDIR`、`CD`)、`PRN`/`AUX`/`CON`、`EDLIN`、`DEBUG` が使えます (使い方と制限は 1.25 と同じ)。`CONFIG.SYS` はイメージに置けば `SYSINIT` が読みます (`FILES=` `BUFFERS=` など。知らない行は報告されます。`DEVICE=` は試していません)。ディスクイメージは 160 KB、320 KB、360 KB、8 MB から起動できます。
+2.0 ではサブディレクトリ (`MKDIR`、`CD`)、`PRN`/`AUX`/`CON`、`EDLIN`、`DEBUG` が使えます (使い方と制限は 1.25 と同じ)。`CONFIG.SYS` はイメージに置けば `SYSINIT` が読みます (`FILES=` `BUFFERS=` など。知らない行は報告されます。`DEVICE=` でデバイスドライバも入れられます)。ディスクイメージは 160 KB、320 KB、360 KB、8 MB から起動できます。
 
 詳しくは [DESIGN.md](DESIGN.md) の 18 章。
 
