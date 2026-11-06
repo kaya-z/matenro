@@ -127,6 +127,22 @@ HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB とヘ�
 から自分で取得して `/v0/htc` (または `-t=dir`) に置いてください。テストは環境変数 `MATENRO_HTC=そのディレクトリ` のときだけ `cc80` を試します。
 `cpp80` だけでも使えます (`cpp80 -Dname=v -Idir -ofile file.c`、`#` `##` は関数形式マクロのみ)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
 
+**実機 (Tang Nano 9K) で使うとき**: 上の例はシミュレータ (`/v0/htc` がホストのディレクトリ) の場合です。実機は HI-TECH C が SD カードの `/d1/htc` にあるので、`-t=/d1/htc` が要ります。ソース (`hello.c` `demo.c` `mandel.c`) も `/d1` にあるので、先に `chd /d1` します。
+
+```
+OS9:chx /d0/cmds
+OS9:load xlink
+OS9:load x0
+OS9:chd /d1
+OS9:cc80 -t=/d1/htc -r demo.c
+big 36
+OS9:del DEMO.COM
+```
+
+* `chd /d1` を忘れる、または `/d0` のままだと、`cc80: cannot open demo.c` で止まります (何も消しません)。`-t=/d1/htc` を付けないと、`cpp80:stdio.h` / `cc80: failed: cpp80` で止まります。
+* `/d1` の空きは **130 セクタ**だけです。`cc80 -r` は、できた `.COM` を残すので、**使い終えたら `del` で消してください**。満杯になると `cpm: a write failed (disk full)` / `cc80: failed: cpm` で止まります。
+* 時間の目安 (実機): `hello.c` は 1 分ほど、`mandel.c` (浮動小数点) は約 3 分です。コンパイル中はプロンプトが戻りません (待ってください)。
+
 ### 主なオプション (sim09 のオプションは、そのまま使えます)
 
 | オプション | 意味 |
