@@ -815,3 +815,19 @@ DOS は BIOS を、`SEGBIOS` (非 IBM 版は `0040h`) の**先頭から 3 バイ
 * `STATUS` は出力 1 文字ごとにも呼ばれます (段階 6 までは素直な往復のままで、遅さは気になっていません) (Ctrl-S の確認、`MSDOS.ASM` の `STATCHK`)。往復が重ければ、6809 側が先読みの文字を共有メモリに置き、スタブはそれを見るだけにします (まず素直に作って、遅ければ直す)。
 * 完成品の `COMMAND.COM` と一致しないので、ソースと `bin` の版の違いを確かめる材料はありません。動かして直します。
 * FPGA の 8088 はないので、確認はシミュレータだけです。
+
+### 18.8 MS-DOS 2.0 の段階 (調査、2026-11-06。実装はこれから)
+
+公開されたソース (`v2.0/source`) にあるもの: カーネル (`MSDOS.ASM` が `STDSW`、`MSHEAD`、`MSINIT` などを取り込む。組み方は `DOSLINK`)、`COMMAND` (`COMLINK`)、`SYSINIT.ASM` (BIOS のあとに付けて、`CONFIG.SYS` の読み込みとカーネルの移動をする)、`SKELIO.ASM` (ALTOS 用の BIOS の見本。コンソール、ディスク、時計のドライバ)、`DEBUG`、`EDLIN`、`CHKDSK`、`FORMAT` などのソース。`bin` には完成品の `MSDOS.SYS`、`COMMAND.COM` などと `SYSINIT.OBJ`。
+
+1.25 との違い (だから別の BIOS になる): BIOS の入口の表ではなく **デバイスドライバ** (`CON`、`AUX`、`PRN`、`CLOCK$`、ブロックデバイス) の連鎖をカーネルに渡す。カーネルはドライバの `strategy`/`interrupt` を呼ぶ。ファイルはハンドルで、サブディレクトリ、`EXEC`、`CONFIG.SYS` がある。起動は BIOS → `SYSINIT` (カーネルを移動、`CONFIG.SYS`、`COMMAND` を `EXEC`)。
+
+方針 (段階 8 を小さく分ける。各段階でまた確認を取る):
+1. **8a**: `UASM` で `SYSINIT.ASM` 込みの 2.0 カーネルが組めるか (1.25 のときのような MASM 方言の直し、`tools/dos/patch_*.py`)。まず `bin` の完成品 `MSDOS.SYS` で先に進めて、組むのは後でもよい。
+2. **8b**: BIOS を新しく作る (`os9/dos/bios2.asm`)。`SKELIO.ASM` を手本に、デバイスヘッダ、`CON` (入力は 6809 へ要求)、`AUX`/`PRN`/`CLOCK$` (1.25 の BIOS の要求ブロックを使い回す)、ブロックデバイス (`READ`/`WRITE`/`MEDIA CHECK`/`BUILD BPB` を既存の `read`/`write` 要求へ)。`dos` コマンド側は大筋そのまま (要求の種類を少し足す)。
+3. **8c**: `SYSINIT` に渡す変数 (`CURRENT_DOS_LOCATION`、`DEVICE_LIST`、`MEMORY_SIZE` など)、`COMMAND` の起動、`DIR`/`TYPE`/`COPY`、サブディレクトリ、`EDLIN`/`DEBUG` の 2.0 版。
+4. **8d**: ディスクの形式 (2.0 は 9 セクタ/トラックの 360 KB と、ハードディスクのイメージ)、時刻、`os9_dos` の 2.0 版のテスト、MANUAL。
+
+**8a の結果 (2026-11-06)**: ① **カーネルは公開された完成品 `bin/MSDOS.SYS` (16690 バイト) を使う**。2.0 のカーネルはソースが十数本のモジュールに分かれ (`DOSLINK`)、`DOSMAC.ASM` のマクロ (`&` による連結、`PURGE`、使うときだけ `EXTRN` を作る連鎖、予約語になった `invoke`) と `LINK` が前提で、UASM では組めない (組むなら、OMF のリンカを自作するか、2.0 自身の上で付属の `MASM`/`LINK` を動かす。急がない)。1.25 のように「ソースから組んだものを実行する」ではなく「公開された完成品を実行する」ことになる。先頭は `JMP DOSINIT` で、`SYSINIT` がここへ入る。② **`SYSINIT.ASM` と `SYSIMES.ASM` は UASM で組める**: `tools/dos/patch_sysinit.py` (ソースは変えず、写しを直す) が、`DOSMAC.ASM` を `BREAK` だけの代用品にし、`DOSSYM.ASM` の `IF2` (1 パスのアセンブラ) を消し、定数 `WAIT` を `DOSWAIT` に、手続き名 `AAA` を `AAAP` に変える (どれも命令の名前)。`-omf` で 0 エラー。BIOS と一緒に 1 本のソースにして `-bin` で組めば、リンカは要らない。③ `COMMAND.COM`、`DEBUG` などの 2.0 版も完成品を使う (`bin`)。
+
+リスク: `SYSINIT` は `.OBJ` で、ソースと BIOS を一緒にリンクする必要がある。ソース (`SYSINIT.ASM`) を `UASM` で BIOS と同じ 1 本にして組めればリンカは要らない。`COMMAND.COM` 2.0 は `INT 21h` の新しい機能 (ハンドル) を多用し、環境ブロックなど 1.25 より動作が複雑。1.25 より大きい (カーネル約 16 KB、`COMMAND` 約 15 KB) ので 256 KB のメモリに収まるかも確認する。
