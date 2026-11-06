@@ -2,18 +2,21 @@
 ********************************************************************
 * dos - run MS-DOS 1.25 on the 8088 of 摩天楼 (Matenro) from OS-9 Level 2
 *
-*   dos [-k=kernel] -a=image [-b=image] [-c=image] [-d=image]
+*   dos [-k=kernel] -a=image [-b=image] [-c=image] [-d=image] [-p=printer] [-i=auxin] [-o=auxout]
 *
 *   -k=file   the MS-DOS kernel (default msdos.sys in the current data directory)
 *   -a=file   the disk image of drive A: (a FAT12 image: tools/mkdosimg.py; COMMAND.COM must be on it); -b -c -d: B: C: D:
 *             the size of the file decides the format: 160 KB, 320 KB (IBM formats) or 8 MB (hard disk)
+*   -p=path   the printer (PRN): the output is appended to the file or device (nothing without it)
+*   -o=path   the aux port output (AUX), appended;  -i=path  the aux port input, read from the start (1Ah at the end)
 *
 * The 8088 runs the kernel and COMMAND of MS-DOS 1.25 unchanged (assembled from the source that Microsoft published,
 * tools/build_dosbin.sh).  The BIOS (IO.SYS) is ours (bios88.asm, embedded): every call of the kernel becomes a request
 * block in the shared RAM and a doorbell of the cross link; this program does the work with OS-9 system calls and
 * writes the reply.  The console is the standard input and output, in the raw mode (DOS echoes and edits itself).
 * The key ^] (1Dh) leaves DOS: the 8088 is stopped and the terminal is put back.
-* Stage 6 of docs/DESIGN.md chapter 18: console, time, disk images (COMMAND.COM is read from drive A by the BIOS).
+* Stage 7 of docs/DESIGN.md chapter 18: console, time (DATE and TIME are an offset kept by the BIOS), disk images (COMMAND.COM
+* is read from drive A by the BIOS), printer and aux port.
 *
 * The user state program reaches the cross link in the I/O page ($FFC9-$FFCD of the Level 2 machine) and the
 * sub CPU memory through the window port, like `cpm`; the sub CPU must be the 8088 (-sub 8088; -m 1M without the
@@ -39,10 +42,10 @@ edition  set   1
 
 SS.XWait equ   $B1
 BIOSLIN  equ   $0400             linear address of the BIOS (segment 0040h)
-RQLIN    equ   $0700             request block: BIOS + 300h
-LBLIN    equ   $0740             BIOS + 340h: memory size in paragraphs, +4 the INITTAB
-DOSLIN   equ   $0800             kernel (segment 0080h)
-INITBIOS equ   $0344             the INITTAB as seen by the BIOS (an offset in segment 0040h)
+RQLIN    equ   $0800             request block: BIOS + 400h
+LBLIN    equ   $0840             BIOS + 440h: memory size in paragraphs, +4 the INITTAB
+DOSLIN   equ   $0900             kernel (segment 0090h)
+INITBIOS equ   $0444             the INITTAB as seen by the BIOS (an offset in segment 0040h)
 MEMPARA  equ   $4000             256 KB: what the 8088 gets with the driver xlink (32 blocks)
 EXITKEY  equ   $1D               ^]
 
@@ -62,6 +65,12 @@ itab     rmb   53                the INITTAB with the disk parameter tables
 xpath    rmb   1                 /x0 (the xlink driver), 0 = not loaded
 argp     rmb   2
 kname    rmb   2                 the name of the kernel (in the parameters or the default)
+pnm      rmb   2                 the names of the printer (-p=), the aux input (-i=) and the aux output (-o=), 0 = none
+inm      rmb   2
+onm      rmb   2
+ppath    rmb   1                 their paths, 0 = none
+ipath    rmb   1
+opath    rmb   1
 lin      rmb   3                 sub CPU linear address for rdsub / wrsub / setwin
 tmp8     rmb   1
 cnt      rmb   2
@@ -93,7 +102,7 @@ rstvec   fcb   $EA,$00,$00,$40,$00      JMP FAR 0040:0000 (the BIOS) at FFFF0
 fmts     fcb   $00,$02,$80,$00,$00,$02,$01,$01,$00,$02,$40,$00,$40,$01      160 KB
          fcb   $00,$05,$00,$00,$00,$02,$02,$01,$00,$02,$70,$00,$80,$02      320 KB
          fcb   $00,$80,$00,$00,$00,$02,$08,$01,$00,$02,$00,$02,$00,$40      8 MB
-msgusage fcc   "usage: dos [-k=kernel] -a=image [-b=image -c=image -d=image]"
+msgusage fcc   "usage: dos [-k=kernel] -a=image [-b=image -c=image -d=image] [-p=printer -i=auxin -o=auxout]"
          fcb   C$CR
 msgnosub fcc   "dos: the sub CPU is not an 8088"
          fcb   C$CR
@@ -123,6 +132,13 @@ st1      clr   >XCTL                 hold the 8088 in reset
          os9   F$Icpt
          clr   kname,u               the options: -k=kernel -a=image -b= -c= -d=
          clr   kname+1,u
+         clr   ppath,u
+         clr   ipath,u
+         clr   opath,u
+         ldd   #0
+         std   pnm,u
+         std   inm,u
+         std   onm,u
          leax  dname,u
          ldb   #8
 op0      clr   ,x+
@@ -144,7 +160,19 @@ op1      lbsr  skipsp
          bne   op2
          stx   kname,u
          bra   op4
-op2      suba  #'A'
+op2      cmpa  #'P'
+         bne   op2a
+         stx   pnm,u
+         bra   op4
+op2a     cmpa  #'I'
+         bne   op2b
+         stx   inm,u
+         bra   op4
+op2b     cmpa  #'O'
+         bne   op2c
+         stx   onm,u
+         bra   op4
+op2c     suba  #'A'
          lbmi  usage
          cmpa  #3
          lbhi  usage
@@ -169,6 +197,7 @@ op6      ldx   kname,u
          os9   I$Open
          lbcs  nofile
          sta   path,u
+         lbsr  openaux
 * the images of the drives: open them, find the format from the size, make the INITTAB
          clr   nimg,u
 dv1      ldb   nimg,u
@@ -314,7 +343,7 @@ badsize  leax  msgsize,pcr
 toobig   leax  msgbig,pcr
 say      lbsr  rawoff
          lda   #2
-         ldy   #80
+         ldy   #120
          os9   I$WritLn
          ldb   #1
          os9   F$Exit
@@ -327,6 +356,42 @@ icpt     cmpb  #S$Wake
          clrb
          os9   F$Exit
 ic9      rti
+
+* the files or devices of the printer and the aux port: the output is appended (a file is created if it is not there)
+openaux  ldx   pnm,u
+         beq   oa1
+         lbsr  openapp
+         lbcs  nofile
+         sta   ppath,u
+oa1      ldx   onm,u
+         beq   oa2
+         lbsr  openapp
+         lbcs  nofile
+         sta   opath,u
+oa2      ldx   inm,u
+         beq   oa3
+         lda   #READ.
+         os9   I$Open
+         lbcs  nofile
+         sta   ipath,u
+oa3      rts
+
+openapp  lda   #WRITE.
+         os9   I$Open
+         bcc   oap1
+         lda   #WRITE.
+         ldb   #$0B                  read, write, public read
+         os9   I$Create
+         rts
+oap1     pshs  a,u
+         ldb   #SS.Size
+         os9   I$GetStt              the size comes back in X:U
+         bcs   oap2
+         lda   ,s
+         os9   I$Seek                to the end (a device has no size: nothing to do)
+oap2     puls  a,u
+         andcc #$FE
+         rts
 
 skipsp   lda   ,x+
          cmpa  #' '
@@ -486,6 +551,12 @@ dp0      clr   ,x+
          beq   f_inp
          cmpa  #3
          beq   f_outp
+         cmpa  #4
+         lbeq  f_prt
+         cmpa  #5
+         lbeq  f_auxi
+         cmpa  #6
+         lbeq  f_auxo
          cmpa  #7
          lbeq  f_disk
          cmpa  #8
@@ -532,6 +603,34 @@ f_outp   lda   rq+1,u
          leax  iobuf,u
          ldy   #1
          os9   I$Write
+         rts
+
+* 4: printer, 6: aux output: the character AL to the file or device (nothing without the option)
+f_prt    lda   ppath,u
+         bra   wr1
+f_auxo   lda   opath,u
+wr1      beq   wr9
+         pshs  a
+         lda   rq+1,u
+         sta   iobuf,u
+         puls  a
+         leax  iobuf,u
+         ldy   #1
+         os9   I$Write
+wr9      rts
+
+* 5: aux input: the next byte of the file, 1Ah (end of file) at its end or without the option
+f_auxi   lda   ipath,u
+         beq   ai8
+         leax  iobuf,u
+         ldy   #1
+         os9   I$Read
+         bcs   ai8
+         lda   iobuf,u
+         sta   rp,u
+         rts
+ai8      lda   #$1A
+         sta   rp,u
          rts
 
 * 7, 8: disk read / write.  unit AL, transfer address DS:BX, CX sectors, record number DX.  A transfer reads or writes

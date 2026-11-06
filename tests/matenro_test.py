@@ -382,14 +382,28 @@ def os9_dos(tmp):
     hp = os.path.join(tmp, 'hello.txt')
     open(hp, 'wb').write(hello)
     img = os.path.join(tmp, 'a.img')
-    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), img, '160', os.path.join(bd, 'command.com'), hp])
+    # the programs of the published binaries (DEBUG and EDLIN of PC DOS 1.x, ../bin of the source), if they are there
+    binp = [os.path.join(os.path.dirname(os.path.normpath(src)), 'bin', n) for n in ('DEBUG.COM', 'EDLIN.COM')]
+    binp = binp if all(os.path.isfile(b) for b in binp) else []
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), img, '160', os.path.join(bd, 'command.com'), hp] + binp)
     assert r.returncode == 0, r.stdout
-    files = {'msdos.sys': open(os.path.join(bd, 'msdos.sys'), 'rb').read(), 'a.img': open(img, 'rb').read()}
-    script = ['send "dos -a=a.img\\r"', 'expect "Enter new date:"', 'send "\\r"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A:"',
-              'send "dir\\r"', 'expect "2 File(s)"', 'send "type hello.txt\\r"', 'expect "Second line."',
-              'send "copy hello.txt copy.txt\\r"', 'expect "1 File(s) copied"', 'send "dir\\r"', 'expect "3 File(s)"',
-              'send "type copy.txt\\r"', 'expect "Second line."', 'send "del copy.txt\\r"', 'sleep 1500000', 'send "dir\\r"', 'expect "2 File(s)"',
-              'send "\\x1d"', 'expect "OS9:"']
+    files = {'msdos.sys': open(os.path.join(bd, 'msdos.sys'), 'rb').read(), 'a.img': open(img, 'rb').read(), 'auxin.txt': b'Aux input.\r\n'}
+    n0 = 2 + len(binp)
+    script = ['send "dos -a=a.img -p=prn.txt -o=auxout.txt -i=auxin.txt\\r"', 'expect "Enter new date:"', 'send "\\r"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A:"',
+              'send "dir\\r"', 'expect "%d File(s)"' % n0, 'send "type hello.txt\\r"', 'expect "Second line."',
+              'send "copy hello.txt copy.txt\\r"', 'expect "1 File(s) copied"', 'send "dir\\r"', 'expect "%d File(s)"' % (n0 + 1),
+              'send "type copy.txt\\r"', 'expect "Second line."', 'send "del copy.txt\\r"', 'sleep 1500000', 'send "dir\\r"', 'expect "%d File(s)"' % n0,
+              'send "date\\r"', 'expect "Enter new date:"', 'send "12-25-2026\\r"', 'expect "A:"',
+              'send "date\\r"', 'expect "Fri 12-25-2026"', 'expect "Enter new date:"', 'send "\\r"', 'expect "A:"',
+              'send "time\\r"', 'expect "Enter new time:"', 'send "10:20:30\\r"', 'expect "A:"',
+              'send "time\\r"', 'expect "Current time is 10:20:"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A:"',
+              'send "copy hello.txt prn\\r"', 'expect "1 File(s) copied"', 'send "copy hello.txt aux\\r"', 'expect "1 File(s) copied"',
+              'send "copy aux fromaux.txt\\r"', 'expect "1 File(s) copied"', 'send "type fromaux.txt\\r"', 'expect "Aux input."', 'expect "A:"']
+    if binp:
+        script += ['send "edlin edtest.txt\\r"', 'expect "New file"', 'send "i\\r"', 'expect "1:*"', 'send "hello edlin\\r"', 'expect "2:*"',
+                   'send "\\x1a\\r"', 'expect "*"', 'send "e\\r"', 'expect "A:"', 'send "type edtest.txt\\r"', 'expect "A:"',
+                   'send "debug\\r"', 'expect "-"', 'send "d 100 10f\\r"', 'expect ":0100  "', 'expect "-"', 'send "q\\r"', 'expect "A:"']
+    script += ['send "\\x1d"', 'expect "OS9:"']
     for tag, drv in (('dos', False), ('dosdrv', True)):
         out, d = os9_session(tmp, tag, '8088', files, script, driver=drv, timeout=500)
         out = out.replace('\r', '')
@@ -397,14 +411,23 @@ def os9_dos(tmp):
         check('MS-DOS 1.25 boots%s: banner, COMMAND, the clock of OS-9 (day count and time)' % why,
               'MS-DOS version 1.25' in out and 'Command v. 1.17H' in out and 'Current date is' in out and 'Current time is' in out, out[-900:])
         check('MS-DOS%s: DIR lists the files of the disk image, TYPE reads one' % why,
-              'COMMAND  COM' in out and 'HELLO    TXT' in out and '2 File(s)' in out and 'Hello from a file on the DOS disk.' in out, out[-900:])
+              'COMMAND  COM' in out and 'HELLO    TXT' in out and '%d File(s)' % n0 in out and 'Hello from a file on the DOS disk.' in out, out[-900:])
         check('MS-DOS%s: COPY writes the image (the new file is listed and can be typed), DEL removes it' % why,
-              '3 File(s)' in out and out.count('Second line.') == 2 and out.count('2 File(s)') == 2, out[-900:])
+              '%d File(s)' % (n0 + 1) in out and out.count('Second line.') == 2 and out.count('%d File(s)' % n0) == 2, out[-900:])
+        check('MS-DOS%s: DATE and TIME set the clock of DOS (an offset to the clock of OS-9)' % why,
+              'Current date is Fri 12-25-2026' in out and 'Current time is 10:20:' in out, out[-900:])
+        check('MS-DOS%s: the aux input and the output of the printer and the aux port' % why, 'Aux input.' in out, out[-900:])
+        if binp:
+            check('MS-DOS%s: EDLIN writes a file (TYPE reads it), DEBUG dumps memory (it asks the video mode: INT 10h of the BIOS)' % why,
+                  out.count('hello edlin') >= 2 and ':0100  ' in out, out[-900:])
         check('MS-DOS%s: ^] leaves DOS and the terminal is back (the next OS-9 prompt)' % why, out.rstrip().endswith('OS9:'), out[-300:])
         if not drv:
+            pr = open(os.path.join(d, 'v0', 'prn.txt'), 'rb').read()
+            ax = open(os.path.join(d, 'v0', 'auxout.txt'), 'rb').read()
+            check('MS-DOS: the printer (-p=) and the aux output (-o=) are files of the host', pr.startswith(hello) and ax.startswith(hello), repr(pr) + repr(ax))
             back = open(os.path.join(d, 'v0', 'a.img'), 'rb').read()
-            check('MS-DOS: the disk image file of the host holds the changes (COPY wrote, DEL marked the entry as deleted)',
-                  back != files['a.img'] and b'\xe5OPY    TXT' in back, '')
+            check('MS-DOS: the disk image file of the host holds the changes (COPY wrote, DEL freed the entry: marked as deleted, or used again by EDLIN)',
+                  back != files['a.img'] and b'COPY    TXT' not in back and (b'EDTEST  TXT' if binp else b'\xe5OPY    TXT') in back, '')
 
 
 def os9_reboot(tmp):
