@@ -183,7 +183,7 @@ def os9_xrun(tmp):
 
 
 def build_cpm(tmp):
-    """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos, cpp and dos (tools/build_cpm.sh); returns the output directory"""
+    """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos, cpp80 and dos (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
     if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 12:
@@ -200,14 +200,16 @@ def z80_com(name, tmp):
     return img
 
 
-def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False):
+def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False, keep=()):
     """boot OS-9 Level 2 with the sub CPU `cpu`, /v0 holds the cmds directory and `files`; run the script; return the output"""
     d = os.path.join(tmp, 'sess_' + tag)
     os.mkdir(d)
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos'):
+    for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos'):
+        if n in keep:                                   # keep the command of the OS-9 disk of new-sbc09 (the same name)
+            continue
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
         open(os.path.join(d, 'v0', n), 'wb').write(data)
@@ -528,6 +530,12 @@ def os9_reboot(tmp):
     after = out.split('Rebooting')[-1]
     check('OS-9 reboot: the machine starts again (the banner twice), the disk files are still there, the shell works',
           out.count('NitrOS-9/6809 Level 2') == 2 and 'mark' in after and 'hello' in after and 'REBOOTED' in after, out[-900:])
+    # the reboot command of the OS-9 disk of new-sbc09 (it writes $A6 to the power register, ours writes $A7): the same restart
+    out, d = os9_session(tmp, 'reboot6', 'z80', {}, [
+        'send "reboot\\r"', 'expect "Rebooting"', 'expect "OS9:"',
+        'send "echo REBOOTED6\\r"', 'expect "OS9:"'], keep=('reboot',))
+    check('OS-9 reboot with the command of new-sbc09 ($A6): the machine starts again, the shell works',
+          out.count('NitrOS-9/6809 Level 2') == 2 and 'REBOOTED6' in out, out[-600:])
 
 
 def os9_cpm80(tmp):
@@ -631,8 +639,8 @@ def os9_cpp(tmp):
         return
     files = {n: open(os.path.join(HERE, 'cpp', n), 'rb').read() for n in ('t1.c', 't1.h', 't2.c', 't3.c', 't4.c')}
     out, d = os9_session(tmp, 'cpp', 'z80', files, [
-        'send "cpp t1.c >t1.o\\r"', 'expect "OS9:"', 'send "cpp t2.c >t2.o\\r"', 'expect "OS9:"',
-        'send "cpp t3.c >t3.o\\r"', 'expect "OS9:"', 'send "cpp t4.c >t4.o\\r"', 'expect "OS9:"', 'send "cpp -DFOO=5 -DBAR t1.c >t1d.o\\r"', 'expect "OS9:"'])
+        'send "cpp80 t1.c >t1.o\\r"', 'expect "OS9:"', 'send "cpp80 t2.c >t2.o\\r"', 'expect "OS9:"',
+        'send "cpp80 t3.c >t3.o\\r"', 'expect "OS9:"', 'send "cpp80 t4.c >t4.o\\r"', 'expect "OS9:"', 'send "cpp80 -DFOO=5 -DBAR t1.c >t1d.o\\r"', 'expect "OS9:"'])
     names = {n.lower(): n for n in os.listdir(os.path.join(d, 'v0'))}
     def words(n):
         if n not in names:
@@ -674,7 +682,7 @@ def os9_cc80(tmp):
         shutil.copy(os.path.join(OS9, f), d)
     v0 = os.path.join(d, 'v0')
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(v0, 'cmds'))
-    for n in ('cpm', 'cpp', 'cc80'):
+    for n in ('cpm', 'cpp80', 'cc80'):
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(v0, 'cmds', n))
     os.mkdir(os.path.join(v0, 'htc'))
     for n in os.listdir(htc):

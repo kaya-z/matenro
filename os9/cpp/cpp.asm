@@ -1,8 +1,8 @@
 * SPDX-License-Identifier: MIT
 ********************************************************************
-* cpp - a C preprocessor for OS-9 Level 2 (6809), written for 摩天楼 (Matenro)
+* cpp80 - a C preprocessor for OS-9 Level 2 (6809), written for 摩天楼 (Matenro)
 *
-*   cpp [-Dname[=value]] [-Idir] [-ofile] [file]   (the result goes to the standard output or to the new file)
+*   cpp80 [-Dname[=value]] [-Idir] [-ofile] [file]   (the result goes to the standard output or to the new file)
 *
 * Handles comments, line splicing (backslash at the end of a line), #include "file" / <file>, #define (with and
 * without parameters), #undef, #ifdef, #ifndef, #if / #elif with integer expressions (defined, ?: || && | ^ &
@@ -13,7 +13,7 @@
 * hands to a CP/M program by itself.
 *
 * Typical use (docs/DESIGN.md, chapter 13):
-*     cpp -I/dd/htc prog.c >prog.i       the preprocessor on OS-9
+*     cpp80 -I/dd/htc prog.c >prog.i       the preprocessor on OS-9
 *     cpm -p=/dd/htc ... prog.i          a CP/M-80 compiler, running on the Z80
 *
 * Credits: the behaviour follows the C preprocessor of K&R C / ANSI C (X3.159, the parts listed above); no code
@@ -21,7 +21,7 @@
 * (see os9/xrun.asm).
 ********************************************************************
 
-         nam   cpp
+         nam   cpp80
          ttl   C preprocessor
 
          ifp1
@@ -90,18 +90,18 @@ size     equ   .
 name     fcs   /cpp/
          fcb   edition
 
-msgusage fcc   "usage: cpp [-Dname[=value]] [-Idir] [-ofile] [file]"
+msgusage fcc   "usage: cpp80 [-Dname[=value]] [-Idir] [-ofile] [file]"
          fcb   C$CR
-msgopen  fcc   "cpp: cannot open "
+msgopen  fcc   "cpp80: cannot open "
          fcb   0
-msginc   fcc   "cpp: cannot find include file "
+msginc   fcc   "cpp80: cannot find include file "
          fcb   0
-msgerr   fcc   "cpp: #error "
+msgerr   fcc   "cpp80: #error "
          fcb   0
-msgbadif fcc   "cpp: unbalanced #if / #endif"
+msgbadif fcc   "cpp80: unbalanced #if / #endif"
          fcb   C$CR
          fcb   0
-msgmem   fcc   "cpp: out of macro space"
+msgmem   fcc   "cpp80: out of macro space"
          fcb   C$CR
          fcb   0
 defpfx   fcc   "#define "

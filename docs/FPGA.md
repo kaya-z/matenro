@@ -169,7 +169,7 @@ BSRAM の共有領域は後から足せます。
 
 sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から Level 2 のローダを読み、ローダが Level 2 の ROM イメージを PSRAM に置いて起動します (`new-sbc09/tools/mkl2disk.py`)。この SoC は同じ ROM で動きます。
 
-* **SD イメージ**: `fpga/tn9k/scripts/mkdisk.sh OUT.dsk` が sim09 の `os9/OS9L2.dsk` に Matenro のコマンド (`cpm xrun xlink x0 cpp cc80`) と `hello.com` を入れます (360KB、空きは 473 セクタ)。カードには `sudo dd if=OUT.dsk of=/dev/sdX bs=512 conv=fsync` で書きます (**カード全体が上書きされる**ので、デバイス名を確かめてください。ここでは書いていません)。
+* **SD イメージ**: `fpga/tn9k/scripts/mkdisk.sh OUT.dsk` が sim09 の `os9/OS9L2.dsk` に Matenro のコマンド (`cpm xrun xlink x0 cpp80 cc80`) と `hello.com` を入れます (1MB、4096 セクタ、空きは約 1930 セクタ)。カードには `sudo dd if=OUT.dsk of=/dev/sdX bs=512 conv=fsync` で書きます (**カード全体が上書きされる**ので、デバイス名を確かめてください。ここでは書いていません)。
 * **ビットストリーム**: `TV80=… fpga/tn9k/scripts/build.sh boot` (起動 ROM 版)。LUT 89%、CLS 93%、**Fmax 67.9MHz、負のスラックなし**。
 * **RTL シミュレーション**: `make -C fpga/tn9k/sim ROM=boot boot TV80=… DISK=OUT.dsk SCRIPT=… CLKS=4000000000` (2.8 億クロック、SD から 146 ブロックを読んで OS-9 Level 2 が起動)。`load xlink`、`load x0` のあと **`cpm /d0/hello.com abc` が `Hello from CP/M-80 on the Z80` と ` ABC` を出しました** (6809 の RTL コア、PSRAM のモデル、SD のモデル、XLINK、TV80 の Z80、ドライバ `xlink` が OS-9 の空き RAM から借りた Z80 のメモリ)。
 * **実機 (Tang Nano 9K)**: ビットストリーム `matenro_boot.fs` をフラッシュに書き (`openFPGALoader -b tangnano9k -f`)、`matenro_l2.dsk` を SD カードに書いて電源を入れると、シリアルに `NitrOS-9/6809 Level 2 V1.0.1` / `Tang Nano 9K` が出て OS-9 が起動し、`chx /d0/cmds`、`load xlink`、`load x0`、`cpm /d0/hello.com abc` で **`Hello from CP/M-80 on the Z80` / `!` / ` ABC`** が出ました (FPGA の 6809 が OS-9 Level 2 を動かし、同じ FPGA の Z80 が CP/M-80 のプログラムを動かし、OS-9 がその BDOS 呼び出しを引き受ける)。
@@ -181,11 +181,11 @@ sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から 
 
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
-| `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のローダと ROM イメージ、コマンド、Matenro のコマンド (`cpm xrun xlink x0 cpp cc80`)、`hello.com` (`scripts/mkdisk.sh`) |
-| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB` `LIBF.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` `hello.c` (`scripts/mkdisk_d1.sh`)。空きは 475 セクタ。2048 セクタは 1 セクタの割り当て表で持てる最大 |
+| `matenro_l2.dsk` (1MB、4096 セクタ) | `/d0`: OS-9 Level 2 のローダと ROM イメージ、コマンド、Matenro のコマンド (`cpm xrun xlink x0 cpp80 cc80`)、`hello.com` (`scripts/mkdisk.sh`) |
+| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB` `LIBF.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` `hello.c` (`scripts/mkdisk_d1.sh`)。**空きは 130 セクタ** (Turbo Pascal を入れたあとの実測。以前の 475 は古い)。`cc80 -r` はできた `.COM` を残すので、`hello.c` と `demo.c` を動かすだけで 20 セクタほどまで減り、`mandel.c` のコンパイルが入らなくなる。使い終えたら `del` で消す。2048 セクタは 1 セクタの割り当て表で持てる最大 |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体のイメージ: `sudo dd if=matenro_card.img of=/dev/sdX bs=1M conv=fsync` (**カード全体が上書きされる**。128MB 以上のカード) |
 
-実機での使い方 (予定): `chx /d0/cmds`、`load xlink`、`load x0`、`chd /d1`、`cc80 -t=/d1/htc -r hello.c` (HI-TECH C)、`cpm zexdoc` (ZEXDOC)。`cc80 -t=/d1/htc -r hello.c` はシミュレータ (`/d1` を 2 番目のディスクイメージにしたもの) で `Hello from Hi-Tech C on CP/M` まで通りました。
+実機での使い方 (実機で確認済み。`cc80 -t=/d1/htc -r hello.c` と `mandel.c`、`cpm zexdoc`): `chx /d0/cmds`、`load xlink`、`load x0`、`chd /d1`、`cc80 -t=/d1/htc -r hello.c` (HI-TECH C)、`cpm zexdoc` (ZEXDOC)。`cc80 -t=/d1/htc -r hello.c` はシミュレータ (`/d1` を 2 番目のディスクイメージにしたもの) で `Hello from Hi-Tech C on CP/M` まで通りました。
 
 **ファイルの属性 `s` に注意**: OS-9 の `s` 属性 (単一ユーザ = 同時に 1 回しか開けない) が付いたファイルは、HI-TECH のリンカのように**同じファイルを 2 回開く**プログラムでは、2 回目が `E$Share` (`$FD`) で失敗し、リンカは `Can't open` を出します (`/v0` のホストディレクトリでは起きず、RBF のディスクでだけ起きる)。`mkdisk_d1.sh` はコピーのあとに `attr -s` で外します。`cpm -d` は、失敗した `open` の OS-9 のエラー番号を 16 進で表示します。
 
@@ -338,7 +338,7 @@ NitrOS-9/6809 Level 2 V1.0.1
 
 ### 9.10 割り込み線の系統図 (2026-11-04)
 
-6809 の `nIRQ` / `nFIRQ` と、Z80 (TV80) の `int_n` / `nmi_n` が割り込み線のすべてです (6809 の `nNMI` は 1 に固定)。すべて `clk81` に同期した信号で、割り込みの線に非同期の入力はありません。
+6809 の `nIRQ` / `nFIRQ` と、Z80 (TV80) の `int_n` / `nmi_n` が割り込み線のすべてです (6809 の `nNMI` は 1 に固定)。`nIRQ` には、図のタイマとクロスリンクのほかに、コンソール ACIA の割り込み `acia_irq` (`acia_uart.v`、9.11) も OR されます。図では省いています。すべて `clk81` に同期した信号で、割り込みの線に非同期の入力はありません。
 
 ```
   matenro_soc.v                      xlink.v (soc/sub/xl)                         z80_sub.v (TV80)
@@ -354,7 +354,7 @@ NitrOS-9/6809 Level 2 V1.0.1
         |             irq_n_o = pend_s2m & c_ien & ~c_firq --> xl_irq  --+
         |             firq_o  = pend_s2m & c_ien &  c_firq --> xl_firq --|--+
         |                                                                |  |
-        +--> nIRQ  = ~(timer_irq | xl_irq)  <----------------------------+  |      (FREERUN = 0)
+        +--> nIRQ  = ~(timer_irq | xl_irq | acia_irq)  <----------------------------+  |      (FREERUN = 0)
              nFIRQ = ~xl_firq               <-------------------------------+
                 |
                 v
@@ -377,3 +377,16 @@ NitrOS-9/6809 Level 2 V1.0.1
 * **XLINK の IRQ / FIRQ** は、レジスタ 3 つ (`pend_s2m`、`c_ien`、`c_firq`) の AND で、組み合わせ論理は 1 段です。
 * **Z80 の INT** は `pend_m2s` のレベルをそのまま渡します。ACK するまで立ち続けるので、TV80 が `cen` の立ったクロックでしか見なくても取りこぼしません。NMI は XLINK が 1 クロックのパルスしか出さないため、`z80_sub.v` の `nmi_pend` が次の `cen` まで保持します。
 * 8088 は FPGA にありません。シミュレータは Z80 と同じ構造です (`SUB_INT`、`SUB_NMI`: DESIGN.md 7.1)。
+
+### 9.11 コンソール ACIA の割り込み (2026-11-06)
+
+`new-sbc09` が 11/5 に、コンソール ACIA に 6850 の制御レジスタと割り込みを入れ (`acia_uart.v`: 受信割り込み RIE、送信割り込み TIE、マスタリセット、状態ビット 7 = IRQ、送信 FIFO 15 文字)、OS-9 の端末ドライバを割り込み駆動にした。`acia_uart.v` は `new-sbc09` のものを共有しているので、Matenro の SoC (`matenro_soc.v`) も合わせる必要があった (合わせないと、新しいポート `wr_ctl`・`cdata` が接続されず、割り込みが動かない)。
+
+* `$E000` への書き込み (制御レジスタ) を `acia_cwr`・`acia_cbyte` で `acia_uart` に渡す。
+* `acia_irq` を CPU の `nIRQ` に、タイマ (`timer_irq`) とクロスリンク (`xl_irq`) と OR でつなぐ (`FREERUN` のときは ACIA だけ)。IRQ 線は 3 つの源の OR になった (9.10 の図の `nIRQ` に ACIA が加わる)。
+* モードレジスタ (`$E00E`) への書き込みで、ACIA の割り込みを止める (制御レジスタに `03h`: マスタリセット)。`new-sbc09` と同じ。
+* 確認: `fpga/tn9k/sim` の Verilator で、既存の `xltest` が通る (13BA 0037 1D4C) こと、新しいテスト ROM `fpga/tn9k/test/aciirq.asm` (`make ROM=aciirq TV80=…`) で、送信割り込み (TIE) の状態ビット 7 が立ち、IRQ が 1 回入り、マスタリセットで消えること (出力 `S B I R P`)。受信割り込み (RIE) は共有の `acia_uart.v` の中の判定で、`new-sbc09` 側で確かめられている。
+* **`reboot`**: `new-sbc09` の `reboot` コマンドは電源レジスタ (`$E00F`、Level 2 は `$FF8F`) に `$A6` を書く。Matenro の `reboot` は `$A7`。どちらも `reboot_r` を立てて、リセットボタンと同じ再起動にする (`matenro_soc.v`、シミュレータ `src/machine.c` も同じ)。以前の `$A6` = 終了 (コード 1) は廃止した。
+* **コマンド名**: Matenro の C のプリプロセッサは `cpp80` (`new-sbc09` の C コンパイラの `cpp` と名前がぶつかるため)。`cc80` が `cpp80` を呼ぶ。
+* ビットストリーム (起動 ROM 版、`TAG=_acirq TV80=… scripts/build.sh boot`): LUT 約 7100、CLS 94%。**`clk81` の Fmax 69.1MHz (目標 67.5MHz)、負のスラックなし** (`$A6` の再起動を入れた版)。
+* **実機 (Tang Nano 9K、2026-11-06)**: このビットストリームを SRAM に書き (`openFPGALoader -b tangnano9k`)、`mkdisk.sh` で作り直した SD イメージ (割り込み駆動の端末ドライバの OS-9 Level 2) で、OS-9 が起動して `OS9:` が出た。`sleep 1000` を `^C` で止めると `Error #003` ですぐ戻る。`dir /d0/cmds` に `new-sbc09` の `cc` `cc1` `cpp` `reboot` と Matenro の `cpp80` `cc80` `cpm` `xrun` が並ぶ。**`reboot` (`$A6`) で `Rebooting...` のあと PSRAM の検査と OS-9 の起動が再び走った**。`load xlink`、`load x0`、`cpm /d0/hello.com abc` が `Hello from CP/M-80 on the Z80` / `!` / ` ABC` を出した。`cpp80` も動く。**フラッシュにも書いた** (`openFPGALoader -b tangnano9k -f`)。USB を抜き差しして電源を入れ直しても、フラッシュから同じ版で起動し、`reboot` (`$A6`) と `cc80 -t=/d1/htc -r hello.c` (`cpp80` → Z80 の HI-TECH C) が動いた。`duo` (6809 が 18 行、Z80 が 7 行、5.8 秒) と、`mandel.c` (`etime` で 186.7 秒、シミュレータの見積もり 183.7 秒) も動いた。

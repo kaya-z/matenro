@@ -20,7 +20,7 @@ OS-9 のコマンドから CP/M のプログラムを、そのまま動かせま
 3. [FPGA 版 (Tang Nano 9K) を使う](#4-fpga-版-tang-nano-9k-を使う)
 4. [OS-9 の起動のあと](#5-os-9-の起動のあと)
 5. [CP/M のプログラムを動かす (`cpm`)](#6-cp-m-のプログラムを動かす-cpm)
-6. [C で書く: `cpp` と `cc80`、Turbo Pascal](#7-c-で書く-cpp-と-cc80)
+6. [C で書く: `cpp80` と `cc80`、Turbo Pascal](#7-c-で書く-cpp80-と-cc80)
 7. [`xrun` (サブ CPU に直接プログラムを渡す)](#8-xrun-サブ-cpu-に直接プログラムを渡す)
 8. [SD カードのイメージを作る](#9-sd-カードのイメージを作る)
 9. [FPGA のビットストリームを作る・書く](#10-fpga-のビットストリームを作る書く)
@@ -35,7 +35,7 @@ OS-9 のコマンドから CP/M のプログラムを、そのまま動かせま
 
 * OS-9 Level 2 のコマンドとアプリ (6809 側は sim09 と同じメモリマップ、物理 2MB、8KB × 8 ページの MMU)。
 * `cpm ファイル` で、Z80 では CP/M-80 の `.COM`、8088 (シミュレータのみ) では CP/M-86 の `.CMD` を実行。コンソールとファイルは OS-9 のものを使います。
-* OS-9 で作ったツールと CP/M のツールを続けて使う: C のソースを OS-9 の `cpp` に通し、CP/M-80 の HI-TECH C でコンパイルして動かす (`cc80`)。
+* OS-9 で作ったツールと CP/M のツールを続けて使う: C のソースを OS-9 の `cpp80` に通し、CP/M-80 の HI-TECH C でコンパイルして動かす (`cc80`)。
 * パイプ・リダイレクト: `list a.txt ! cpm filter ! ...` のように、CP/M のフィルタを OS-9 のパイプにつなげます。
 
 **できないこと (主なもの)**
@@ -62,10 +62,10 @@ git clone https://github.com/kaya-z/sim09 ~/sim09
 export A09=~/sim09/tools/a09
 export OS9DIR=~/sim09/os9            # テスト用。FPGA のスクリプトは SIM09=~/sim09
 make                                 # ./matenro ができる
-make os9cmds                         # build/os9/ に cpm xrun reboot etime cpp cc80 (OS-9 のコマンド) ができる
+make os9cmds                         # build/os9/ に cpm xrun reboot etime cpp80 cc80 (OS-9 のコマンド) ができる
 ```
 
-テストは `make test` です (Z80 179 項目、8088 64 項目、統合テスト、OS-9 上の `cpm` など。`MATENRO_HTC` を設定すると HI-TECH C の試験も走ります)。
+テストは `make test` です (Z80 179 項目、8088 67 項目、統合テスト、OS-9 上の `cpm` など。`MATENRO_HTC` を設定すると HI-TECH C の試験も、`MATENRO_DOS_SRC` `MATENRO_DOS2_SRC` と `UASM` を設定すると MS-DOS の試験も走ります)。
 
 ### 3.2 すぐ試す
 
@@ -189,7 +189,7 @@ OS9:load x0             ドライバのデスクリプタ
 OS9:chd /d1             カレントのデータディレクトリを /d1 に (HI-TECH C や ZEXDOC を置いた場所)
 ```
 
-* `/d0` は OS-9 のシステムディスク (360KB) で、`cmds` に `cpm` `xrun` `reboot` `etime` `duo` `cpp` `cc80` と、sim09 のコマンド (`dir` `copy` `attr` `mdir` `mfree` など) があります。`/d0/hello.com` も入っています。
+* `/d0` は OS-9 のシステムディスク (1MB、4096 セクタ、2 セクタ/クラスタ) で、`cmds` に `cpm` `xrun` `reboot` `etime` `duo` `cpp80` `cc80` と、sim09 のコマンド (`dir` `copy` `attr` `mdir` `mfree` など) があります。`/d0/hello.com` も入っています。
 * `/d1` は 2 つ目のディスク (512KB) で、HI-TECH C、ZEXDOC などを置きます ([9 章](#9-sd-カードのイメージを作る))。
 * `reboot` は機械を再起動します (電源を入れ直したのと同じ。FPGA 版は S1 を押したのと同じで、メモリ検査から SD からの読み込みまでやり直すので約 5 秒かかります。ディスクの内容はそのまま。開いたまま書いていないファイルの内容は失われます)。
   シミュレータでは、RAM を消して ROM イメージを読み直します。
@@ -353,25 +353,25 @@ dos -v=2 -a=a.img          (BIOS は bios2.bin、カーネルは msdos.sys が�
 
 詳しくは [DESIGN.md](DESIGN.md) の 18 章。
 
-## 7. C で書く: `cpp` と `cc80`
+## 7. C で書く: `cpp80` と `cc80`
 
-### 7.1 `cpp` (C のプリプロセッサ)
+### 7.1 `cpp80` (C のプリプロセッサ)
 
 OS-9 の 6809 のアセンブラで書いた、プリプロセッサです。
 
 ```
-cpp [-Dname[=値]] [-Idir] [-oファイル] file.c
+cpp80 [-Dname[=値]] [-Idir] [-oファイル] file.c
 ```
 
 `#include` (4 段まで)、`#define` (引数あり/なし)、`#undef`、`#if` `#ifdef` `#ifndef` `#elif` `#else` `#endif`、`#error`、`#`(文字列化) と `##`(連結、関数形式マクロの中)、式 (`defined` `?:` 論理・ビット・比較・シフト・四則) に対応します。`-o` を付けなければ標準出力に出ます。
 
-### 7.2 `cc80` (OS-9 の cpp → CP/M-80 の C コンパイラ)
+### 7.2 `cc80` (OS-9 の cpp80 → CP/M-80 の C コンパイラ)
 
 ```
 cc80 [-s] [-c] [-r] [-k] [-v] [-lf] [-t=dir] [-Dname[=値]] [-Idir] file.c
 ```
 
-`cpp` で展開し (途中のファイルは、拡張子 `.i` のテキストです)、HI-TECH C 3.09 の各パス (`p1` `cgen` `zas` `linq`) を `cpm` で Z80 に動かして、`file.com` を作ります。
+`cpp80` で展開し (途中のファイルは、拡張子 `.i` のテキストです)、HI-TECH C 3.09 の各パス (`p1` `cgen` `zas` `linq`) を `cpm` で Z80 に動かして、`file.com` を作ります。
 
 | オプション | 意味 |
 |---|---|
@@ -381,7 +381,7 @@ cc80 [-s] [-c] [-r] [-k] [-v] [-lf] [-t=dir] [-Dname[=値]] [-Idir] file.c
 | `-v` | 実行するコマンドを表示する |
 | `-lf` | 浮動小数点のライブラリ `libf.lib` をリンクする (HI-TECH C の `-LF` と同じ)。`float` の計算や `%f` の `printf` を使うときに要ります。コードの中に `float` の計算があれば (`fladd` `flmul` `aitof` などを呼んでいれば) **自動で付きます** |
 | `-t=dir` | コンパイラのある場所 (既定 `/v0/htc`。FPGA 版では `-t=/d1/htc`) |
-| `-D` `-I` | `cpp` に渡す |
+| `-D` `-I` | `cpp80` に渡す |
 
 ```
 OS9:chd /d1
@@ -468,7 +468,7 @@ reply: BA 13 00 00
 
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
-| `matenro_l2.dsk` (360KB) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `reboot` `etime` `xlink` `x0` `cpp` `cc80` ほか)、`hello.com` |
+| `matenro_l2.dsk` (1MB、4096 セクタ) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `reboot` `etime` `xlink` `x0` `cpp80` `cc80` ほか)、`hello.com` |
 | `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c`、`TP=` を指定したときは Turbo Pascal (`/d1/tp`) と `hello.pas` |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体 |
 
@@ -484,7 +484,7 @@ HTC=<HI-TECH C のディレクトリ> ZEX=<zexdoc.com と zexall.com のディ�
 
 * `SIM09=<sim09 の場所>` の指定が要ります (既定は筆者の環境のパス)。
 * HI-TECH C、ZEXDOC/ZEXALL、Turbo Pascal は、**このリポジトリに入っていません**。ZEXDOC は Frank D. Cringle の Z80 命令試験 (Yaze 付属、GPL v2) です。
-* 1 枚のディスクは**最大 2048 セクタ** (1 セクタの割り当て表の限界) です。
+* `/d1` (`matenro_d1.dsk`) は**最大 2048 セクタ** (1 セクタの割り当て表の限界) です。空きは 130 セクタしかありません。`cc80 -r` は、できた `.COM` を残すので、使い終えたら `del` で消してください (満杯になると `cc80` は `cpm: a write failed (disk full)` で止まります)。`/d0` は 4096 セクタ (2 セクタ/クラスタ) で、空きは約 1900 セクタです。
 * 書き込みは [4.2](#42-sd-カードを作る) の `dd` です。
 * `/d1` のファイルには `attr -s` を付けてあります。`s` 属性 (単一ユーザ) が付いていると、同じファイルを 2 回開けず、HI-TECH のリンカが `libc.lib: Can't open` で止まります。
 
@@ -589,7 +589,7 @@ Z80 の CP/M のメモリは、`0100h` から TPA (約 63KB)、`FC00h` 以降に
 | 文書 | 内容 |
 |---|---|
 | [../README.md](../README.md) | 概要、ビルドとテスト、主なオプション |
-| [DESIGN.md](DESIGN.md) | 設計、XLINK のレジスタ、`cpm` の方式 (12 章)、`cpp` `cc80` (13 章)、ドライバ (14 章) |
+| [DESIGN.md](DESIGN.md) | 設計、XLINK のレジスタ、`cpm` の方式 (12 章)、`cpp80` `cc80` (13 章)、ドライバ (14 章) |
 | [FPGA.md](FPGA.md) | FPGA の検討と実機の記録 (9 章)、診断ビルド (9.3)、タイミング (9.4)、メモリ検査 (9.5) |
 | [FPGA_RESOURCES.md](FPGA_RESOURCES.md) | FPGA の資源とタイミングの記録 |
 | [../CREDITS.md](../CREDITS.md) | 出典とライセンス |

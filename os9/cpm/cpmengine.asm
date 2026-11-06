@@ -2175,7 +2175,9 @@ ws_bin   lbsr  recseq
          bcs   werr
          lbsr  advpos
          lbra  putfcb
-werr     lda   #2                     disk full
+werr     lda   #1
+         sta   wfail,u                the program is told (A = 2); cpm leaves with status 1 at the end
+         lda   #2                     disk full
          sta   r_al,u
          lbra  retA
 

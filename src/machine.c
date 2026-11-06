@@ -242,9 +242,9 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
             else io[addr & 0x1ff] = v;
             return;
         }
-        if (off == 0x0f) {                       /* power control: $A5 = power off ($A6: power off, exit code 1) */
-            if (v == 0xa5 || v == 0xa6) { m->stop = 1; m->quit = 1; m->exit_code = (v == 0xa6); }
-            if (v == 0xa7) m->reboot_req = 1;        /* reboot: done between two slices (machine_run) */
+        if (off == 0x0f) {                       /* power control: $A5 = power off, $A6 (new-sbc09 and its reboot command) or $A7 = reboot */
+            if (v == 0xa5) { m->stop = 1; m->quit = 1; m->exit_code = 0; }
+            if (v == 0xa6 || v == 0xa7)  m->reboot_req = 1;        /* reboot: done between two slices (machine_run) */
             return;
         }
         if (off >= 0x30 && off < 0x40) { do_timer_write(m, off - 0x30, v); return; }

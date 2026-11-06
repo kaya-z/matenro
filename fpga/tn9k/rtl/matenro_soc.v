@@ -17,7 +17,7 @@
 //   RAM       64 KB in the PSRAM of the Tang Nano 9K, through the controller of Feng Zhou (vendor/psram);
 //             cleared (byte by byte) after every reset, like the memory of the simulator
 //   ROM       a read-only image in block RAM, from ROM_BASE up to $FFFF, over the RAM
-//   $E000/01  console ACIA on the UART (acia_uart.v)
+//   $E000/01  console ACIA on the UART (acia_uart.v); its interrupt request is on the IRQ line (with the timer and the cross link)
 //   $E00F     power control: $A5 stops the machine (until the reset button)
 //   $E030-36  timer and clock (timer_rtc.v)
 //   $E040-47  disk port on the microSD card (sd_disk.v)
@@ -88,7 +88,7 @@ module matenro_soc #(
     input  wire [21:0] x2_addr,
     output wire        x2_ack,
     output wire [15:0] x2_rdata,
-    output wire        reboot_req,          // the guest wrote $A7 to the power register: the top level does what the reset button does
+    output wire        reboot_req,          // the guest wrote $A6 or $A7 to the power register: the top level does what the reset button does
     output wire        term_stb,            // a byte the guest wrote to the console (for the HDMI screen)
     output wire [7:0]  term_byte,
     output wire [111:0] dbg_regs,
@@ -119,6 +119,7 @@ module matenro_soc #(
     reg         e, q;
     reg         nreset_cpu;
     wire        timer_irq;
+    wire        acia_irq;               // the console ACIA (OS-9 uses its receive and transmit interrupts)
     // MATENRO (declared here: they are used before the XLINK section)
     wire        xl_irq, xl_firq, xl_wait, xl_win, xl_on;
     wire [7:0]  xl_rdata;
@@ -136,7 +137,7 @@ module matenro_soc #(
     mc6809i #(.ILLEGAL_INSTRUCTIONS("GHOST")) cpu (
         .D(cpu_d_in), .DOut(cpu_d_out), .ADDR(cpu_a), .RnW(cpu_rnw),
         .E(e), .Q(q), .BS(cpu_bs), .BA(cpu_ba),
-        .nIRQ(FREERUN ? 1'b1 : ~(timer_irq | xl_irq)), .nFIRQ((FREERUN ? ~timer_irq : 1'b1) & ~xl_firq), .nNMI(1'b1),
+        .nIRQ(FREERUN ? ~acia_irq : ~(timer_irq | xl_irq | acia_irq)), .nFIRQ((FREERUN ? ~timer_irq : 1'b1) & ~xl_firq), .nNMI(1'b1),
         .AVMA(cpu_avma), .BUSY(), .LIC(cpu_lic),
         .nHALT(1'b1), .nRESET(nreset_cpu), .nDMABREQ(1'b1),
         .RegData(dbg_regs)
@@ -166,7 +167,7 @@ module matenro_soc #(
     wire      ps_busy_m;
     wire [15:0] ps_dout_m;           // the word the arbiter read for master 0 (the CPU, the disk)
     reg       pwroff;
-    reg       reboot_r;             // $A7 in the power register (cleared by the reset it causes)
+    reg       reboot_r;             // $A6 (the reboot command of new-sbc09) or $A7 in the power register (cleared by the reset it causes)
     reg       osrun;                // the boot ROM wrote $A4 to the power register: the OS has been started (LED4)
     reg       acia_pend;            // a character for a busy transmitter: the CPU waits
     // The byte read from the PSRAM lands in rd_reg on the clock where mem_pend falls.  The core takes its
@@ -382,6 +383,8 @@ module matenro_soc #(
     reg        acia_rd;                 // a clock after the read: rd_reg has taken the character by then
     always @(posedge clk) acia_rd <= acc2 && vma_pend && cpu_rnw && io_acia && off[0];
     reg  [7:0] acia_byte;
+    reg        acia_cwr;                // one clock: a write to the control register
+    reg  [7:0] acia_cbyte;
     wire       acia_wr = acia_pend && !acia_tx_full && !term_busy;    // the screen can also hold a character back
     assign term_stb  = acia_wr | st_wr;
     assign term_byte = st_wr ? st_byte : acia_byte;
@@ -391,7 +394,8 @@ module matenro_soc #(
     acia_uart #(.BAUD_DIV(BAUD_DIV)) acia (
         .clk(clk), .rst(rst), .rxd(rxd), .txd(txd),
         .rd_data(acia_rd), .wr_data(acia_wr | st_wr), .wdata(st_wr ? st_byte : acia_byte),
-        .tx_full(acia_tx_full), .status(acia_status), .rdata(acia_rdata)
+        .wr_ctl(acia_cwr), .cdata(acia_cbyte),
+        .tx_full(acia_tx_full), .status(acia_status), .rdata(acia_rdata), .irq(acia_irq)
     );
 
     timer_rtc #(
@@ -484,6 +488,7 @@ module matenro_soc #(
 
     always @(posedge clk) begin
         dgo  <= 1'b0;
+        acia_cwr <= 1'b0;
         go_req <= 1'b0;
         c_rd <= 1'b0;
         c_cwr <= 1'b0;
@@ -507,8 +512,13 @@ module matenro_soc #(
                         else begin
                             if (io_power && cpu_d_out == 8'ha5) begin pwroff <= 1'b1; osrun <= 1'b0; end      // shutdown: LED5 on, LED4 off
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
-                            if (io_power && cpu_d_out == 8'ha7) reboot_r <= 1'b1;      // reboot: the same as the reset button
+                            if (io_power && (cpu_d_out == 8'ha7 || cpu_d_out == 8'ha6)) reboot_r <= 1'b1;      // reboot: the same as the reset button
                             if (io_mmu) begin tr_raw <= cpu_d_out; tr <= cpu_d_out[0]; end
+                            if (io_modr) begin acia_cwr <= 1'b1; acia_cbyte <= 8'h03; end      // a new machine mode: the ACIA interrupts are off
+                            if (io_acia && !off[0]) begin
+                                acia_cwr <= 1'b1;                   // the control register: interrupt enables, master reset
+                                acia_cbyte <= cpu_d_out;
+                            end
                             if (io_acia && off[0]) begin
                                 acia_pend <= 1'b1;                  // the guest does not look at TDRE: wait for it here
                                 acia_byte <= cpu_d_out;

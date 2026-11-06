@@ -8,6 +8,7 @@ MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしてい�
 * 2 つの CPU は**物理 RAM を共有**し、**それぞれの最大クロック** (6809 = 2 MHz、Z80 = 8 MHz、8088 = 8 MHz) で同時に動きます。
 * 6809 側のメモリ・MMU・I/O は sim09 のまま (Level 2: 8KB × 8 ページの MMU、物理 2MB、I/O は `$FF80`)。
 * ストレージは SD カード相当のディスクイメージ (6809/OS-9 側だけが持つ。生デバイスも指せる)。
+* 8088 では、CP/M-86 のほかに **MS-DOS 1.25 と 2.0 が動きます** (OS-9 のコマンド `dos`。カーネルと `COMMAND` は Microsoft が公開したものを組むか、そのまま使います。`EDLIN`、`DEBUG`、`DATE`/`TIME`、プリンタ、ディスクイメージ。使い方は [docs/MANUAL.md](docs/MANUAL.md) の 6.8、設計は [docs/DESIGN.md](docs/DESIGN.md) の 18 章)。
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
 * **FPGA 版 (Tang Nano 9K) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 88%、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、シミュレータだけです (20K のボードが要ります)。
 
@@ -34,8 +35,8 @@ sim09 は**読み取り専用**で使います (ディスクイメージはテ�
 | | |
 |---|---|
 | `make test-z80` | Z80 の既知答えテスト 179 項目 |
-| `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 64 項目 |
-| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp` (6 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 48 項目 (`MATENRO_HTC` があれば 51 項目、`MATENRO_TP` (Turbo Pascal) もあれば 53 項目、`MATENRO_CPM` (DR のツールと MBASIC) もあれば 56 項目) |
+| `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 67 項目 |
+| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp80` (6 項目)、**`dos` で MS-DOS 1.25 と 2.0 を 8088 で動かす** (`MATENRO_DOS_SRC` `MATENRO_DOS2_SRC` と `UASM` があれば。1.25 は 17 項目、2.0 は 16 項目)、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 48 項目 (`MATENRO_HTC` があれば 51 項目、`MATENRO_TP` (Turbo Pascal) もあれば 53 項目、`MATENRO_CPM` (DR のツールと MBASIC) もあれば 56 項目) |
 | `make test-asm` | 自作 Z80 アセンブラの既知の機械語 90 項目 |
 
 **テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で、シミュレータと**実機の FPGA** (7.5 MHz、約 3 時間) の両方で通しました (リポジトリには入れていません)。実機の 1 回目は、7 項目目のあとで出力が止まりましたが、同じ条件で 2 回やり直すと 2 回とも完走し、原因は分かっていません ([docs/FPGA.md](docs/FPGA.md) の 9.3)。8086 の公開テストは**走らせていません**。
@@ -87,7 +88,7 @@ OS-9 のコマンド `cpm` (`os9/cpm/cpm.asm`) が、CP/M-80 (`-sub z80`) また
 BDOS の呼び出しは OS-9 が引き受けて、コンソールは OS-9 の標準入出力、ファイルは OS-9 のファイル (カレントデータディレクトリ) になります。
 
 ```sh
-make os9cmds                                              # build/os9/ に cpm xrun cpp cc80 (OS-9 のモジュール) を作る
+make os9cmds                                              # build/os9/ に cpm xrun cpp80 cc80 (OS-9 のモジュール) を作る
 python3 tools/z80asm.py tests/cpm/hello.asm -o /tmp/mh/v0/hello.com                       # CP/M-80 のプログラム (自作の小さなアセンブラ)
 nasm -f bin tests/cpm/hello86.asm -o /tmp/h86.bin && python3 tools/mkcmd.py 8080 /tmp/h86.bin /tmp/mh/v0/hello86.cmd   # CP/M-86 のプログラム
 cp build/os9/cpm /tmp/mh/v0/cmds/                          # /tmp/mh の準備は上の xrun の例と同じ
@@ -106,14 +107,14 @@ Hello from CP/M-80 on the Z80
 8088 のときは `-sub 8088` で起動して `cpm hello86.cmd abc` です。CP/M の CCP/BDOS/BIOS の実物は動かさない BDOS レベルの互換で、実物のソフトは
 ZEXDOC (Z80 の命令、67 項目)、HI-TECH C 3.09 のコンパイラ、Turbo Pascal 3.0 (編集、コンパイル、実行、保存)、Digital Research の `STAT` `ASM` `LOAD` `PIP` `ED` `DDT` と `MBASIC` 5.21 で確かめました。制約と仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 12 章に書きました。
 
-### OS-9 のツールと CP/M のツールを続けて使う (`cpp` と `cc80`)
+### OS-9 のツールと CP/M のツールを続けて使う (`cpp80` と `cc80`)
 
-OS-9 側で作った C のプリプロセッサ `cpp` (`os9/cpp/cpp.asm`、6809 のアセンブラ) を通して、CP/M-80 の C コンパイラ (HI-TECH C 3.09) でコンパイルし、
+OS-9 側で作った C のプリプロセッサ `cpp80` (`os9/cpp/cpp.asm`、6809 のアセンブラ) を通して、CP/M-80 の C コンパイラ (HI-TECH C 3.09) でコンパイルし、
 できた `.COM` を Z80 で動かすまでを、`cc80` (`os9/cc80/cc80.asm`) が 1 コマンドで行います。
 
 ```
 OS9:cc80 -r -v demo.c
-+ cpp -DCPM -DHI_TECH_C -Dz80 -I/v0/htc -odemo.i demo.c
++ cpp80 -DCPM -DHI_TECH_C -Dz80 -I/v0/htc -odemo.i demo.c
 + cpm -k -p=/v0/htc p1 demo.i demo.p1 demo.p2
 + cpm -k -p=/v0/htc cgen demo.p1 demo.as
 + cpm -k -p=/v0/htc zas -J -N -Odemo.obj demo.as
@@ -124,7 +125,7 @@ big 36
 
 HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB とヘッダ) は**このリポジトリに入っていません**。<https://github.com/agn453/HI-TECH-Z80-C>
 から自分で取得して `/v0/htc` (または `-t=dir`) に置いてください。テストは環境変数 `MATENRO_HTC=そのディレクトリ` のときだけ `cc80` を試します。
-`cpp` だけでも使えます (`cpp -Dname=v -Idir -ofile file.c`、`#` `##` は関数形式マクロのみ)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
+`cpp80` だけでも使えます (`cpp80 -Dname=v -Idir -ofile file.c`、`#` `##` は関数形式マクロのみ)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
 
 ### 主なオプション (sim09 のオプションは、そのまま使えます)
 
@@ -152,9 +153,9 @@ HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB とヘ�
 
 ```
 src/            sim09 の複製 (m6809 dis6809 console net vdisk dbg) + 変更 (machine main) + 新規 (subcpu.h z80.c i8088.c xlink.c/h)
-os9/            xrun.asm と cpm/ cpp/ cc80/ (OS-9 Level 2 のコマンド `xrun` `cpm` `cpp` `cc80`)、sub/ (デモのサブ CPU プログラム)
+os9/            xrun.asm と cpm/ cpp/ cc80/ (OS-9 Level 2 のコマンド `xrun` `cpm` `cpp80` `cc80`)、sub/ (デモのサブ CPU プログラム)
 tools/          z80asm.py (Z80 アセンブラ)、mkcmd.py (CP/M-86 の .CMD を作る)、build_cpm.sh (OS-9 コマンドのビルド)
-tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80asm_test.py mh/xlink_test.asm cpm/ (CP/M のテストプログラム) cpp/ (cpp と cc80 の C ソース)
+tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80asm_test.py mh/xlink_test.asm cpm/ (CP/M のテストプログラム) cpp/ (cpp80 と cc80 の C ソース)
 docs/           DESIGN.md (設計・レジスタ仕様) FPGA.md (FPGA の検討)
 fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト、テストベンチは Verilog: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
 fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットストリーム、mkdisk.sh と mkdisk_d1.sh で SD イメージ、sim/ で RTL シミュレーション)
@@ -166,7 +167,8 @@ fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットスト
 * FPGA 版の **HDMI の画面と RTC** (どちらも載せられますが、書いていません。9K の LUT は残り約 10% で HDMI は載りません)。
 * FPGA のタイミングの余裕は小さいです (67.5 MHz で 0.1〜0.5 ns)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0、DR の標準ツールと MBASIC です (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
-* OS-9 のデバイスドライバ (`os9/xlink`、メモリを OS-9 の空き RAM から借りる) は doorbell を**割り込みで通知しません** (sim09 の Clock が割り込み表を調べないため。ポーリングで待ちます。docs/DESIGN.md の 14 章)。
+* OS-9 のデバイスドライバ (`os9/xlink`) がドアベルの割り込みで待つには、`new-sbc09` の Clock モジュールが、タイマ以外の IRQ で `D.Poll` を呼ぶ版である必要があります (docs/DESIGN.md の 14 章)。古い OS-9 のイメージでは、ポーリングで待ちます。
+* MS-DOS は 1.25 と 2.0 だけです (2.0 のカーネルは Microsoft が公開した完成品を使います)。IBM PC 用の `BASIC.COM` は動きません。実機の FPGA には 8088 がないので、MS-DOS はシミュレータだけです。
 * メモリ競合 (2 つの CPU が同じ RAM を取り合うときの待ち) のモデル。
 * 8086 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。
 * FM-11 の実際のマンハッタンシステムとの互換性 (考え方だけを借りています)。

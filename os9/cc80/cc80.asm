@@ -6,7 +6,7 @@
 *
 * One command drives the whole chain of two operating systems:
 *
-*     OS-9 (6809)     cpp  file.c            the C preprocessor of this project (os9/cpp)
+*     OS-9 (6809)     cpp80  file.c            the C preprocessor of this project (os9/cpp)
 *     CP/M-80 (Z80)   p1, cgen               the HI-TECH C compiler passes, run by `cpm` on the Z80
 *     CP/M-80 (Z80)   zas, linq              the assembler and the linker of the same compiler
 *
@@ -58,6 +58,8 @@ pbuf     rmb   420
 nmp      rmb   2
 plen     rmb   2
 tmp16    rmb   2
+szh      rmb   2                 the size of a stage's output file (chk)
+szl      rmb   2
 status   rmb   1
 fpth     rmb   1
 lbuf     rmb   80
@@ -73,6 +75,10 @@ msgfail  fcc   "cc80: failed: "
          fcb   0
 msgrun   fcc   "cc80: cannot run "
          fcb   0
+msgout   fcc   "cc80: no output: "
+         fcb   0
+msgsrc   fcc   "cc80: cannot open "
+         fcb   0
 msgplus  fcc   "+ "
          fcb   0
 msgsp    fcc   " "
@@ -81,7 +87,7 @@ msgnl    fcb   C$CR
 deftool  fcc   "/v0/htc"
          fcb   0
 
-n_cpp    fcc   "cpp"
+n_cpp    fcc   "cpp80"
          fcb   C$CR
 n_cpm    fcc   "cpm"
          fcb   C$CR
@@ -247,6 +253,27 @@ pa4      lda   ,y+
 pa5      clr   ,x
          tst   stem,u
          lbeq  usage
+* ---- the source must be there before anything is deleted: the old results below are the files of the same name
+* (hello.c -> hello.com), a wrong directory or a wrong name would delete a program that has nothing to do with this
+         leax  src,u
+         leay  pbuf,u
+ck1      lda   ,x+
+         sta   ,y+
+         bne   ck1
+         lda   #C$CR
+         sta   -1,y
+         leax  pbuf,u
+         lda   #READ.
+         os9   I$Open
+         bcc   ck2
+         leax  msgsrc,pcr
+         lbsr  wrstr
+         leax  pbuf,u
+         lbsr  wrstr
+         lbsr  newline
+         ldb   #1
+         os9   F$Exit
+ck2      os9   I$Close
 * ---- run the passes
          leax  d_i,pcr               old results would stop the CP/M programs ("make" fails if the file exists)
          lbsr  delete
@@ -263,18 +290,26 @@ pa5      clr   ,x
          leax  t_cpp,pcr
          leay  n_cpp,pcr
          lbsr  stage
+         leax  d_i,pcr
+         lbsr  chk
          leax  t_p1,pcr
          leay  n_cpm,pcr
          lbsr  stage
+         leax  d_p1,pcr
+         lbsr  chk
          leax  t_cgen,pcr
          leay  n_cpm,pcr
          lbsr  stage
+         leax  d_as,pcr
+         lbsr  chk
          lda   flags,u
          bita  #F_S
          bne   fin
          leax  t_zas,pcr
          leay  n_cpm,pcr
          lbsr  stage
+         leax  d_obj,pcr
+         lbsr  chk
          lda   flags,u
          bita  #F_C
          bne   fin
@@ -286,6 +321,8 @@ pa5      clr   ,x
          leax  t_linkf,pcr
 ln1      leay  n_cpm,pcr
          lbsr  stage
+         leax  d_com,pcr
+         lbsr  chk
          lda   flags,u
          bita  #F_R
          beq   fin
@@ -497,6 +534,43 @@ st_msg   lbsr  wrstr
          lbsr  newline
          ldb   status,u
          os9   F$Exit
+
+* the output file of a stage must be there and not empty (a CP/M program that cannot write its output - disk full, no
+* such file - reports it and returns as if nothing had happened, and the next stage, or the program itself, would run
+* with nothing): X = the template of its name.  If not: say so and leave with status 1
+chk      leay  pbuf,u
+         lbsr  appt
+         leax  pbuf,u
+         lda   #READ.
+         os9   I$Open
+         bcs   ck_bad
+         sta   fpth,u
+         pshs  u                     the size comes back in X:U
+         ldb   #SS.Size
+         os9   I$GetStt
+         pshs  x,u,cc
+         ldu   5,s
+         ldd   1,s
+         std   szh,u
+         ldd   3,s
+         std   szl,u
+         puls  cc
+         leas  4,s
+         puls  u
+         lda   fpth,u
+         os9   I$Close
+         ldd   szh,u
+         bne   ck_ok
+         ldd   szl,u
+         bne   ck_ok
+ck_bad   leax  msgout,pcr
+         lbsr  wrstr
+         leax  pbuf,u
+         lbsr  wrstr
+         lbsr  newline
+         ldb   #1
+         os9   F$Exit
+ck_ok    rts
 
 newline  leax  msgnl,pcr
          lda   #2

@@ -65,10 +65,13 @@ msgbad   fcc   "cpm: not a CP/M-86 .CMD file"
          fcb   C$CR
 msgbig   fcc   "cpm: program too big"
          fcb   C$CR
+msgwf    fcc   "cpm: a write failed (disk full)"
+         fcb   C$CR
 
 * ------------------------------------------------------------------
 start    stx   argp,u
          clr   done,u
+         clr   wfail,u
          clr   rawf,u
          clr   srchdir,u
          lda   >XID
@@ -228,7 +231,16 @@ sv1
          beq   exit0
          lda   srchdir,u
          os9   I$Close
-exit0    clrb
+exit0    tst   wfail,u
+         beq   exit1
+* the program may not have noticed (the HI-TECH tools do not): the next one would read a cut file
+         leax  msgwf,pcr
+         lda   #2
+         ldy   #80
+         os9   I$WritLn
+         ldb   #1
+         os9   F$Exit
+exit1    clrb
          os9   F$Exit
 
 

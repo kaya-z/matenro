@@ -15,7 +15,7 @@ mkdir -p "$WORK/v0"
 [ -f "$WORK/OS9.dsk" ] || cp "$SBC/OS9.dsk" "$SBC/WORK.dsk" "$WORK/"
 rm -rf "$WORK/v0/cmds"
 cp -r "$SBC/level2/cmds" "$WORK/v0/cmds"
-cp "$ROOT"/build/os9/cpm "$ROOT"/build/os9/cpp "$ROOT"/build/os9/cc80 "$ROOT"/build/os9/xrun "$WORK/v0/cmds/"
+cp "$ROOT"/build/os9/cpm "$ROOT"/build/os9/cpp80 "$ROOT"/build/os9/cc80 "$ROOT"/build/os9/xrun "$WORK/v0/cmds/"
 if [ "$CPU" = z80 ]; then
     for n in hello fileio line tcat tcount twrite; do
         python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/$n.asm" -o "$WORK/v0/$n.com"

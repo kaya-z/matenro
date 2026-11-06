@@ -72,7 +72,7 @@ typedef struct machine {
     uint32_t rommemsize;
     char    *rom_file;             /* the ROM image and its start, to load it again at a reboot */
     long     rom_arg;
-    int      reboot_req;           /* the guest wrote $A7 to the power register: power cycle at the next slice */
+    int      reboot_req;           /* the guest wrote $A6 or $A7 to the power register: power cycle at the next slice */
     uint8_t *mmu;                  /* L2: currently active MMU map (8 bytes) */
 
     /* peripherals */

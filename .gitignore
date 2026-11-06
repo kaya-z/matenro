@@ -16,5 +16,9 @@ fpga/tn9k/sim/build
 fpga/tn9k/test/sumz80.inc
 fpga/tn9k/test/xltest.bin
 fpga/tn9k/test/xltest.lst
+fpga/tn9k/test/aciirq.bin
+fpga/tn9k/test/aciirq.lst
 fpga/tn9k/sim/build_boot
+fpga/tn9k/sim/build_aciirq
 fpga/sim/build_btn/
+CLAUDE.local.md

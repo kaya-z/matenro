@@ -27,6 +27,7 @@ r_bl     rmb   1
 r_bh     rmb   1
 r_ah     rmb   1
 done     rmb   1                 program ended
+wfail    rmb   1                 a write of the program failed (disk full): cpm leaves with status 1
 stdi      rmb   1                 our own copies of the standard paths (see start)
 stdo     rmb   1
 stde     rmb   1

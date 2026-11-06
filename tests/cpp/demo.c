@@ -1,4 +1,4 @@
-/* seamless demo: the OS-9 preprocessor (cpp) feeds the CP/M-80 C compiler (HI-TECH C) */
+/* seamless demo: the OS-9 preprocessor (cpp80) feeds the CP/M-80 C compiler (HI-TECH C) */
 #include <stdio.h>
 #define SQ(x) ((x)*(x))
 #define N 5

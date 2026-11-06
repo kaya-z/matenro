@@ -12,7 +12,11 @@ TV80V  = $(B)/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_
 
 # ROM=boot: the 256 byte boot ROM of sim09 (loads the Level 2 loader from the SD image, LSN 2): make boot DISK=... SCRIPT=...
 ROM ?= xltest
-ifeq ($(ROM),boot)
+ifeq ($(ROM),aciirq)
+B := build_aciirq
+ROMBASE = 64512
+ROMAW = 10
+else ifeq ($(ROM),boot)
 B := build_boot
 ROMBASE = 65280
 ROMAW = 8
@@ -21,11 +25,23 @@ ROMBASE = 64512
 ROMAW = 10
 endif
 
+# make ROM=aciirq TV80=...: the interrupt of the console ACIA (test/aciirq.asm)
+ifeq ($(ROM),aciirq)
+run: $(B)/obj/Vsim_top
+	$(B)/obj/Vsim_top -nosd -c 40000000 | tee $(B)/out.txt
+	@tr -d '\r\n' < $(B)/out.txt | grep -q "SBIRP" && echo "matenro_soc ACIA interrupt: OK (S B I R P)" || { echo "matenro_soc ACIA interrupt: FAILED"; exit 1; }
+else
 run: $(B)/obj/Vsim_top
 	$(B)/obj/Vsim_top -nosd -c 40000000 | tee $(B)/out.txt
 	@grep -q "13BA" $(B)/out.txt && grep -q "0037" $(B)/out.txt && grep -q "1D4C" $(B)/out.txt && echo "matenro_soc: OK (13BA 0037 1D4C)" || { echo "matenro_soc: FAILED"; exit 1; }
+endif
 
-ifeq ($(ROM),boot)
+ifeq ($(ROM),aciirq)
+$(B)/rom.hex: ../test/aciirq.asm
+	@mkdir -p $(B)
+	cd ../test && echo n | $(SIM09)/../../tools/a09 -o aciirq.bin -l aciirq.lst aciirq.asm
+	python3 $(SIM09)/scripts/bin2hex.py ../test/aciirq.bin > $@
+else ifeq ($(ROM),boot)
 $(B)/rom.hex:
 	@mkdir -p $(B)
 	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
