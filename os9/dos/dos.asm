@@ -6,7 +6,7 @@
 *
 *   -k=file   the MS-DOS kernel (default msdos.sys in the current data directory)
 *   -a=file   the disk image of drive A: (a FAT12 image: tools/mkdosimg.py; COMMAND.COM must be on it); -b -c -d: B: C: D:
-*             the size of the file decides the format: 160 KB, 320 KB (IBM formats) or 8 MB (hard disk)
+*             the size of the file decides the format: 160 KB, 320 KB, 360 KB (IBM formats) or 8 MB (hard disk)
 *   -v=2      MS-DOS 2.0: the BIOS is the file -s=bios (default bios2.bin; tools/build_dosbin2.sh), -k the kernel MSDOS.SYS
 *   -p=path   the printer (PRN): the output is appended to the file or device (nothing without it)
 *   -o=path   the aux port output (AUX), appended;  -i=path  the aux port input, read from the start (1Ah at the end)
@@ -112,6 +112,7 @@ rstvec   fcb   $EA,$00,$00,$40,$00      JMP FAR 0040:0000 (the BIOS) at FFFF0
 * (after the table: the media byte and the sectors of a FAT, for the BPB of 2.0)
 fmts     fcb   $00,$02,$80,$00,$00,$02,$01,$01,$00,$02,$40,$00,$40,$01,$FE,$01,$00      160 KB
          fcb   $00,$05,$00,$00,$00,$02,$02,$01,$00,$02,$70,$00,$80,$02,$FF,$01,$00      320 KB
+         fcb   $00,$05,$A0,$00,$00,$02,$02,$01,$00,$02,$70,$00,$D0,$02,$FD,$02,$00      360 KB (9 sectors per track)
          fcb   $00,$80,$00,$00,$00,$02,$08,$01,$00,$02,$00,$02,$00,$40,$F8,$06,$00      8 MB
 defb2    fcc   "bios2.bin"
          fcb   C$CR
@@ -123,7 +124,7 @@ msgfile  fcc   "dos: cannot open the kernel or an image file"
          fcb   C$CR
 msgbig   fcc   "dos: the kernel is too big"
          fcb   C$CR
-msgsize  fcc   "dos: an image must be 160 KB, 320 KB or 8 MB"
+msgsize  fcc   "dos: an image must be 160 KB, 320 KB, 360 KB or 8 MB"
          fcb   C$CR
 
 * ------------------------------------------------------------------
@@ -257,7 +258,7 @@ dv1      ldb   nimg,u
          std   szl,u
          leas  6,s
          leay  fmts,pcr
-         ldb   #3
+         ldb   #4
 fm1      ldd   ,y
          cmpd  szh,u
          bne   fm2

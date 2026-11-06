@@ -332,7 +332,7 @@ dos [-v=2 [-s=BIOS]] [-k=カーネル] -a=イメージ [-b=イメージ] [-c=イ
 
 ```
 MSDOS_SRC=.../MS-DOS/v1.25/source UASM=.../uasm tools/build_dosbin.sh dosbin      -> dosbin/msdos.sys dosbin/command.com
-python3 tools/mkdosimg.py a.img 160 dosbin/command.com 他のファイル...            160 KB のディスクイメージ (320 と 8192 もある)
+python3 tools/mkdosimg.py a.img 160 dosbin/command.com 他のファイル...            160 KB のディスクイメージ (320、360、8192 もある。360 は 2.0 用の 9 セクタ形式)
 ```
 
 `msdos.sys` と `a.img` を OS-9 から見える場所に置き (`-v` で見せたホストのディレクトリなど)、`dos -a=a.img` を実行します。A: の `COMMAND.COM` が読まれて、日付と時刻を聞かれ (Enter でそのまま)、プロンプト `A:` が出ます。`DIR`、`TYPE`、`COPY`、`DEL` と、イメージに入れた `.COM` のプログラム (`CHKDSK` など) が使えます。キーボードは DOS がそのまま受けます (OS-9 は端末の変換を止めます)。**DOS を終わるキーは `^]` (Ctrl-]) です。**ディスクのイメージは OS-9 の普通のファイルで、DOS が書いた内容はそこに残ります。使えるメモリは 256 KB です。
@@ -349,7 +349,7 @@ python3 tools/mkdosimg.py a.img 320 dos2bin/command.com 他のファイル...
 dos -v=2 -a=a.img          (BIOS は bios2.bin、カーネルは msdos.sys がカレントのデータディレクトリにあること)
 ```
 
-2.0 ではサブディレクトリ (`MKDIR`、`CD`)、`PRN`/`AUX`/`CON`、`EDLIN`、`DEBUG` が使えます (使い方と制限は 1.25 と同じ)。`CONFIG.SYS` はイメージに置けば読まれます (まだ試していません)。
+2.0 ではサブディレクトリ (`MKDIR`、`CD`)、`PRN`/`AUX`/`CON`、`EDLIN`、`DEBUG` が使えます (使い方と制限は 1.25 と同じ)。`CONFIG.SYS` はイメージに置けば `SYSINIT` が読みます (`FILES=` `BUFFERS=` など。知らない行は報告されます。`DEVICE=` は試していません)。ディスクイメージは 160 KB、320 KB、360 KB、8 MB から起動できます。
 
 詳しくは [DESIGN.md](DESIGN.md) の 18 章。
 

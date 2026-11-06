@@ -489,6 +489,26 @@ def os9_dos2(tmp):
             check('MS-DOS 2.0: the printer and aux output files and the disk image of the host hold the changes',
                   pr.startswith(hello) and ax.startswith(hello) and back != files['a.img'] and b'COPY    TXT' in back, repr(pr) + repr(ax))
 
+    # the other disk formats of 2.0: 360 KB (9 sectors per track) with a CONFIG.SYS (SYSINIT reads it: FILES= is known, BOGUS= is
+    # reported), and the 8 MB hard disk image
+    cfg = os.path.join(tmp, 'CONFIG.SYS')
+    open(cfg, 'wb').write(b'FILES=20\r\nBOGUS=1\r\n')
+    for tag, fmt, extra in (('dos2f360', '360', [cfg]), ('dos2f8m', '8192', [])):
+        im = os.path.join(tmp, tag + '.img')
+        r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), im, fmt, os.path.join(bd, 'command.com'), hp] + extra)
+        assert r.returncode == 0, r.stdout
+        fl = {'msdos.sys': files['msdos.sys'], 'bios2.bin': files['bios2.bin'], 'a.img': open(im, 'rb').read()}
+        sc = ['send "dos -v=2 -a=a.img\\r"', 'expect "Enter new date:"', 'send "\\r"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A>"',
+              'send "copy hello2.txt copy.txt\\r"', 'expect "1 File(s) copied"', 'send "dir\\r"', 'expect "bytes free"',
+              'send "type copy.txt\\r"', 'expect "Second line."', 'send "\\x1d"', 'expect "OS9:"']
+        out, d = os9_session(tmp, tag, '8088', fl, sc, timeout=400)
+        out = out.replace('\r', '')
+        what = '360 KB disk with a CONFIG.SYS' if fmt == '360' else '8 MB hard disk image'
+        ok = 'HELLO2   TXT' in out and 'COPY     TXT' in out and out.count('Second line.') == 1 and out.rstrip().endswith('OS9:')
+        if fmt == '360':
+            ok = ok and 'Unrecognized command in CONFIG.SYS' in out
+        check('MS-DOS 2.0: boot from a %s, DIR, COPY, TYPE' % what, ok, out[-900:])
+
 
 def os9_reboot(tmp):
     """the OS-9 command reboot: $A7 in the power register, the machine starts again (RAM cleared, ROM image loaded), disks stay"""

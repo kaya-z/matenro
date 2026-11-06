@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT
 """Make a FAT12 disk image for MS-DOS 1.25 (os9 command `dos`) and put files in the root directory.
 
-  python3 tools/mkdosimg.py OUT.img FORMAT [file ...]       FORMAT: 160 (KB), 320, or 8192 (a 8 MB hard disk)
+  python3 tools/mkdosimg.py OUT.img FORMAT [file ...]       FORMAT: 160 (KB), 320, 360 or 8192 (a 8 MB hard disk)
 
 The formats (the disk parameter tables of docs/DESIGN.md 18.4; `dos` finds the format from the size of the file):
   160 KB   512 bytes/sector, 1 sector/cluster, 1 reserved sector, 2 FATs, 64 directory entries, 320 sectors
   320 KB   512, 2, 1, 2, 112, 640
+  360 KB   512, 2, 1, 2, 112, 720 (2 sectors per FAT)
   8 MB     512, 8, 1, 2, 512, 16384
 A file is stored under its upper case name; the date and time are those of the file.  COMMAND.COM must be in the
 image of drive A.
@@ -18,6 +19,7 @@ import time
 FORMATS = {
     160: (512, 1, 1, 2, 64, 320, 0xFE),
     320: (512, 2, 1, 2, 112, 640, 0xFF),
+    360: (512, 2, 1, 2, 112, 720, 0xFD),              # 9 sectors per track (MS-DOS 2.0): 2 sectors per FAT
     8192: (512, 8, 1, 2, 512, 16384, 0xF8),
 }
 
@@ -25,7 +27,7 @@ FORMATS = {
 def make(fmt, files):
     secsz, spc, res, nfat, ndir, nsec, media = FORMATS[fmt]
     dirsec = ndir * 32 // secsz
-    fatsec = 1
+    fatsec = 2 if fmt == 360 else 1                   # the BPB of dos.asm: 360 KB has 2 sectors per FAT, the others the least
     while True:                                       # the FAT must hold the entries of all clusters
         nclus = (nsec - res - nfat * fatsec - dirsec) // spc
         if (nclus + 2) * 3 // 2 + 1 <= fatsec * secsz:
