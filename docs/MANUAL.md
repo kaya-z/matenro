@@ -325,7 +325,7 @@ duo [-1] [-z] [-n]
 ### 6.8 MS-DOS 1.25 を 8088 で動かす (`dos`、シミュレータのみ)
 
 ```
-dos [-k=カーネル] -a=イメージ [-b=イメージ] [-c=イメージ] [-d=イメージ] [-p=プリンタ] [-i=補助入力] [-o=補助出力]
+dos [-v=2 [-s=BIOS]] [-k=カーネル] -a=イメージ [-b=イメージ] [-c=イメージ] [-d=イメージ] [-p=プリンタ] [-i=補助入力] [-o=補助出力]
 ```
 
 `-sub 8088` のシミュレータで、MS-DOS 1.25 (カーネルと `COMMAND`) が動きます。MS-DOS は Microsoft が公開したソース (`github.com/microsoft/MS-DOS`、MIT ライセンス) から、`tools/build_dosbin.sh` で組みます (MASM 互換のアセンブラ UASM が要ります。ソースもアセンブラもこのリポジトリには入っていません)。
@@ -340,6 +340,16 @@ python3 tools/mkdosimg.py a.img 160 dosbin/command.com 他のファイル...    
 * **日付と時刻**: `DATE` と `TIME` で変えられます。変えるのは DOS の時計だけで (OS-9 の時計とのずれを DOS が覚えます)、OS-9 の時計は変わりません。`dos` を終わると元に戻ります。
 * **プリンタと補助ポート**: `-p=パス` を付けると、`PRN` (`COPY ファイル PRN` など) への出力がそのパスに追記されます。`-o=パス` は `AUX` への出力、`-i=パス` は `AUX` からの入力 (そのファイルの先頭から。終わりは `^Z`) です。パスはファイルでもデバイス (`/p` など) でもよく、ファイルがなければ作ります。付けなければ、出力は捨てて、入力はすぐ終わりになります。
 * **実行ファイル**: Microsoft が公開した `bin` のうち、`EDLIN.COM` と `DEBUG.COM` が動きます (イメージに入れます)。`DEBUG` は PC DOS 用で、画面モードを `INT 10h` で問い合わせるので、BIOS がその最小の答えを返します。`BASIC.COM` は動きません (IBM PC 用の版で、起動しても何も出ません)。`FORMAT`、`DISKCOPY`、`MODE` などは試していません。
+
+**MS-DOS 2.0** も動きます (`-v=2`)。BIOS は `tools/build_dosbin2.sh` で、カーネルと `COMMAND.COM` は公開された完成品を使います:
+
+```
+MSDOS2_SRC=.../MS-DOS/v2.0/source UASM=.../uasm tools/build_dosbin2.sh dos2bin     -> dos2bin/bios2.bin msdos.sys command.com
+python3 tools/mkdosimg.py a.img 320 dos2bin/command.com 他のファイル...
+dos -v=2 -a=a.img          (BIOS は bios2.bin、カーネルは msdos.sys がカレントのデータディレクトリにあること)
+```
+
+2.0 ではサブディレクトリ (`MKDIR`、`CD`)、`PRN`/`AUX`/`CON`、`EDLIN`、`DEBUG` が使えます (使い方と制限は 1.25 と同じ)。`CONFIG.SYS` はイメージに置けば読まれます (まだ試していません)。
 
 詳しくは [DESIGN.md](DESIGN.md) の 18 章。
 

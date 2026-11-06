@@ -37,6 +37,24 @@ def main():
     s = once(s, 'AAA     PROC    FAR', 'AAAP    PROC    FAR')                  # AAA is an instruction
     s = once(s, 'AAA     ENDP', 'AAAP    ENDP')
     wr(os.path.join(out, 'SYSINIT.ASM'), head + s)
+    # SYSINIT2.ASM: SYSINIT inside the one source of os9/dos/bios2.asm (the BIOS, SYSINIT and the messages are assembled in one go,
+    # no linker): no EXTRN (the symbols are in the same source), no call of the BIOS after the DOS has been initialized
+    # (RE_INIT: the BIOS of ours has nothing to do there), no END
+    t = s
+    t = once(t, '        EXTRN   RE_INIT:FAR\r\n', '')
+    t = once(t, '        EXTRN   BADOPM:BYTE,CRLFM:BYTE,BADCOM:BYTE\r\n        EXTRN   BADSIZ_PRE:BYTE,BADLD_PRE:BYTE\r\n'
+                '        EXTRN   BADSIZ_POST:BYTE,BADLD_POST:BYTE\r\n        EXTRN   SYSSIZE:BYTE,BADCOUNTRY:BYTE\r\n', '')
+    t = once(t, 'CALL    RE_INIT                 ; Re-call the BIOS', 'NOP')
+    # the far pointers of the EXEC block have a segment part that a flat binary cannot hold (it needs a fixup): the offsets are
+    # stored with the segments, where the code sets the segments (CS) anyway
+    t = once(t, 'COMEXE  EXEC0 <0,COMMAND_LINE,DEFAULT_DRIVE,ZERO>', 'COMEXE  EXEC0 <0,0,0,0>')
+    t = once(t, '        MOV     WORD PTR [BX.EXEC0_COM_LINE+2],CS\r\n',
+             '        MOV     WORD PTR [BX.EXEC0_COM_LINE],OFFSET COMMAND_LINE\r\n        MOV     WORD PTR [BX.EXEC0_5C_FCB],OFFSET DEFAULT_DRIVE\r\n'
+             '        MOV     WORD PTR [BX.EXEC0_6C_FCB],OFFSET ZERO\r\n        MOV     WORD PTR [BX.EXEC0_COM_LINE+2],CS\r\n')
+    t = t.rstrip('\0\x1a \r\n\t')                                           # NULs and ^Z follow the END in the file
+    assert t.endswith('END')
+    t = t[:-3]
+    wr(os.path.join(out, 'SYSINIT2.ASM'), t)
     wr(os.path.join(out, 'SYSIMES.ASM'), head + rd(os.path.join(src, 'SYSIMES.ASM')))
 
 

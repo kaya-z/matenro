@@ -733,7 +733,7 @@ RTL の仕組みから: 6809 は E のサイクルごとに、RAM のアクセ�
 
 最大の差は 4.8% から 2.7% になりました。残る差の原因は、割り込みの入り方 (スタックへの退避の並び) と、表に無い命令、ACIA の送信待ちなどを入れていないことです。
 
-## 18. MS-DOS を 8088 で動かす (設計と、段階 7 までの実装、2026-11-06)
+## 18. MS-DOS を 8088 で動かす (設計と、MS-DOS 1.25 と 2.0 の実装、2026-11-06)
 
 8088 で **MS-DOS 1.25 のカーネルと `COMMAND`** を動かします。Microsoft が公開しているソース (`github.com/microsoft/MS-DOS`、MIT ライセンス) をアセンブルしたバイナリを、**そのまま** 8088 で実行します。CP/M-86 (12 章) のように 6809 側で BDOS を引き受ける方式ではなく、`INT 21h` の中身は本物の MS-DOS が動かします。自作するのは、ハードウェアに当たる **BIOS** (`IO.SYS` に当たる部分) と、それを 6809 の OS-9 に頼む `dos` コマンドです。
 
@@ -808,7 +808,7 @@ DOS は BIOS を、`SEGBIOS` (非 IBM 版は `0040h`) の**先頭から 3 バイ
 2. **段階 5** (済): BIOS スタブと `dos` コマンド。カーネルが起動してバナーが出て、コンソールの入出力と `^]` での終了が動く。
 3. **段階 6** (済): ディスクのイメージ (`tools/mkdosimg.py`) と `READ`/`WRITE`。A: から `COMMAND.COM` が読まれ、プロンプト、日付と時刻 (OS-9 の時計)、`DIR`、`TYPE`、`COPY`、`DEL`、`CHKDSK.COM` (ディスクから読む実行ファイル) が動く。`matenro_test.py` の `os9_dos` (`MATENRO_DOS_SRC` と `UASM` を渡すと走る。ドライバなしとありの 2 通り)。
 4. **段階 7** (済): `SETDATE`/`SETTIME` (BIOS 内のずれ)、プリンタと補助ポート (`-p=` `-i=` `-o=`)、`INT 10h` (画面モードの問い合わせと 1 文字出力だけ)。公開された `bin` の実行ファイルのうち **`EDLIN` はそのまま動き** (ファイルを作って `TYPE` で読める)、**`DEBUG` も `INT 10h` の最小の処理を足して動く** (`D` で表示、`Q`)。**`BASIC.COM` は動かない** (起動しても何も出ず、戻らない): 逆アセンブルすると IBM PC の BIOS データ領域 (`0050:0010`) に書いており、IBM PC の ROM BASIC が前提の版だと見られる (ROM との関係までは確かめていない)。`BASICA.COM`、`MODE`、`FORMAT`、`DISKCOPY`、`SYS` は試していない (IBM の BIOS を呼ぶ版なら動かないはず)。`matenro_test.py` の `os9_dos` に、日付と時刻、プリンタと補助ポート、`EDLIN`、`DEBUG` を足した (`../bin` が見つかったときだけ `EDLIN`/`DEBUG` を試す)。MANUAL 6.8 に書いた。
-5. **段階 8** (希望があれば): v2.0 (ハンドルとデバイスドライバ。BIOS が `CONFIG.SYS` 相当を持つ)。
+5. **段階 8** (済、18.8): v2.0。`dos -v=2` で 2.0 が動く。
 
 ### 18.7 分かっていること・リスク
 
@@ -816,7 +816,7 @@ DOS は BIOS を、`SEGBIOS` (非 IBM 版は `0040h`) の**先頭から 3 バイ
 * 完成品の `COMMAND.COM` と一致しないので、ソースと `bin` の版の違いを確かめる材料はありません。動かして直します。
 * FPGA の 8088 はないので、確認はシミュレータだけです。
 
-### 18.8 MS-DOS 2.0 の段階 (調査、2026-11-06。実装はこれから)
+### 18.8 MS-DOS 2.0 (調査と実装、2026-11-06)
 
 公開されたソース (`v2.0/source`) にあるもの: カーネル (`MSDOS.ASM` が `STDSW`、`MSHEAD`、`MSINIT` などを取り込む。組み方は `DOSLINK`)、`COMMAND` (`COMLINK`)、`SYSINIT.ASM` (BIOS のあとに付けて、`CONFIG.SYS` の読み込みとカーネルの移動をする)、`SKELIO.ASM` (ALTOS 用の BIOS の見本。コンソール、ディスク、時計のドライバ)、`DEBUG`、`EDLIN`、`CHKDSK`、`FORMAT` などのソース。`bin` には完成品の `MSDOS.SYS`、`COMMAND.COM` などと `SYSINIT.OBJ`。
 
@@ -829,5 +829,7 @@ DOS は BIOS を、`SEGBIOS` (非 IBM 版は `0040h`) の**先頭から 3 バイ
 4. **8d**: ディスクの形式 (2.0 は 9 セクタ/トラックの 360 KB と、ハードディスクのイメージ)、時刻、`os9_dos` の 2.0 版のテスト、MANUAL。
 
 **8a の結果 (2026-11-06)**: ① **カーネルは公開された完成品 `bin/MSDOS.SYS` (16690 バイト) を使う**。2.0 のカーネルはソースが十数本のモジュールに分かれ (`DOSLINK`)、`DOSMAC.ASM` のマクロ (`&` による連結、`PURGE`、使うときだけ `EXTRN` を作る連鎖、予約語になった `invoke`) と `LINK` が前提で、UASM では組めない (組むなら、OMF のリンカを自作するか、2.0 自身の上で付属の `MASM`/`LINK` を動かす。急がない)。1.25 のように「ソースから組んだものを実行する」ではなく「公開された完成品を実行する」ことになる。先頭は `JMP DOSINIT` で、`SYSINIT` がここへ入る。② **`SYSINIT.ASM` と `SYSIMES.ASM` は UASM で組める**: `tools/dos/patch_sysinit.py` (ソースは変えず、写しを直す) が、`DOSMAC.ASM` を `BREAK` だけの代用品にし、`DOSSYM.ASM` の `IF2` (1 パスのアセンブラ) を消し、定数 `WAIT` を `DOSWAIT` に、手続き名 `AAA` を `AAAP` に変える (どれも命令の名前)。`-omf` で 0 エラー。BIOS と一緒に 1 本のソースにして `-bin` で組めば、リンカは要らない。③ `COMMAND.COM`、`DEBUG` などの 2.0 版も完成品を使う (`bin`)。
+
+**8b・8c の結果 (2026-11-06)**: `os9/dos/bios2.asm` (UASM、MASM 方言) が 2.0 の BIOS。`SKELIO.ASM` を手本に、デバイスヘッダ (`CON`、`AUX`、`PRN`、`CLOCK`、ブロックデバイス)、`strategy`/`interrupt`、コマンド表を持つ。中身は 1.25 の BIOS と同じ要求ブロック (`dos.asm` の `dispatch` がそのまま答える): 文字は 1 文字ずつ要求、ディスクは `READ`/`WRITE` の要求 (論理セクタ番号を 16 ビットで渡す)、時計は OS-9 の時計に BIOS のずれ `TOFF` を足す (`CLOCK` デバイスは日数、分、時、1/100 秒、秒の 6 バイト)。`INT 10h` の最小処理も同じ。BIOS の先頭の固定の場所: `+10h` 要求ブロック、`+40h` 起動情報 (メモリの大きさ、ユニット数、BPB 13 バイト × ユニット)。BIOS のあとに、`tools/dos/patch_sysinit.py` が直した `SYSINIT` (`SYSINIT2.ASM`: `EXTRN` なし、`RE_INIT` の呼び出しなし、EXEC ブロックのポインタのオフセットは実行時に書く) と、メッセージ (公開されている `SYSIMES` は `SYSINIT.ASM` より古い版のものなので自分で書いた) を同じソースに入れ、`-bin` 1 本の `bios2.bin` にする (リンカなし、`tools/build_dosbin2.sh`)。BPB は `dos` が画像の大きさから選ぶ表 (`fmts`、メディアバイトと FAT のセクタ数を足した) で作り、BIOS に渡す。`dos -v=2 [-s=bios2.bin] -k=msdos.sys -a=イメージ` は、BIOS のファイルを `0040:0000` に、カーネルをそのすぐ後ろの次のパラグラフに置き、`SYSINIT` がカーネルを動かして `COMMAND.COM` を `EXEC` する。起動して `COMMAND v. 2.02` が動き、`DIR`、`TYPE`、`COPY`、`MKDIR`/`CD` (サブディレクトリ)、`DATE`/`TIME`、`PRN`/`AUX`、`EDLIN`、`DEBUG`、`^]` が `matenro_test.py` の `os9_dos2` で通る (`MATENRO_DOS2_SRC` と `UASM`、ドライバなしとあり)。UASM の癖 (予約語・スコープ): PROC の中のラベルは外から見えない、`EXIT`/`CONDEV` などは `DOSSYM.ASM`・`SYSINIT` の名前とぶつかる。
 
 リスク: `SYSINIT` は `.OBJ` で、ソースと BIOS を一緒にリンクする必要がある。ソース (`SYSINIT.ASM`) を `UASM` で BIOS と同じ 1 本にして組めればリンカは要らない。`COMMAND.COM` 2.0 は `INT 21h` の新しい機能 (ハンドル) を多用し、環境ブロックなど 1.25 より動作が複雑。1.25 より大きい (カーネル約 16 KB、`COMMAND` 約 15 KB) ので 256 KB のメモリに収まるかも確認する。

@@ -430,6 +430,66 @@ def os9_dos(tmp):
                   back != files['a.img'] and b'COPY    TXT' not in back and (b'EDTEST  TXT' if binp else b'\xe5OPY    TXT') in back, '')
 
 
+def os9_dos2(tmp):
+    """MS-DOS 2.0 on the 8088 (dos -v=2): our BIOS with SYSINIT of Microsoft (assembled with UASM from the source that Microsoft
+    published), the kernel and COMMAND as Microsoft published them (not part of this project: set MATENRO_DOS2_SRC to
+    .../MS-DOS/v2.0/source, and UASM to a MASM compatible assembler)"""
+    src = os.environ.get('MATENRO_DOS2_SRC')
+    uasm = os.environ.get('UASM')
+    if not os.path.isdir(OS9):
+        return
+    if not src or not os.path.isdir(src) or not uasm:
+        print('skip MS-DOS 2.0 (set MATENRO_DOS2_SRC to the MS-DOS 2.0 source and UASM to the assembler)')
+        return
+    bd = os.path.join(tmp, 'dos2bin')
+    r = run(['env', 'MSDOS2_SRC=' + src, 'UASM=' + uasm, 'sh', os.path.join(ROOT, 'tools', 'build_dosbin2.sh'), bd])
+    check('MS-DOS 2.0: the BIOS with SYSINIT assembles from the published source', r.returncode == 0, r.stdout.decode(errors='replace')[-800:])
+    if r.returncode != 0:
+        return
+    hello = b'Hello from a file on the DOS 2.0 disk.\r\nSecond line.\r\n'
+    hp = os.path.join(tmp, 'hello2.txt')
+    open(hp, 'wb').write(hello)
+    binp = [os.path.join(os.path.dirname(os.path.normpath(src)), 'bin', n) for n in ('DEBUG.COM', 'EDLIN.COM')]
+    img = os.path.join(tmp, 'a2.img')
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), img, '320', os.path.join(bd, 'command.com'),
+             os.path.join(os.path.dirname(hp), 'hello2.txt')] + binp)
+    assert r.returncode == 0, r.stdout
+    files = {'msdos.sys': open(os.path.join(bd, 'msdos.sys'), 'rb').read(), 'bios2.bin': open(os.path.join(bd, 'bios2.bin'), 'rb').read(),
+             'a.img': open(img, 'rb').read(), 'auxin.txt': b'Aux input.\r\n'}
+    script = ['send "dos -v=2 -a=a.img -p=prn.txt -o=auxout.txt -i=auxin.txt\\r"', 'expect "Enter new date:"', 'send "12-25-2026\\r"',
+              'expect "Enter new time:"', 'send "10:20:30\\r"', 'expect "A>"',
+              'send "dir\\r"', 'expect "4 File(s)"', 'send "type hello2.txt\\r"', 'expect "Second line."',
+              'send "copy hello2.txt copy.txt\\r"', 'expect "1 File(s) copied"',
+              'send "mkdir sub\\r"', 'expect "A>"', 'send "cd sub\\r"', 'expect "A>"', 'send "copy ..\\\\hello2.txt x.txt\\r"', 'expect "1 File(s) copied"',
+              'send "dir\\r"', 'expect "X        TXT"', 'send "cd ..\\r"', 'expect "A>"', 'send "dir\\r"', 'expect "<DIR>"',
+              'send "date\\r"', 'expect "Current date is Fri 12-25-2026"', 'expect "Enter new date:"', 'send "\\r"', 'expect "A>"',
+              'send "time\\r"', 'expect "Current time is 10:2"', 'expect "Enter new time:"', 'send "\\r"', 'expect "A>"',
+              'send "copy hello2.txt prn\\r"', 'expect "1 File(s) copied"', 'send "copy hello2.txt aux\\r"', 'expect "1 File(s) copied"',
+              'send "copy aux fromaux.txt\\r"', 'expect "1 File(s) copied"', 'send "type fromaux.txt\\r"', 'expect "Aux input."',
+              'send "edlin edtest.txt\\r"', 'expect "New file"', 'send "i\\r"', 'expect "1:*"', 'send "hello edlin\\r"', 'expect "2:*"',
+              'send "\\x1a\\r"', 'expect "*"', 'send "e\\r"', 'expect "A>"', 'send "type edtest.txt\\r"', 'expect "hello edlin"',
+              'send "debug\\r"', 'expect "-"', 'send "d 100 10f\\r"', 'expect ":0100  "', 'expect "-"', 'send "q\\r"', 'expect "A>"',
+              'send "\\x1d"', 'expect "OS9:"']
+    for tag, drv in (('dos2', False), ('dos2drv', True)):
+        out, d = os9_session(tmp, tag, '8088', files, script, driver=drv, timeout=600)
+        out = out.replace('\r', '')
+        why = ' (with the xlink driver)' if drv else ''
+        check('MS-DOS 2.0 boots%s: SYSINIT, COMMAND, the date and time that were typed' % why,
+              'MS-DOS version 2.00' in out and 'Command v. 2.02' in out and 'A>dir' in out, out[-900:])
+        check('MS-DOS 2.0%s: DIR, TYPE, COPY, MKDIR, CD and a file in the subdirectory' % why,
+              'HELLO2   TXT' in out and out.count('Second line.') == 1 and 'SUB          <DIR>' in out and 'X        TXT' in out, out[-1200:])
+        check('MS-DOS 2.0%s: DATE and TIME set the clock of DOS' % why, 'Current date is Fri 12-25-2026' in out and 'Current time is 10:2' in out, out[-900:])
+        check('MS-DOS 2.0%s: the printer, the aux input and output' % why, 'Aux input.' in out, out[-900:])
+        check('MS-DOS 2.0%s: EDLIN writes a file, DEBUG dumps memory' % why, out.count('hello edlin') >= 2 and ':0100  ' in out, out[-900:])
+        check('MS-DOS 2.0%s: ^] leaves DOS and the terminal is back' % why, out.rstrip().endswith('OS9:'), out[-300:])
+        if not drv:
+            pr = open(os.path.join(d, 'v0', 'prn.txt'), 'rb').read()
+            ax = open(os.path.join(d, 'v0', 'auxout.txt'), 'rb').read()
+            back = open(os.path.join(d, 'v0', 'a.img'), 'rb').read()
+            check('MS-DOS 2.0: the printer and aux output files and the disk image of the host hold the changes',
+                  pr.startswith(hello) and ax.startswith(hello) and back != files['a.img'] and b'COPY    TXT' in back, repr(pr) + repr(ax))
+
+
 def os9_reboot(tmp):
     """the OS-9 command reboot: $A7 in the power register, the machine starts again (RAM cleared, ROM image loaded), disks stay"""
     if not os.path.isdir(OS9):
@@ -720,6 +780,7 @@ def main():
         os9_turbo(tmp)
         os9_driver(tmp)
         os9_dos(tmp)
+        os9_dos2(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print('%d tests, %d failed' % (total, fails))

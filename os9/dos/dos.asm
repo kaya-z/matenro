@@ -7,6 +7,7 @@
 *   -k=file   the MS-DOS kernel (default msdos.sys in the current data directory)
 *   -a=file   the disk image of drive A: (a FAT12 image: tools/mkdosimg.py; COMMAND.COM must be on it); -b -c -d: B: C: D:
 *             the size of the file decides the format: 160 KB, 320 KB (IBM formats) or 8 MB (hard disk)
+*   -v=2      MS-DOS 2.0: the BIOS is the file -s=bios (default bios2.bin; tools/build_dosbin2.sh), -k the kernel MSDOS.SYS
 *   -p=path   the printer (PRN): the output is appended to the file or device (nothing without it)
 *   -o=path   the aux port output (AUX), appended;  -i=path  the aux port input, read from the start (1Ah at the end)
 *
@@ -46,6 +47,8 @@ RQLIN    equ   $0800             request block: BIOS + 400h
 LBLIN    equ   $0840             BIOS + 440h: memory size in paragraphs, +4 the INITTAB
 DOSLIN   equ   $0900             kernel (segment 0090h)
 INITBIOS equ   $0444             the INITTAB as seen by the BIOS (an offset in segment 0040h)
+RQLIN2   equ   $0410             2.0: the request block at 10h of the BIOS (bios2.asm)
+LBLIN2   equ   $0440             2.0: +0 memory size, +2 number of units, +4 the BPBs
 MEMPARA  equ   $4000             256 KB: what the 8088 gets with the driver xlink (32 blocks)
 EXITKEY  equ   $1D               ^]
 
@@ -65,6 +68,13 @@ itab     rmb   53                the INITTAB with the disk parameter tables
 xpath    rmb   1                 /x0 (the xlink driver), 0 = not loaded
 argp     rmb   2
 kname    rmb   2                 the name of the kernel (in the parameters or the default)
+ver      rmb   1                 1: MS-DOS 1.25 (the BIOS is in this module), 2: MS-DOS 2.0 (bios2.bin, -v=2)
+bnm      rmb   2                 -s=: the file with the BIOS of 2.0
+rqad     rmb   2                 the request block in the sub CPU memory
+bpath    rmb   1                 the file of the BIOS of 2.0
+blen     rmb   2                 the length of the BIOS image of 2.0
+tmpy     rmb   2
+bpbs     rmb   52                the BPBs of the drives (13 bytes each) for 2.0
 pnm      rmb   2                 the names of the printer (-p=), the aux input (-i=) and the aux output (-o=), 0 = none
 inm      rmb   2
 onm      rmb   2
@@ -99,10 +109,13 @@ lbdata   fcb   $00,$40                 MEMPARA
 rstvec   fcb   $EA,$00,$00,$40,$00      JMP FAR 0040:0000 (the BIOS) at FFFF0
 * the formats: the size of the image (high word, low word), the disk parameter table: sector size, sectors per cluster,
 * reserved sectors, FATs, directory entries, sectors (low byte first; tools/mkdosimg.py makes the images)
-fmts     fcb   $00,$02,$80,$00,$00,$02,$01,$01,$00,$02,$40,$00,$40,$01      160 KB
-         fcb   $00,$05,$00,$00,$00,$02,$02,$01,$00,$02,$70,$00,$80,$02      320 KB
-         fcb   $00,$80,$00,$00,$00,$02,$08,$01,$00,$02,$00,$02,$00,$40      8 MB
-msgusage fcc   "usage: dos [-k=kernel] -a=image [-b=image -c=image -d=image] [-p=printer -i=auxin -o=auxout]"
+* (after the table: the media byte and the sectors of a FAT, for the BPB of 2.0)
+fmts     fcb   $00,$02,$80,$00,$00,$02,$01,$01,$00,$02,$40,$00,$40,$01,$FE,$01,$00      160 KB
+         fcb   $00,$05,$00,$00,$00,$02,$02,$01,$00,$02,$70,$00,$80,$02,$FF,$01,$00      320 KB
+         fcb   $00,$80,$00,$00,$00,$02,$08,$01,$00,$02,$00,$02,$00,$40,$F8,$06,$00      8 MB
+defb2    fcc   "bios2.bin"
+         fcb   C$CR
+msgusage fcc   "usage: dos [-k=kernel] -a=image [-b=image -c=image -d=image] [-p=printer -i=auxin -o=auxout] [-v=2 -s=bios2.bin]"
          fcb   C$CR
 msgnosub fcc   "dos: the sub CPU is not an 8088"
          fcb   C$CR
@@ -132,6 +145,12 @@ st1      clr   >XCTL                 hold the 8088 in reset
          os9   F$Icpt
          clr   kname,u               the options: -k=kernel -a=image -b= -c= -d=
          clr   kname+1,u
+         lda   #1
+         sta   ver,u
+         ldd   #RQLIN
+         std   rqad,u
+         ldd   #0
+         std   bnm,u
          clr   ppath,u
          clr   ipath,u
          clr   opath,u
@@ -172,7 +191,21 @@ op2b     cmpa  #'O'
          bne   op2c
          stx   onm,u
          bra   op4
-op2c     suba  #'A'
+op2c     cmpa  #'S'
+         bne   op2d
+         stx   bnm,u
+         bra   op4
+op2d     cmpa  #'V'
+         bne   op2e
+         lda   ,x
+         suba  #'0'
+         cmpa  #2
+         lbhi  usage
+         lbeq  op2v
+         lda   #1
+op2v     sta   ver,u
+         bra   op4
+op2e     suba  #'A'
          lbmi  usage
          cmpa  #3
          lbhi  usage
@@ -185,7 +218,7 @@ op4      lda   ,x+                   skip the name
          cmpa  #C$CR
          bne   op4
 op5      leax  -1,x
-         bra   op1
+         lbra  op1
 opend    ldd   dname,u               drive A: is needed
          lbeq  usage
          ldd   kname,u
@@ -202,11 +235,11 @@ op6      ldx   kname,u
          clr   nimg,u
 dv1      ldb   nimg,u
          cmpb  #4
-         beq   dv9
+         lbeq  dv9
          aslb
          leax  dname,u
          ldx   b,x
-         beq   dv9
+         lbeq  dv9
          lda   #UPDAT.
          os9   I$Open
          lbcs  nofile
@@ -231,11 +264,12 @@ fm1      ldd   ,y
          ldd   2,y
          cmpd  szl,u
          beq   fm3
-fm2      leay  14,y
+fm2      leay  17,y
          decb
          bne   fm1
          lbra  badsize
 fm3      leay  4,y                   the disk parameter table: 10 bytes at itab + 13 + 10 * drive
+         sty   tmpy,u
          ldb   nimg,u
          lda   #10
          mul
@@ -246,8 +280,26 @@ fm4      lda   ,y+
          sta   ,x+
          decb
          bne   fm4
+         ldb   nimg,u                the BPB (13 bytes): the table and the media byte and the sectors of a FAT
+         lda   #13
+         mul
+         leax  bpbs,u
+         leax  d,x
+         pshs  y
+         ldy   tmpy,u
+         ldb   #10
+fm5      lda   ,y+
+         sta   ,x+
+         decb
+         bne   fm5
+         puls  y
+         ldb   #3
+fm6      lda   ,y+
+         sta   ,x+
+         decb
+         bne   fm6
          inc   nimg,u
-         bra   dv1
+         lbra  dv1
 dv9      lda   nimg,u
          sta   itab,u
          leax  itab+1,u              the entries: unit, the offset of the table in the BIOS segment
@@ -264,6 +316,9 @@ dv10     lda   tmp8,u
          cmpa  nimg,u
          bne   dv10
 * ---------------------------------------------------------------- load: BIOS, kernel, memory size, reset vector
+         lda   ver,u
+         cmpa  #2
+         lbeq  load2
          clr   lin,u
          ldd   #BIOSLIN
          std   lin+1,u
@@ -286,6 +341,61 @@ dv10     lda   tmp8,u
          lbsr  wrsub
          ldd   #DOSLIN
          lbsr  setlin16
+         lbra  ld0
+* 2.0: the BIOS image (bios2.asm with SYSINIT) from the file, the boot data (memory size, units, BPBs), the kernel after the image
+load2    ldd   #RQLIN2
+         std   rqad,u
+         ldx   bnm,u
+         bne   l2a
+         leax  defb2,pcr
+l2a      lda   #READ.
+         os9   I$Open
+         lbcs  nofile
+         sta   bpath,u
+         clr   lin,u
+         ldd   #BIOSLIN
+         std   lin+1,u
+         ldd   #0
+         std   blen,u
+l2b      lda   bpath,u
+         leax  iobuf,u
+         ldy   #256
+         os9   I$Read
+         bcs   l2c
+         pshs  y
+         leax  iobuf,u
+         lbsr  wrsub
+         puls  y
+         tfr   y,d
+         addd  blen,u
+         std   blen,u
+         bra   l2b
+l2c      cmpb  #E$EOF
+         lbne  nofile
+         lda   bpath,u
+         os9   I$Close
+         ldd   #LBLIN2
+         lbsr  setlin16
+         leax  lbdata,pcr
+         ldy   #2
+         lbsr  wrsub
+         leax  nimg,u
+         ldy   #1
+         lbsr  wrsub
+         ldd   #LBLIN2+4
+         lbsr  setlin16
+         ldb   nimg,u
+         lda   #13
+         mul
+         tfr   d,y
+         leax  bpbs,u
+         lbsr  wrsub
+         ldd   blen,u                the kernel: the next paragraph after the image
+         addd  #15
+         andb  #$F0
+         addd  #BIOSLIN
+         lbsr  setlin16
+ld0
 ld1      lda   path,u
          leax  iobuf,u
          ldy   #256
@@ -310,7 +420,8 @@ ld8      cmpb  #E$EOF
          ldy   #5
          lbsr  wrsub
          clr   rp+16,u               the done flag of the request block
-         ldd   #RQLIN+16
+         ldd   rqad,u
+         addd  #16
          lbsr  setlin16
          leax  rp+16,u
          ldy   #1
@@ -426,14 +537,15 @@ setlin16 clr   lin,u
 
 * read the request (12 bytes) and write the reply (17 bytes: the done flag is the last)
 getrq    clr   lin,u
-         ldd   #RQLIN
+         ldd   rqad,u
          std   lin+1,u
          leax  rq,u
          ldy   #12
          lbra  rdsub
 
 putrq    clr   lin,u
-         ldd   #RQLIN+16
+         ldd   rqad,u
+         addd  #16
          std   lin+1,u
          lda   #1
          sta   rp+16,u
