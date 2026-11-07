@@ -190,7 +190,7 @@ OS9:chd /d1             カレントのデータディレクトリを /d1 に (H
 ```
 
 * `/d0` は OS-9 のシステムディスク (1MB、4096 セクタ、2 セクタ/クラスタ) で、`cmds` に `cpm` `xrun` `reboot` `etime` `duo` `cpp80` `cc80` と、sim09 のコマンド (`dir` `copy` `attr` `mdir` `mfree` など) があります。`/d0/hello.com` も入っています。
-* `/d1` は 2 つ目のディスク (512KB) で、HI-TECH C、ZEXDOC などを置きます ([9 章](#9-sd-カードのイメージを作る))。
+* `/d1` は 2 つ目のディスク (512KB。64MB にもできる: 9 章) で、HI-TECH C、ZEXDOC などを置きます ([9 章](#9-sd-カードのイメージを作る))。
 * `reboot` は機械を再起動します (電源を入れ直したのと同じ。FPGA 版は S1 を押したのと同じで、メモリ検査から SD からの読み込みまでやり直すので約 5 秒かかります。ディスクの内容はそのまま。開いたまま書いていないファイルの内容は失われます)。
   シミュレータでは、RAM を消して ROM イメージを読み直します。
 * `Error #216` は「ファイルまたはコマンドが見つからない」です。`chx` が合っているか、ファイル名を確かめてください。
@@ -469,8 +469,8 @@ reply: BA 13 00 00
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
 | `matenro_l2.dsk` (1MB、4096 セクタ) | `/d0`: OS-9 Level 2 のブート、コマンド (`cpm` `xrun` `reboot` `etime` `xlink` `x0` `cpp80` `cc80` ほか)、`hello.com` |
-| `matenro_d1.dsk` (512KB) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c`、`TP=` を指定したときは Turbo Pascal (`/d1/tp`) と `hello.pas` |
-| `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体 |
+| `matenro_d1.dsk` (512KB、2048 セクタ) と `matenro_d1_big.dsk` (**64MB**) | `/d1`: HI-TECH C (`/d1/htc`)、`zexdoc.com` `zexall.com`、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` (浮動小数点) `hello.c`、`TP=` を指定したときは Turbo Pascal (`/d1/tp`) と `hello.pas` |
+| `matenro_card.img` (約 128MB)、`matenro_card_big.img` (約 192MB) | `/d0` と `/d1` を置くべき位置に置いたカード全体 (`_big` は 64MB の `/d1`) |
 
 ```sh
 # /d0 (OS-9 とコマンド): sim09 のイメージに Matenro のコマンドを入れる
@@ -484,7 +484,16 @@ HTC=<HI-TECH C のディレクトリ> ZEX=<zexdoc.com と zexall.com のディ�
 
 * `SIM09=<sim09 の場所>` の指定が要ります (既定は筆者の環境のパス)。
 * HI-TECH C、ZEXDOC/ZEXALL、Turbo Pascal は、**このリポジトリに入っていません**。ZEXDOC は Frank D. Cringle の Z80 命令試験 (Yaze 付属、GPL v2) です。
-* `/d1` (`matenro_d1.dsk`) は**最大 2048 セクタ** (1 セクタの割り当て表の限界) です。空きは 130 セクタしかありません。`cc80 -r` は、できた `.COM` を残すので、使い終えたら `del` で消してください (満杯になると `cc80` は `cpm: a write failed (disk full)` で止まります)。`/d0` は 4096 セクタ (2 セクタ/クラスタ) で、空きは約 1900 セクタです。
+* `/d1` (`matenro_d1.dsk`) は**2048 セクタ (512KB) で、空きは 130 セクタしかありません** (1 セクタの割り当て表の限界。`cc80 -r` は、できた `.COM` を残すので、使い終えたら `del` で消してください。満杯になると `cc80` は `cpm: a write failed (disk full)` で止まります)。`/d0` は 4096 セクタ (2 セクタ/クラスタ) で、空きは約 1900 セクタです。
+* **`/d1` を 64MB のハードディスクのように使うには**、`fpga/tn9k/scripts/bigd1.sh` で、古い `/d1` のファイルをそのまま新しい大きなボリュームへ移します (`tools/mkrbf.py` が空のボリュームを作り、シミュレータが `copy` で移します。属性も同じ)。HTC や ZEX がなくてもできます:
+
+  ```sh
+  D0=fpga/tn9k/build/matenro_l2.dsk CARD=fpga/tn9k/build/matenro_card_big.img \
+    fpga/tn9k/scripts/bigd1.sh fpga/tn9k/build/matenro_d1.dsk fpga/tn9k/build/matenro_d1_big.dsk
+  ```
+
+  大きさは `D1SECTORS=262144` (既定、64MB) で変えられます。割り当て表は 1 セクタに収まらなくなり (64MB で 128 セクタ)、OS-9 の RBF は複数セクタの表を扱えます (255 セクタまで)。カード全体は 128MB (ドライブ 1 の位置) + 64MB = 192MB になるので、**192MB 以上のカード**に書きます。空きは約 63MB で、`cc80` で `hello.c` `demo.c` `mandel.c` を続けて動かしても足ります。
+* 大きな `/d1` の最初の割り当てが、大きなファイル (たとえば `copy /d0@ …`) だと、1 回だけ `Media Full` (エラー 248) で失敗します (次は通ります)。sim09 の元のボリュームでも同じで、小さなファイルを先に作れば出ません。
 * 書き込みは [4.2](#42-sd-カードを作る) の `dd` です。
 * `/d1` のファイルには `attr -s` を付けてあります。`s` 属性 (単一ユーザ) が付いていると、同じファイルを 2 回開けず、HI-TECH のリンカが `libc.lib: Can't open` で止まります。
 

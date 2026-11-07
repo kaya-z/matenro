@@ -200,12 +200,14 @@ def z80_com(name, tmp):
     return img
 
 
-def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False, keep=()):
+def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False, keep=(), d1=None):
     """boot OS-9 Level 2 with the sub CPU `cpu`, /v0 holds the cmds directory and `files`; run the script; return the output"""
     d = os.path.join(tmp, 'sess_' + tag)
     os.mkdir(d)
     for f in ('OS9.dsk', 'WORK.dsk'):
         shutil.copy(os.path.join(OS9, f), d)
+    if d1:                                              # another disk image as /d1
+        shutil.copy(d1, os.path.join(d, 'WORK.dsk'))
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
     for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos'):
         if n in keep:                                   # keep the command of the OS-9 disk of new-sbc09 (the same name)
@@ -518,6 +520,36 @@ def os9_dos2(tmp):
         check('MS-DOS 2.0: boot from a %s, DIR, COPY, TYPE' % what, ok, out[-900:])
 
 
+def os9_bigdisk(tmp):
+    """/d1 as a hard disk (tools/mkrbf.py): an empty RBF volume of 24576 sectors (the allocation map fills 12 sectors, the
+    old limit of tools/growdisk.py was 2048 sectors); 1 MB files beyond the first map sector, read back, deleted, the free
+    sectors come back.  (A big file as the very first allocation after the mount fails once with Media Full (error 248) and the
+    next one works - on the original volume of sim09 as well, so it is not a matter of the volume: a small file goes first.)"""
+    if not os.path.isdir(OS9):
+        return
+    big = os.path.join(tmp, 'big.dsk')
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkrbf.py'), big, '24576', '1', 'd1'])
+    assert r.returncode == 0, r.stdout
+    out, d = os9_session(tmp, 'bigdisk', 'z80', {}, [
+        'send "free /d1\\r"', 'expect "OS9:"', 'send "makdir /d1/sub\\r"', 'expect "OS9:"',
+        'send "copy /d0/OS9Boot /d1/sub/small\\r"', 'expect "OS9:"',      # a small file first: see below
+        'send "copy /d0@ /d1/sub/big1\\r"', 'expect "OS9:"', 'send "copy /d0@ /d1/big2\\r"', 'expect "OS9:"',
+        'send "copy /d0@ /d1/big3\\r"', 'expect "OS9:"', 'send "free /d1\\r"', 'expect "OS9:"',
+        'send "cmp /d0@ /d1/big3\\r"', 'expect "OS9:"', 'send "cmp /d0@ /d1/sub/big1\\r"', 'expect "OS9:"',
+        'send "echo CMPEND\\r"', 'expect "CMPEND"', 'send "cmp /d0@ /d1/sub/small\\r"', 'expect "OS9:"',      # the control: they differ
+        'send "attr /d1/sub/big1 w r\\r"', 'expect "OS9:"', 'send "attr /d1/big2 w r\\r"', 'expect "OS9:"',
+        'send "attr /d1/big3 w r\\r"', 'expect "OS9:"',
+        'send "del /d1/sub/small\\r"', 'expect "OS9:"', 'send "del /d1/sub/big1\\r"', 'expect "OS9:"', 'send "del /d1/big2\\r"', 'expect "OS9:"', 'send "del /d1/big3\\r"', 'expect "OS9:"',
+        'send "free /d1\\r"', 'expect "OS9:"', 'send "echo FIN\\r"', 'expect "FIN"'], timeout=900, d1=big)
+    out = out.replace('\r', '')
+    import re
+    free = [int(x.replace(',', '')) for x in re.findall(r'([0-9,]+) free sectors', out)]
+    same = out.split('echo CMPEND')[0].count('Differences')          # cmp is silent when the files are equal
+    ctrl = out.split('echo CMPEND')[-1].count('Differences')        # and shows a table when they differ
+    check('OS-9: /d1 as a hard disk of 12 map sectors (mkrbf.py): big files past the first map sector, equal when read back, free sectors come back',
+          len(free) == 3 and free[0] > 24000 and free[1] < free[0] - 4000 and free[2] == free[0] - 9 and same == 0 and ctrl == 1, out[-900:])
+
+
 def os9_reboot(tmp):
     """the OS-9 command reboot: $A7 in the power register, the machine starts again (RAM cleared, ROM image loaded), disks stay"""
     if not os.path.isdir(OS9):
@@ -813,6 +845,7 @@ def main():
         os9_cc80(tmp)
         os9_turbo(tmp)
         os9_driver(tmp)
+        os9_bigdisk(tmp)
         os9_dos(tmp)
         os9_dos2(tmp)
     finally:

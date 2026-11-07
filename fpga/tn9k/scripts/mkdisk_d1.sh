@@ -4,8 +4,8 @@
 # the whole card image (drive 0 from mkdisk.sh at byte 0, drive 1 at 128 MB: sd_disk.v, DRIVE1_BLK).
 #   HTC=<dir with P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB *.H> ZEX=<dir with zexdoc.com zexall.com> \
 #     fpga/tn9k/scripts/mkdisk_d1.sh D0.dsk D1.dsk CARD.img
-# D0.dsk is the output of mkdisk.sh.  D1.dsk (2048 sectors, the most a one sector allocation map can hold) is made here,
-# CARD.img (about 128 MB, mostly empty) is both of them in place: write it with dd to the whole card.
+# D0.dsk is the output of mkdisk.sh.  D1.dsk (D1SECTORS=262144 sectors = 64 MB by default, tools/mkrbf.py) is made here,
+# CARD.img (about 192 MB, mostly empty) is both of them in place: write it with dd to the whole card.
 # TP=<dir with TURBO.COM TURBO.MSG TURBO.OVR> (Turbo Pascal 3.0 for CP/M-80, optional): /d1/tp, with hello.pas in /d1; run it with
 #   chd /d1 ; cpm -p=/d1/tp /d1/tp/turbo.com   (TURBO.COM is installed for the ANSI terminal here: see below)
 # HI-TECH C, ZEXDOC, ZEXALL and Turbo Pascal are not part of this repository (their own licenses: LICENSE files go with them).
@@ -46,8 +46,9 @@ if [ -n "${TP:-}" ]; then
 fi
 printf '#include <stdio.h>\n\nmain()\n{\n\tprintf("Hello from Hi-Tech C on CP/M\\n");\n\treturn 0;\n}\n' > "$T/v0/hello.c"
 cp "$D0" "$T/d0.dsk"
-cp "$SIM09/os9/WORK.dsk" "$D1"
-python3 "$SIM09/tools/growdisk.py" "$D1" 2048 > /dev/null
+# drive 1 is a hard disk: an empty volume of D1SECTORS sectors (default 262144 = 64 MB, 1 sector per cluster; the allocation map
+# fills 128 sectors: tools/mkrbf.py), the files are copied in below
+python3 "$ROOT/tools/mkrbf.py" "$D1" "${D1SECTORS:-262144}" 1 d1 > /dev/null
 {
   echo 'timeout 6000000'; echo 'expect "OS9:"'; echo 'send "chx /v0/cmds\r"'; echo 'expect "OS9:"'
   echo 'send "makdir /d1/htc\r"'; echo 'expect "OS9:"'

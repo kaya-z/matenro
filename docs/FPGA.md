@@ -182,10 +182,22 @@ sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から 
 | ファイル (`fpga/tn9k/build/`、git には入れない) | 内容 |
 |---|---|
 | `matenro_l2.dsk` (1MB、4096 セクタ) | `/d0`: OS-9 Level 2 のローダと ROM イメージ、コマンド、Matenro のコマンド (`cpm xrun xlink x0 cpp80 cc80`)、`hello.com` (`scripts/mkdisk.sh`) |
-| `matenro_d1.dsk` (512KB、2048 セクタ) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB` `LIBF.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` `hello.c` (`scripts/mkdisk_d1.sh`)。**空きは 130 セクタ** (Turbo Pascal を入れたあとの実測。以前の 475 は古い)。`cc80 -r` はできた `.COM` を残すので、`hello.c` と `demo.c` を動かすだけで 20 セクタほどまで減り、`mandel.c` のコンパイルが入らなくなる。使い終えたら `del` で消す。2048 セクタは 1 セクタの割り当て表で持てる最大 |
+| `matenro_d1.dsk` (512KB、2048 セクタ。**`matenro_d1_big.dsk` は 64MB**、下) | `/d1`: **HI-TECH C** (`/d1/htc`: P1 CGEN ZAS LINQ、`CRTCPM.OBJ`、`LIBC.LIB` `LIBF.LIB`、ヘッダ)、**`zexdoc.com` `zexall.com`**、`zexdoc8.com` `zexall8.com` (8 項目目だけ)、`bstress.com` (リンクの負荷試験)、`demo.c` `mandel.c` `hello.c` (`scripts/mkdisk_d1.sh`)。**空きは 130 セクタ** (Turbo Pascal を入れたあとの実測。以前の 475 は古い)。`cc80 -r` はできた `.COM` を残すので、`hello.c` と `demo.c` を動かすだけで 20 セクタほどまで減り、`mandel.c` のコンパイルが入らなくなる。使い終えたら `del` で消す。2048 セクタは 1 セクタの割り当て表で持てる最大 |
 | `matenro_card.img` (約 128MB) | 上の 2 つを置くべき位置に置いたカード全体のイメージ: `sudo dd if=matenro_card.img of=/dev/sdX bs=1M conv=fsync` (**カード全体が上書きされる**。128MB 以上のカード) |
+| `matenro_card_big.img` (約 192MB) | `/d0` と 64MB の `/d1` を置いたカード全体 (`fpga/tn9k/scripts/bigd1.sh`)。192MB 以上のカードに書く |
 
 実機での使い方 (実機で確認済み。`cc80 -t=/d1/htc -r hello.c` と `mandel.c`、`cpm zexdoc`): `chx /d0/cmds`、`load xlink`、`load x0`、`chd /d1`、`cc80 -t=/d1/htc -r hello.c` (HI-TECH C)、`cpm zexdoc` (ZEXDOC)。`cc80 -t=/d1/htc -r hello.c` はシミュレータ (`/d1` を 2 番目のディスクイメージにしたもの) で `Hello from Hi-Tech C on CP/M` まで通りました。
+
+**`/d1` を 64MB のハードディスクにする (2026-11-07)**: `/d1` は 2048 セクタ (512KB) で、空きが 130 セクタしかなかった。2048 セクタは `sim09` の `growdisk.py` と `mkdisk_d1.sh` が 1 セクタの割り当て表に決めていた大きさで、OS-9 の RBF の限界ではない (`rbf.asm` の `FatScan` は `DD.MAP` バイトの表を、複数のセクタにまたがって調べる。`DD.MAP` の上位バイトが表のセクタ数なので、255 セクタ = 約 52 万クラスタまで)。カードは (以前の `dmesg` で) 約 3.75GB で、ドライブ 1 は 128MB の位置から始まるので、広げるのに場所の制約はない。SD カードの RTL (`sd_disk.v`)、OS-9 のドライバ、デスクリプタ、シミュレータは**変えていない** (ドライブ 1 のままで、LSN の大きさが違うだけ)。
+
+**実機の結果 (2026-11-07)**: `matenro_card_big.img` を SD カードに書いて確認した。`free /d1` は 262,144 セクタ (1 セクタクラスタ)、空き 260,113 セクタ。`chd /d1` のあと `cc80 -t=/d1/htc -r` で `hello.c` `demo.c` `mandel.c` をコンパイルして実行でき、`.COM` を残しても空きは 260,000 セクタ台のままだった (`hello.c` と `demo.c` で 55 セクタ程度)。
+
+* `tools/mkrbf.py`: 空の RBF ボリュームを作る (既定 262144 セクタ = 64MB、1 セクタ/クラスタ、割り当て表 128 セクタ)。LSN 0、表 (LSN 1〜)、ルートディレクトリの FD、ルートディレクトリを書く。
+* `fpga/tn9k/scripts/bigd1.sh OLD NEW`: 古い `/d1` のファイル (属性も) を、シミュレータの `copy` で新しい大きなボリュームに移す (2 台のドライブしかないので、ホストのディレクトリ `/v0` を通す)。`CARD=` でカード全体のイメージも作る。`tools/rbfwalk.py` が古いイメージのファイルの一覧を作る。
+* 確認: 61 件 (ファイル 57、ディレクトリ 4) の中身 (MD5) と属性が古い `/d1` と同じ。1MB のファイル 3 つを表の 2 セクタ目以降 (LSN 3000h、4800h) まで書いて、読み戻した内容が同じ、消すと空きが元に戻る (`tests/matenro_test.py` の `os9_bigdisk`)。`hello.c` `demo.c` `mandel.c` を続けて `cc80` で動かしても足りる (空き 259,943 セクタ)。
+* `dcheck` は、`sim09` の元のボリューム (`/d0`、古い `/d1`) でも大量の「Cluster … in allocation map but not in file structure」を出す。新しいボリュームでは 1 件「Segment out of range」が出るが、`file structure is intact` で、読み書きと空きの計算は正しい。`dcheck` は検査の基準にしていない。
+* 最初の割り当てが大きなファイルだと、1 回だけ `Media Full` (エラー 248) で失敗し、次は通る。`sim09` の元のボリューム (2048 セクタ) でも同じなので、新しいボリュームの問題ではない。
+* 実機のカードに書くには、`matenro_card_big.img` (約 192MB) を、192MB 以上のカードに `dd` で書く (カード全体が上書きされる)。
 
 **ファイルの属性 `s` に注意**: OS-9 の `s` 属性 (単一ユーザ = 同時に 1 回しか開けない) が付いたファイルは、HI-TECH のリンカのように**同じファイルを 2 回開く**プログラムでは、2 回目が `E$Share` (`$FD`) で失敗し、リンカは `Can't open` を出します (`/v0` のホストディレクトリでは起きず、RBF のディスクでだけ起きる)。`mkdisk_d1.sh` はコピーのあとに `attr -s` で外します。`cpm -d` は、失敗した `open` の OS-9 のエラー番号を 16 進で表示します。
 

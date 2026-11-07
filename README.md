@@ -148,7 +148,7 @@ OS9:del DEMO.COM
 ```
 
 * `chd /d1` を忘れる、または `/d0` のままだと、`cc80: cannot open demo.c` で止まります (何も消しません)。`-t=/d1/htc` を付けないと、`cpp80:stdio.h` / `cc80: failed: cpp80` で止まります。
-* `/d1` の空きは **130 セクタ**だけです。`cc80 -r` は、できた `.COM` を残すので、**使い終えたら `del` で消してください**。満杯になると `cpm: a write failed (disk full)` / `cc80: failed: cpm` で止まります。
+* 既定の `/d1` (512KB) は空きが **130 セクタ**だけです。`cc80 -r` は、できた `.COM` を残すので、**使い終えたら `del` で消してください**。満杯になると `cpm: a write failed (disk full)` / `cc80: failed: cpm` で止まります。`/d1` は **64MB のハードディスク**にもできます (`fpga/tn9k/scripts/bigd1.sh`、docs/MANUAL.md の 9 章)。そのカードイメージ `matenro_card_big.img` (約 192MB) なら、空きは約 63MB です。
 * 時間の目安 (実機): `hello.c` は 1 分ほど、`mandel.c` (浮動小数点) は約 3 分です。コンパイル中はプロンプトが戻りません (待ってください)。
 
 ### 主なオプション (sim09 のオプションは、そのまま使えます)
