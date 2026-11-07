@@ -104,7 +104,8 @@ module xlink #(
     // the 6809 reads the table through a register (a RAM output into the register read mux was a critical path); the table is
     // written and read by the 6809 at least eighteen clocks apart
     reg [7:0] smmu_rd;
-    always @(posedge clk) smmu_rd <= smmu[mi];
+    reg [7:0] smmu_rd2;                    // a flip-flop behind the output register of the BSRAM (its clock-to-output is 3.5 ns)
+    always @(posedge clk) begin smmu_rd <= smmu[mi]; smmu_rd2 <= smmu_rd; end
 
     // reset values: block i -> $80 + i  (xbase = $80)
     integer k;
@@ -119,7 +120,7 @@ module xlink #(
             7'h00: ext_rd = m2s0;   7'h01: ext_rd = m2s1;   7'h02: ext_rd = m2s2;   7'h03: ext_rd = m2s3;
             7'h04: ext_rd = s2m0;   7'h05: ext_rd = s2m1;   7'h06: ext_rd = s2m2;   7'h07: ext_rd = s2m3;
             7'h08: ext_rd = {1'b0, mi};
-            7'h09: ext_rd = smmu_rd;
+            7'h09: ext_rd = smmu_rd2;
             7'h0a: ext_rd = {3'b0, win_addr[20:16]};
             7'h0b: ext_rd = win_addr[15:8];
             7'h0c: ext_rd = win_addr[7:0];

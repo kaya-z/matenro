@@ -6,6 +6,7 @@
 # xltest  the test ROM fpga/tn9k/test/xltest.asm: the 6809 loads the Z80 demo into the Z80 memory, runs it and prints
 #         "13BA" and "0037" on the UART of the board (115200 baud, 8N1; the USB port), then switches itself off.
 # boot    the 256 byte boot ROM of sim09 (at $FF00): it loads the Level 2 loader from the SD card (image: scripts/mkdisk.sh)
+# XLASM=xlshr  the ROM source in test/ (default xltest): xlshr runs the Z80 from the shared RAM in the BSRAM (shr_ap.v); use TAG=_shr
 # MEMTEST=0  leave out the power-on memory test of the PSRAM (it takes about 4.5 s: "Memory >>>> OK 2048K" on the console); on by default
 # Result: fpga/tn9k/build/xltest/impl/pnr/matenro_xltest.fs   (program it with: openFPGALoader -b tangnano9k FILE)
 #
@@ -26,11 +27,16 @@ B=$HERE/build/$ROM${TAG}
 mkdir -p "$B"
 A09=${A09:-$SIM09/../../tools/a09}
 python3 -c "import sys; sys.path.insert(0,'$HERE/../../os9/sub'); import sumz80; i=sumz80.image(); open('$HERE/test/sumz80.inc','w').write(chr(10).join('         fcb   '+','.join('\$%02X'%b for b in i[k:k+16]) for k in range(0,len(i),16))+chr(10))"
-[ "$ROM" = boot ] || (cd "$HERE/test" && echo n | "$A09" -o xltest.bin -l xltest.lst xltest.asm)
+if [ "$ROM" != boot ]; then
+    # a09 exits with 0 even when it reports errors (a branch out of range): look at its report
+    A09OUT=$(cd "$HERE/test" && echo n | "$A09" -o ${XLASM:-xltest}.bin -l ${XLASM:-xltest}.lst ${XLASM:-xltest}.asm 2>&1)
+    echo "$A09OUT"
+    echo "$A09OUT" | grep -q '^0 Pass 2 errors' || { echo "ERROR: ${XLASM:-xltest}.asm does not assemble"; exit 1; }
+fi
 if [ "$ROM" = boot ]; then
     python3 "$SIM09/scripts/bin2hex.py" "$SIM09/../../fuzix/images/bootrom.bin" > "$B/rom.hex"
 else
-    python3 "$SIM09/scripts/bin2hex.py" "$HERE/test/xltest.bin" > "$B/rom.hex"
+    python3 "$SIM09/scripts/bin2hex.py" "$HERE/test/${XLASM:-xltest}.bin" > "$B/rom.hex"
 fi
 sh "$HERE/../sim/mk_tv80s_cen.sh" "$TV80" "$B/tv80s_cen.v"
 set -- $(date +"%Y %m %d %H %M %S")
@@ -67,6 +73,7 @@ add_file -type verilog $HERE/rtl/tn9k_top.v
 add_file -type verilog ${PLL:-$SIM09/rtl/tn9k_pll.v}
 add_file -type verilog $HERE/rtl/matenro_soc.v
 add_file -type verilog $HERE/rtl/psram_arb4.v
+add_file -type verilog $HERE/../rtl/shr_ap.v
 add_file -type verilog $HERE/rtl/btn_toggle.v
 add_file -type verilog $HERE/../rtl/z80_sub.v
 add_file -type verilog $HERE/../rtl/xlink.v

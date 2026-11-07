@@ -93,6 +93,7 @@ module tb_z80_soc #(
         end
     endtask
 
+    reg [20:0] resbase = 21'h100100;                    // where the result is in the physical memory
     task run_n(input integer n, input integer want);
         integer g;
         reg [7:0] lo, hi, rl, rh;
@@ -103,7 +104,7 @@ module tb_z80_soc #(
             check($sformatf("reply for n=%0d", n), g, 1);
             s2m(0, lo); s2m(1, hi);
             check($sformatf("1+..+%0d in S2M[0..1]", n), {hi, lo}, want);
-            setwin(21'h100100);                         // the result is also in the shared RAM at sub CPU address $0100
+            setwin(resbase);                            // the result is also in the shared RAM at sub CPU address $0100
             mr(3'd4, rl); mr(3'd4, rh);
             check($sformatf("1+..+%0d in the shared RAM", n), {rh, rl}, want);
             mw(3'd1, 8'd0);
@@ -150,6 +151,33 @@ module tb_z80_soc #(
 
         run_n(100, 5050);
         run_n(10, 55);
+
+        // the same program from the shared RAM in the BSRAM (physical block $FF, two ports): load it through the window,
+        // map the block 0 of the Z80 there (SMMU entry 0 = $FF), start again
+        mw(3'd0, 8'h00);                                // stop the Z80
+        setwin(21'h1fe000);
+        for (i = 0; i < n; i = i + 1) mw(3'd4, img[i]);
+        setwin(21'h1fe000);
+        bad = 0;
+        for (i = 0; i < n; i = i + 1) begin
+            mr(3'd4, v);
+            if (v != img[i]) bad = bad + 1;
+        end
+        check("BSRAM: image written and read back by the window", bad, 0);
+        ext(8'h08); mw(3'd4, 8'd0);                     // XE_MI = 0
+        ext(8'h09); mw(3'd4, 8'hff);                    // XE_MD: block 0 -> physical block $FF
+        resbase = 21'h1fe100;
+        mw(3'd0, 8'h11);
+        waitbell(400000, g);
+        check("BSRAM: ready doorbell from the Z80", g, 1);
+        for (i = 0; i < 1000; i = i + 1) tick;
+        check("BSRAM: Z80 halted, waiting for the interrupt", z80_halted, 1);
+        mw(3'd1, 8'd0);
+        run_n(100, 5050);
+        run_n(10, 55);
+        setwin(21'h100100);                             // the PSRAM copy is not touched: the old result is still there
+        mr(3'd4, v);
+        check("BSRAM: the old block was not written", v, 8'h37);
 
         $display("z80_soc: %0d checks, %0d failed", checks, fails);
         if (fails != 0) $fatal(1, "z80_soc test failed");

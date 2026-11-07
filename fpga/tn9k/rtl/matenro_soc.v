@@ -57,6 +57,7 @@ module matenro_soc #(
     parameter RTC_SEC    = 0,
     parameter MEMTEST    = 1,                       // test the PSRAM (55, AA, the address as the data) after the reset: Memory >>>> on the console
     parameter [21:0] MT_LAST = 22'h1fffff,          // the last byte to test (2 MB)
+    parameter SHR_BLK    = 8'hff,                   // the physical block (8 KB, bits 20:13) that is served from the BSRAM
     parameter CZ_DIV     = 9                        // Z80 clock = CLK_HZ / CZ_DIV (7.5 MHz)
 ) (
     input  wire        clk,
@@ -129,7 +130,9 @@ module matenro_soc #(
     reg         xw_act = 1'b0, xw_rdp = 1'b0, xw_wrp = 1'b0;
     wire [20:0] win_addr;
     wire [7:0]  win_wdata;
-    wire        zm_req, zm_wr, zm_ack;
+    wire        zm_req, zm_wr, zm_ack, zm_ack_ps;
+    wire        zb_hit, zb_ack, win_hit, wb_ack;      // the shared RAM in the BSRAM (shr_ap.v)
+    wire [7:0]  zb_rdata, wb_rdata;
     wire [20:0] zm_addr;
     wire [7:0]  zm_wdata;
     wire [15:0] zm_rdata_w;
@@ -612,7 +615,7 @@ module matenro_soc #(
         .m0_req(m0_req), .m0_wr(m0_wrr), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),
-        .m3_req(zm_req), .m3_wr(zm_wr), .m3_addr({1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack), .m3_rdata(zm_rdata_w)
+        .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr({1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w)
     );
 
     // ---------------------------------------------------------------- MATENRO: the cross link and the Z80
@@ -644,7 +647,7 @@ module matenro_soc #(
         xw_rdp <= 1'b0; xw_wrp <= 1'b0; win_ack_r <= 1'b0;
         if (rst) begin xw_act <= 1'b0; xw_go <= 1'b0; end
         else begin
-            if (win_req && !xw_act && !win_ack_r && !xw_go) begin       // start: choose the source, then pulse
+            if (win_req && !win_hit && !xw_act && !win_ack_r && !xw_go) begin       // start: choose the source, then pulse
                 xw_act <= 1'b1; xw_go <= 1'b1; win_wr_q <= win_wr;
             end else if (xw_go) begin
                 xw_go <= 1'b0;
@@ -654,12 +657,22 @@ module matenro_soc #(
                 xw_act <= 1'b0; win_ack_r <= 1'b1;
                 win_rdata <= win_addr[0] ? ps_dout_m[15:8] : ps_dout_m[7:0];
             end
+            if (wb_ack) win_rdata <= wb_rdata;
         end
     end
-    assign win_ack = win_ack_r;
+    // the shared RAM in the BSRAM (shr_ap.v): the block SHR_BLK is served there, for the window and for the Z80
+    reg         wb_ack_q = 1'b0;
+    assign win_ack = win_ack_r | wb_ack_q;
+    always @(posedge clk) wb_ack_q <= wb_ack;
 
     // the Z80 and its memory port (master 3 of the arbiter)
-    wire [7:0]  zm_rdata = zm_addr[0] ? zm_rdata_w[15:8] : zm_rdata_w[7:0];
+    wire [7:0]  zm_rdata = zb_ack ? zb_rdata : zm_addr[0] ? zm_rdata_w[15:8] : zm_rdata_w[7:0];
+    assign zm_ack = zm_ack_ps | zb_ack;
+    shr_ap #(.BLK(SHR_BLK)) shr (
+        .clk(clk), .rst(rst),
+        .a_req(zm_req), .a_wr(zm_wr), .a_addr(zm_addr), .a_wdata(zm_wdata), .a_hit(zb_hit), .a_ack(zb_ack), .a_rdata(zb_rdata),
+        .w_req(win_req), .w_wr(win_wr), .w_addr(win_addr), .w_wdata(win_wdata), .w_hit(win_hit), .w_ack(wb_ack), .w_rdata(wb_rdata)
+    );
     z80_sub #(.CLKDIV(CZ_DIV), .CLK_KHZ(CLK_HZ / 1000)) sub (
         .clk(clk), .rst(rst),
         .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win), .sub_on(xl_on),

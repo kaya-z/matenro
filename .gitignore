@@ -22,3 +22,6 @@ fpga/tn9k/sim/build_boot
 fpga/tn9k/sim/build_aciirq
 fpga/sim/build_btn/
 CLAUDE.local.md
+*~
+fpga/tn9k/test/xlshr.bin
+fpga/tn9k/test/xlshr.lst
