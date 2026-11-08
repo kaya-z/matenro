@@ -158,8 +158,8 @@ BSRAM の共有領域は後から足せます。
 
 | ファイル | 内容 |
 |---|---|
-| `rtl/matenro_soc.v` | `sbc09_soc.v` に XLINK ( I/O ページの `$49-$4D` = Level 2 の `$FFC9-$FFCD`、Level 1 の `$E049-$E04D`)、Z80 (`z80_sub.v`)、ウィンドウ、IRQ の OR を足したもの |
-| `rtl/psram_arb4.v` | PSRAM の調停に 4 番目のマスタ (Z80、バイトの読み書き) を足したもの。優先順位は HDMI の 2 つ > Z80 > 6809 (ディスク、起動時の消去、XLINK のウィンドウ) |
+| `rtl/matenro_soc.v` | `sbc09_soc.v` に XLINK ( I/O ページの `$4A-$4E` = Level 2 の `$FFCA-$FFCE`、Level 1 の `$E04A-$E04E`)、Z80 (`z80_sub.v`)、ウィンドウ、IRQ の OR を足したもの |
+| `rtl/psram_arb4.v` | PSRAM の調停に、4 番目のマスタ (Z80、バイトの読み書き) と 5 番目のマスタ (ディスクの非同期モードの DMA、最低優先) を足したもの。優先順位は HDMI の 2 つ > Z80 > 6809 (起動時の消去、XLINK のウィンドウ、同期モードのディスク) > 非同期のディスク |
 | `rtl/tn9k_top.v` | `matenro_soc` を使う最上位 (`MEMTEST` を 0 にして面積を減らす) |
 | `../rtl/z80_sub.v` | Z80 + XLINK + クロックイネーブルの分周。メモリは要求/応答のポート (何クロックかかってもよい) |
 | `constraints/matenro.sdc` | Z80 のためのマルチサイクルのタイミング制約 |
@@ -292,7 +292,7 @@ OS-9 の `etime` (6 章) のために、XLINK にマイクロ秒のカウンタ 
 起動時の PSRAM の検査 (55、AA、アドレスの 3 パス、2MB) は、**普段のビットストリームに入っています** (`build.sh` の既定は `MEMTEST=1`。省くなら `MEMTEST=0`)。LUT 88%、タイミングは満たしました (67.55MHz)。**フラッシュに書いて** (`openFPGALoader -b tangnano9k -f`) 起動すると、実機のコンソールに次のとおり出ました (約 4.5 秒、そのあと OS-9 が起動):
 
 ```
-Memory >>>>>>>>>>>>>>>>>>>>>>>> OK 2048K
+Matenro Memory >>>>>>>>>>>>>>>>>>>>>>>> OK 2048K
 NitrOS-9/6809 Level 2 V1.0.1
 ```
 
@@ -319,7 +319,7 @@ NitrOS-9/6809 Level 2 V1.0.1
      |         |     1 位相 = PH_DIV = 9 クロック、1 サイクル = 4 位相 = 36 クロック
      |         |     E  = 67.5 MHz / 36 = 1.875 MHz  (E は ph 0->1 で下がり、ph 2->3 で上がる)
      |         |     Q  = E より 1 位相遅れ
-     |         |     * 待ち (mem_pend, settle, XLINK の窓, ディスク, ACIA, 電源) があると
+     |         |     * 待ち (mem_pend, settle, XLINK の窓, ディスク (同期モードのとき), ACIA, 電源) があると
      |         |       ph 0 で止まる: E のサイクルが延びる (CPU が止まる)
      |         |     |
      |         |     +--> ecyc (E のサイクルごとに 1 クロックのパルス)
@@ -363,13 +363,13 @@ NitrOS-9/6809 Level 2 V1.0.1
 
 ### 9.10 割り込み線の系統図 (2026-11-04)
 
-6809 の `nIRQ` / `nFIRQ` と、Z80 (TV80) の `int_n` / `nmi_n` が割り込み線のすべてです (6809 の `nNMI` は 1 に固定)。`nIRQ` には、図のタイマとクロスリンクのほかに、コンソール ACIA の割り込み `acia_irq` (`acia_uart.v`、9.11) も OR されます。図では省いています。すべて `clk81` に同期した信号で、割り込みの線に非同期の入力はありません。
+6809 の `nIRQ` / `nFIRQ` と、Z80 (TV80) の `int_n` / `nmi_n` が割り込み線のすべてです (6809 の `nNMI` は 1 に固定)。`nIRQ` には、図のタイマとクロスリンクのほかに、コンソール ACIA の割り込み `acia_irq` (`acia_uart.v`、9.11) と、ディスクの非同期モードの終了割り込み `disk_irq` (9.12) も OR されます。図では省いています。すべて `clk81` に同期した信号で、割り込みの線に非同期の入力はありません。
 
 ```
   matenro_soc.v                      xlink.v (soc/sub/xl)                         z80_sub.v (TV80)
   --------------------------      -----------------------------------      ---------------------------------
 
-  timer_rtc.v                       c_ien, c_firq <- XCTL ($FFC9) bit4, bit3
+  timer_rtc.v                       c_ien, c_firq <- XCTL ($FFCA) bit4, bit3
     pending: tick 50 Hz で 1           |
     0 に戻る: iack                     |        Z80 の OUT $02 (s_port 2)
     (cpu_bs & !cpu_ba)                 |                 |
@@ -386,7 +386,7 @@ NitrOS-9/6809 Level 2 V1.0.1
            mc6809i --> IRQ ベクタ --> OS-9 のカーネル --> D.SvcIRQ (Clock) --> D.Poll --> xlink ドライバ
 
 
-                                    6809 が XID ($FFCA) に書く
+                                    6809 が XID ($FFCC) に書く
                                       | bit7 = 0              | bit7 = 1
                                       v                       v
                                  pend_m2s (XSTAT bit1)    sub_nmi (1 クロックのパルス)
@@ -415,3 +415,15 @@ NitrOS-9/6809 Level 2 V1.0.1
 * **コマンド名**: Matenro の C のプリプロセッサは `cpp80` (`new-sbc09` の C コンパイラの `cpp` と名前がぶつかるため)。`cc80` が `cpp80` を呼ぶ。
 * ビットストリーム (起動 ROM 版、`TAG=_acirq TV80=… scripts/build.sh boot`): LUT 約 7100、CLS 94%。**`clk81` の Fmax 69.1MHz (目標 67.5MHz)、負のスラックなし** (`$A6` の再起動を入れた版)。
 * **実機 (Tang Nano 9K、2026-11-06)**: このビットストリームを SRAM に書き (`openFPGALoader -b tangnano9k`)、`mkdisk.sh` で作り直した SD イメージ (割り込み駆動の端末ドライバの OS-9 Level 2) で、OS-9 が起動して `OS9:` が出た。`sleep 1000` を `^C` で止めると `Error #003` ですぐ戻る。`dir /d0/cmds` に `new-sbc09` の `cc` `cc1` `cpp` `reboot` と Matenro の `cpp80` `cc80` `cpm` `xrun` が並ぶ。**`reboot` (`$A6`) で `Rebooting...` のあと PSRAM の検査と OS-9 の起動が再び走った**。`load xlink`、`load x0`、`cpm /d0/hello.com abc` が `Hello from CP/M-80 on the Z80` / `!` / ` ABC` を出した。`cpp80` も動く。**フラッシュにも書いた** (`openFPGALoader -b tangnano9k -f`)。USB を抜き差しして電源を入れ直しても、フラッシュから同じ版で起動し、`reboot` (`$A6`) と `cc80 -t=/d1/htc -r hello.c` (`cpp80` → Z80 の HI-TECH C) が動いた。`duo` (6809 が 18 行、Z80 が 7 行、5.8 秒) と、`mandel.c` (`etime` で 186.7 秒、シミュレータの見積もり 183.7 秒) も動いた。
+
+### 9.12 ディスクの非同期モードと XLINK のアドレス移動、起動メッセージ (実機で確認、2026-11-08)
+
+sim09 が 11/7 に入れた非同期ディスク (制御・状態レジスタ `$E049`、Level 2 は `$FFC9`) と、Matenro の XLINK の `XCTL` が同じ番地で、sim09 の新しい OS-9 Level 2 `PDisk` が使うと Z80 のリセットや IEN の消去が起きた (`make test-mh` が 3 件失敗した)。**XLINK を `$FFCA`-`$FFCE` (Level 1 は `$E04A`-`$E04E`) へ 1 つずらして**解消した (ドライバ、`duo` `cpm` `etime` `xrun`、RTL のデコード、シミュレータ、試験、文書)。
+
+* **RTL**: `psram_arb4.v` に最低優先のマスタ 4 (ディスクのバイト読み書き)。`matenro_soc.v` に `$E049` の状態 (bit7 終了、bit6 割り込み許可、bit1 非同期、bit0 処理中)、終了割り込み `disk_irq` (IRQ に OR)、命令を書いた時点のメモリマップの保持 (`dm_blk0/1`)、非同期のあいだ 6809 を止めない `disk_hold`。同期モードの `disk_sel` の切り替えは不要になった。リセットとモードレジスタの書き込みで同期に戻る。
+* **シミュレータ**: `src/machine.c` に同じ動き (読み 800、書き 7500 サイクル。`-v` のときは同期のまま)。
+* **試験**: `make test-mh` (53 件、失敗 0)。RTL は `make -C fpga/tn9k/sim ROM=disktest TV80=…` が sim09 の `disktest.s` を `a09` で組んで流し、5 項目 (同期の読み、非同期の読み、CPU と DMA のメモリ共有、割り込み、非同期の書き) が通る。
+* **資源**: Logic 7,835 (91%)、CLS 4,138 (96%)、レジスタ 2,284、BSRAM 8。`clk81` の Fmax 67.528MHz、負のスラックなし (docs/FPGA_RESOURCES.md)。
+* **起動メッセージ**: メモリ検査の見出しを `Matenro Memory ` にした。OS-9 の起動ルーチン (`sysgo`) は `startup` を読まない構成なので、OS の側では出せない。行頭の `Matenro` で、素の sim09 の板と見分ける。
+* **実機 (Tang Nano 9K)**: フラッシュに書いて起動し、`Matenro Memory >>>… OK 2048K` から OS-9 Level 2 が起動した。新しいカードのイメージ (`matenro_card_async.img`、`mkdisk.sh` + `bigd1.sh`) で `free /d1` は 262,144 セクタ (空き 260,113)、`load xlink` `load x0` `duo` が通った (6809 が 18 行、Z80 が 7 行、5.78 秒)。`libc.lib` のコピーを繰り返す 35 秒ほどの間に OS-9 の時計が約 13% 遅れた (同期のときの前回の測定は 24%)。残る遅れは PSRAM の取り合いとみている。電源の入れ直しからの起動は未確認。
+* **古いカードのイメージ**: XLINK のドライバが `$FFC9` を見る古いイメージ (2026-11-07 以前の `matenro_card*.img`) は、このビットストリームでは `duo` `cpm` `cc80` が動かない。`mkdisk.sh` と `bigd1.sh` で作り直す (README と MANUAL の手順のとおり)。

@@ -3,10 +3,10 @@
 * and prints how many microseconds (XE_US, real time) each of its six loops took, four hex digits each.
 ACIA     equ   $E001
 POWER    equ   $E00F
-XCTL     equ   $E049
-XSTAT    equ   $E04A
-XIDX     equ   $E04C
-XDAT     equ   $E04D
+XCTL     equ   $E04A
+XSTAT    equ   $E04B
+XIDX     equ   $E04D
+XDAT     equ   $E04E
 TAB      equ   $0100
 
          org   $FC00

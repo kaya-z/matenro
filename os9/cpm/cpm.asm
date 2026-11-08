@@ -21,7 +21,7 @@
 * Implemented BDOS functions (both CPUs): 0 1 2 6 9 10 11 12 13 14 15 16 17 18 19 20 21 22 24 25 26 29 30 32
 * 33 34 35 36; CP/M-86 only: 51 52 (DMA base).  Everything else answers 0.  Drive letters are ignored (one drive).
 *
-* The user state program reaches the cross link in the I/O page ($FFC9-$FFCD of the Level 2 machine) and the
+* The user state program reaches the cross link in the I/O page ($FFCA-$FFCE of the Level 2 machine) and the
 * sub CPU memory through the window port, like `xrun`; run the simulator with -m 1M.  Register interface:
 * docs/DESIGN.md.
 *

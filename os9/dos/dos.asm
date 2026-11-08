@@ -19,7 +19,7 @@
 * Stage 7 of docs/DESIGN.md chapter 18: console, time (DATE and TIME are an offset kept by the BIOS), disk images (COMMAND.COM
 * is read from drive A by the BIOS), printer and aux port.
 *
-* The user state program reaches the cross link in the I/O page ($FFC9-$FFCD of the Level 2 machine) and the
+* The user state program reaches the cross link in the I/O page ($FFCA-$FFCE of the Level 2 machine) and the
 * sub CPU memory through the window port, like `cpm`; the sub CPU must be the 8088 (-sub 8088; -m 1M without the
 * driver xlink).
 *

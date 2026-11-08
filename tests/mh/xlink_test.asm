@@ -9,11 +9,11 @@
 *
 * The sub CPU program is put behind the label 'chunks' by tests/matenro_test.py.
 SUBID   equ @SUBID@
-XCTL    equ $FFC9
-XSTAT   equ $FFCA               read: status      write: acknowledge the doorbell of the sub CPU
-XID     equ $FFCB               read: sub CPU id  write: ring the sub CPU
-XIDX    equ $FFCC               extended register index (bit 7: auto increment)
-XDAT    equ $FFCD               extended register data
+XCTL    equ $FFCA
+XSTAT   equ $FFCB               read: status      write: acknowledge the doorbell of the sub CPU
+XID     equ $FFCC               read: sub CPU id  write: ring the sub CPU
+XIDX    equ $FFCD               extended register index (bit 7: auto increment)
+XDAT    equ $FFCE               extended register data
 XBELL   equ XID
 XACK    equ XSTAT
 ACIA    equ $FF81

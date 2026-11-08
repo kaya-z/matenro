@@ -154,7 +154,7 @@ picocom -b 115200 /dev/ttyUSB2
 電源を入れる (またはリセットする) と、次のように出ます。
 
 ```
-Memory >>>>>>>>>>>>>>>>>>>>>>>> OK 2048K        ← PSRAM の検査 (約 4.5 秒)
+Matenro Memory >>>>>>>>>>>>>>>>>>>>>>>> OK 2048K        ← PSRAM の検査 (約 4.5 秒)
 NitrOS-9/6809 Level 2 V1.0.1
 Tang Nano 9K
 (C) 2014 The NitrOS-9 Project

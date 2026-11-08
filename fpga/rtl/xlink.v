@@ -2,7 +2,7 @@
 // xlink.v - cross link of the Matenro machine (RTL of src/xlink.c)
 //
 // Register for register the same interface as the C simulator (docs/DESIGN.md, chapters 6 and 7):
-//   * 6809 side: five registers at $FFC9-$FFCD (m_addr 0..4) = XCTL XSTAT/ACK XID/BELL XIDX XDAT
+//   * 6809 side: five registers at $FFCA-$FFCE (m_addr 0..4) = XCTL XSTAT/ACK XID/BELL XIDX XDAT
 //   * sub CPU side: ports $00-$0F
 //   * SMMU: 128 x 8 bit table, sub CPU address -> physical RAM address (21 bit)
 //   * window: 21 bit physical address counter with a memory port (request / acknowledge)

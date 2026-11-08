@@ -2,7 +2,7 @@
 ********************************************************************
 * xlink - OS-9 Level 2 device driver of the cross link of 摩天楼 (Matenro)
 *
-* Device descriptor: x0 (x0.asm), file manager SCF, hardware address $FFC9 (XCTL).
+* Device descriptor: x0 (x0.asm), file manager SCF, hardware address $FFCA (XCTL).
 *
 * What the driver does (docs/DESIGN.md, chapter 14):
 *   Init   asks OS-9 for the memory of the sub CPU (F$AlHRAM: 8 blocks of 8KB for a Z80, 32 for an 8088), maps it

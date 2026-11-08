@@ -5,7 +5,7 @@ SIM09 ?= /export/nas/archives/MC6809/new-sbc09/fpga/tn9k
 TV80  ?= tv80
 CZDIV ?= 9
 B     := build
-RTL    = ../rtl/matenro_soc.v ../rtl/psram_arb4.v ../../rtl/z80_sub.v ../../rtl/xlink.v \
+RTL    = ../rtl/matenro_soc.v ../rtl/psram_arb4.v ../../rtl/z80_sub.v ../../rtl/xlink.v ../../rtl/shr_ap.v \
          $(SIM09)/rtl/acia_uart.v $(SIM09)/rtl/timer_rtc.v $(SIM09)/rtl/sd_disk.v \
          $(SIM09)/vendor/mc6809/mc6809i.v $(SIM09)/sim/psram_model.v sim_top.v
 TV80V  = $(B)/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
@@ -14,6 +14,10 @@ TV80V  = $(B)/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_
 ROM ?= xltest
 ifeq ($(ROM),aciirq)
 B := build_aciirq
+ROMBASE = 64512
+ROMAW = 10
+else ifeq ($(ROM),disktest)
+B := build_disktest
 ROMBASE = 64512
 ROMAW = 10
 else ifeq ($(ROM),boot)
@@ -26,7 +30,11 @@ ROMAW = 10
 endif
 
 # make ROM=aciirq TV80=...: the interrupt of the console ACIA (test/aciirq.asm)
-ifeq ($(ROM),aciirq)
+ifeq ($(ROM),disktest)
+run: $(B)/obj/Vsim_top $(B)/card.img
+	$(B)/obj/Vsim_top -d $(B)/card.img -s ../test/disktest_wait.txt -c 900000000 | tee $(B)/out.txt
+	@for t in "1 sync read: PASS" "2 async read, CPU runs: PASS" "3 CPU and DMA share the memory: PASS" "4 interrupt: PASS" "5 async write: PASS" DONE; do grep -q "$$t" $(B)/out.txt || { echo "matenro_soc disk port: FAILED ($$t)"; exit 1; }; done; echo "matenro_soc disk port: OK (5 tests)"
+else ifeq ($(ROM),aciirq)
 run: $(B)/obj/Vsim_top
 	$(B)/obj/Vsim_top -nosd -c 40000000 | tee $(B)/out.txt
 	@tr -d '\r\n' < $(B)/out.txt | grep -q "SBIRP" && echo "matenro_soc ACIA interrupt: OK (S B I R P)" || { echo "matenro_soc ACIA interrupt: FAILED"; exit 1; }
@@ -36,7 +44,17 @@ run: $(B)/obj/Vsim_top
 	@grep -q "13BA" $(B)/out.txt && grep -q "0037" $(B)/out.txt && grep -q "1D4C" $(B)/out.txt && echo "matenro_soc: OK (13BA 0037 1D4C)" || { echo "matenro_soc: FAILED"; exit 1; }
 endif
 
-ifeq ($(ROM),aciirq)
+ifeq ($(ROM),disktest)
+# make ROM=disktest TV80=...: the disk port in its asynchronous mode (sim09's scripts/disktest.s, assembled with a09 without the long comments); the card: byte i of sector n is (n*37 + 3*i + 1) & $FF
+$(B)/rom.hex: $(SIM09)/scripts/disktest.s
+	@mkdir -p $(B)
+	grep -v '^;' $(SIM09)/scripts/disktest.s | awk '{ if (length($$0)>100) sub(/[ \t]*;.*/,""); print }' > $(B)/disktest_a09.s
+	cd $(B) && echo n | $(SIM09)/../../tools/a09 -o disktest.bin -l disktest.lst disktest_a09.s && grep -q '^0 Pass 2 errors' disktest.lst
+	python3 $(SIM09)/scripts/bin2hex.py $(B)/disktest.bin > $@
+$(B)/card.img:
+	@mkdir -p $(B)
+	python3 -c "open('$@','wb').write(b''.join(bytes((n*37+3*i+1)&255 for i in range(256)) for n in range(256)))"
+else ifeq ($(ROM),aciirq)
 $(B)/rom.hex: ../test/aciirq.asm
 	@mkdir -p $(B)
 	cd ../test && echo n | $(SIM09)/../../tools/a09 -o aciirq.bin -l aciirq.lst aciirq.asm

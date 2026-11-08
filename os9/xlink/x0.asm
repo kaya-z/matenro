@@ -15,7 +15,7 @@
          mod   XEND,XNAM,DEVIC+OBJCT,REENT+1,XMGR,XDRV
          fcb   READ.+WRITE.+SHARE.
          fcb   $FF               IOBlock (unused)
-         fdb   $FFC9             hardware address: XCTL
+         fdb   $FFCA             hardware address: XCTL
          fcb   XNAM-*-1          option byte count
          fcb   $00               SCF device
          fcb   $00,$00,$00,$00,$00,$00,$00

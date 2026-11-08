@@ -1,9 +1,9 @@
 * cpmdefs.asm - definitions shared by cpm.asm (the program) and bdos.asm (the subroutine module)
-XCTL     equ   $FFC9
-XSTAT    equ   $FFCA
-XID      equ   $FFCB
-XIDX     equ   $FFCC
-XDAT     equ   $FFCD
+XCTL     equ   $FFCA
+XSTAT    equ   $FFCB
+XID      equ   $FFCC
+XIDX     equ   $FFCD
+XDAT     equ   $FFCE
 XE_MI    equ   $08
 XE_MD    equ   $09
 XE_WA    equ   $0A

@@ -4,7 +4,7 @@
  *
  * Matenro machine: this file is a modified copy of sim09's (new-sbc09, MIT).  Changes: 2MB physical RAM with a
  * shared pool above `memsize`, `mainlimit`, IRQ/FIRQ as the OR of timer and cross link (machine_update_irq),
- * XLINK register decode ($FFC9-$FFCD), scheduler hook for the sub CPU, power register $A6.  See docs/DESIGN.md.
+ * XLINK register decode ($FFCA-$FFCE), scheduler hook for the sub CPU, power register $A6.  See docs/DESIGN.md.
  *
  * Two machine models are provided, both compatible (register for register)
  * with the "v09" / "v09c" simulators of Shinji Kono's sbc09 fork
@@ -86,6 +86,10 @@ typedef struct machine {
     long     timer_hz;
 
     FILE    *disk[2];              /* raw sector images (-0 / -1)           */
+    /* the disk port in its asynchronous mode ($E049 bit 0): the command returns at once, E040 = $FE until it is finished, status/interrupt at the end */
+    int      disk_async, disk_ien, disk_busy, disk_done;
+    uint64_t disk_end;             /* the cycle at which the command that is under way is finished */
+    uint8_t  disk_res;             /* ... and its result */
 
     /* clock */
     long     clock_hz;             /* CPU clock (default 1.8432 MHz)        */
@@ -171,6 +175,7 @@ void machine_irq_ack(m6809_t *c, int line);
 /* device entry points */
 void do_timer_write(machine_t *m, int off, uint8_t v);
 void do_disk_write(machine_t *m, int off, uint8_t v);
+int  vdisk_in_use(void);                 /* a host directory is a virtual drive: the raw disk stays synchronous */
 int  dev_tick(machine_t *m);   /* advance devices to current CPU time; non-zero = state changed */
 
 /* console / acia: see console.h */

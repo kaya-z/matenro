@@ -5,15 +5,15 @@
 *   then read XE_KHZ (the Z80 clock in kHz) with the auto increment of the index and print it: the SoC once took the
 *   byte of the next register (it read the byte again after the access, which is right for the window only).
 * Expected output:  13BA 0037  1D4C (7500 kHz)
-* Registers: XCTL=$E049 XSTAT=$E04A XID/BELL=$E04B XIDX=$E04C XDAT=$E04D
+* Registers: XCTL=$E04A XSTAT=$E04B XID/BELL=$E04C XIDX=$E04D XDAT=$E04E
 
 ACIA     equ   $E001
 POWER    equ   $E00F
-XCTL     equ   $E049
-XSTAT    equ   $E04A
-XBELL    equ   $E04B
-XIDX     equ   $E04C
-XDAT     equ   $E04D
+XCTL     equ   $E04A
+XSTAT    equ   $E04B
+XBELL    equ   $E04C
+XIDX     equ   $E04D
+XDAT     equ   $E04E
 
          org   $FC00
 start    lds   #$0F00

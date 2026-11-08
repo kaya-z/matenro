@@ -802,20 +802,20 @@ def os9_driver(tmp):
 
 
 def memtest():
-    """power-on memory test of the sim09 board: "Memory " + 24 x ">" + " OK 2048K" / " NG @aaaaaa" """
+    """power-on memory test of the sim09 board: "Matenro Memory " + 24 x ">" + " OK 2048K" / " NG @aaaaaa" """
     rom = os.path.join(OS9, 'os9v2.rom')
     if not os.path.exists(rom):
         print('skip memtest (no %s)' % rom)
         return
     base = [SIM, '-max', '-nt', '-maxcount', '10', '-rom', rom]
     out = run(base).stdout.decode(errors='replace')
-    check('memory test: Memory %s OK 2048K' % ('>' * 24), out.startswith('Memory ' + '>' * 24 + ' OK 2048K\r\n'), out[:80])
+    check('memory test: Matenro Memory %s OK 2048K' % ('>' * 24), out.startswith('Matenro Memory ' + '>' * 24 + ' OK 2048K\r\n'), out[:80])
     out = run(base + ['-memfault', '123456']).stdout.decode(errors='replace')
-    check('memory test: a stuck bit is reported with its address', out.startswith('Memory ' + '>' * 24 + ' NG @123456\r\n'), out[:80])
+    check('memory test: a stuck bit is reported with its address', out.startswith('Matenro Memory ' + '>' * 24 + ' NG @123456\r\n'), out[:80])
     out = run(base + ['-nomemtest']).stdout.decode(errors='replace')
-    check('memory test: -nomemtest prints nothing', not out.startswith('Memory'), out[:80])
+    check('memory test: -nomemtest prints nothing', not out.startswith('Matenro Memory'), out[:80])
     out = run(base + ['-L1', '-rom', os.path.join(OS9, 'v09.rom')]).stdout.decode(errors='replace')
-    check('memory test: Level 1 tests its 64KB', out.startswith('Memory >>> OK 64K\r\n'), out[:80])
+    check('memory test: Level 1 tests its 64KB', out.startswith('Matenro Memory >>> OK 64K\r\n'), out[:80])
 
 
 def main():

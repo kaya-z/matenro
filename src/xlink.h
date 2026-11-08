@@ -18,15 +18,15 @@ struct machine;
 /* main CPU side registers: offsets from the I/O base ($FF80 on the Level 2 machine).
  *
  * The I/O page of the sim09 Level 2 machine is almost full ($FFD0-$FFFF holds the code and data of the OS-9
- * vector page, $FFC0-$FFC8 the disk registers), so the cross link needs only 5 bytes at $FFC9-$FFCD
- * (offsets $49-$4D): three direct registers and an index / data pair for the rest.  */
-#define XL_BASE   0x49
+ * vector page, $FFC0-$FFC9 the disk registers), so the cross link needs only 5 bytes at $FFCA-$FFCE
+ * (offsets $4A-$4E): three direct registers and an index / data pair for the rest.  */
+#define XL_BASE   0x4a
 #define XL_END    0x50            /* exclusive */
-#define XR_CTL    0x49            /* R/W control                                                    */
-#define XR_STAT   0x4a            /* R status                  W acknowledge the sub CPU doorbell   */
-#define XR_ID     0x4b            /* R sub CPU id (0 = none)   W ring the sub CPU doorbell          */
-#define XR_IDX    0x4c            /* extended register index; bit 7 = auto increment after XR_DAT   */
-#define XR_DAT    0x4d            /* extended register data                                         */
+#define XR_CTL    0x4a            /* R/W control                                                    */
+#define XR_STAT   0x4b            /* R status                  W acknowledge the sub CPU doorbell   */
+#define XR_ID     0x4c            /* R sub CPU id (0 = none)   W ring the sub CPU doorbell          */
+#define XR_IDX    0x4d            /* extended register index; bit 7 = auto increment after XR_DAT   */
+#define XR_DAT    0x4e            /* extended register data                                         */
 
 /* extended registers (index) */
 #define XE_M2S    0x00            /* 4 bytes main -> sub, read / write                              */

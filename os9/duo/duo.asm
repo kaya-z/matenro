@@ -33,11 +33,11 @@ atrv     set   ReEnt+rev
 rev      set   $00
 edition  set   1
 
-XCTL     equ   $FFC9
-XSTAT    equ   $FFCA
-XID      equ   $FFCB
-XIDX     equ   $FFCC
-XDAT     equ   $FFCD
+XCTL     equ   $FFCA
+XSTAT    equ   $FFCB
+XID      equ   $FFCC
+XIDX     equ   $FFCD
+XDAT     equ   $FFCE
 XE_M2S   equ   $00
 XE_MI    equ   $08
 XE_MD    equ   $09

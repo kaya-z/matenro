@@ -12,7 +12,7 @@
 *          into mailbox byte 0, ring the doorbell, wait for the reply and print the mailbox
 *          bytes S2M[0..3] in hex.  This is the protocol of os9/sub/sum8088.asm and sumz80.bin.
 *
-* The program runs in user state: the cross link registers sit in the I/O page ($FFC9-$FFCD of
+* The program runs in user state: the cross link registers sit in the I/O page ($FFCA-$FFCE of
 * the Level 2 machine), which is visible in every task, so no driver is needed.  The sub CPU
 * memory is reached through the window port (physical RAM, not through the OS-9 memory map);
 * run the simulator with -m 1M so that OS-9 leaves the upper 1MB (the sub CPU pool) alone.
@@ -36,11 +36,11 @@ atrv     set   ReEnt+rev
 rev      set   $00
 edition  set   1
 
-XCTL     equ   $FFC9
-XSTAT    equ   $FFCA
-XID      equ   $FFCB
-XIDX     equ   $FFCC
-XDAT     equ   $FFCD
+XCTL     equ   $FFCA
+XSTAT    equ   $FFCB
+XID      equ   $FFCC
+XIDX     equ   $FFCD
+XDAT     equ   $FFCE
 XE_M2S   equ   $00
 XE_S2M   equ   $04
 XE_MI    equ   $08

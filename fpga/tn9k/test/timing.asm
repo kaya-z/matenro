@@ -3,12 +3,12 @@
 * rounds, from XE_US (the microsecond counter, real time).  Four hex digits per loop, in microseconds:
 *   A  ROM only (leax, bne)                B  one RAM read per round (lda $0200)
 *   C  one RAM write per round (sta $0200)  D  the same loop as A, but in RAM ($0300)
-* Registers: XIDX=$E04C XDAT=$E04D ACIA=$E001 POWER=$E00F
+* Registers: XIDX=$E04D XDAT=$E04E ACIA=$E001 POWER=$E00F
 
 ACIA     equ   $E001
 POWER    equ   $E00F
-XIDX     equ   $E04C
-XDAT     equ   $E04D
+XIDX     equ   $E04D
+XDAT     equ   $E04E
 N        equ   2000
 u0       equ   $0100
 u1       equ   $0102

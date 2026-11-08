@@ -25,3 +25,4 @@ CLAUDE.local.md
 *~
 fpga/tn9k/test/xlshr.bin
 fpga/tn9k/test/xlshr.lst
+fpga/tn9k/sim/build_disktest/

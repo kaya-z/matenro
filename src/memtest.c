@@ -36,7 +36,7 @@ int machine_memtest(machine_t *m, long fault, char *out, size_t outsz)
     int failed = 0;
     size_t n = 0;
 
-    n += (size_t)snprintf(out + n, outsz - n, "Memory ");
+    n += (size_t)snprintf(out + n, outsz - n, "Matenro Memory ");
     for (int pass = 0; pass < 3; pass++) {
         for (uint32_t a = 0; a <= last; a++) ram[a] = pattern(pass, a);
         for (uint32_t a = 0; a <= last; a++) {

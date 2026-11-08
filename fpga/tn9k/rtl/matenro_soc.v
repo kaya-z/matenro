@@ -2,7 +2,7 @@
 // Copyright (c) 2026 sim09 contributors
 //
 // MATENRO: sbc09_soc.v of sim09 with the Z80 sub CPU of the Matenro machine added (docs/FPGA.md).  The changes:
-//   * the cross link (XLINK, rtl/xlink.v) at offsets $49-$4D of the I/O page ($FFC9-$FFCD in the Level 2 mode, $E049-$E04D
+//   * the cross link (XLINK, rtl/xlink.v) at offsets $4A-$4E of the I/O page ($FFCA-$FFCE in the Level 2 mode, $E04A-$E04E
 //     in the Level 1 mode), the same registers as the simulator (docs/DESIGN.md chapter 6)
 //   * the Z80 (rtl/z80_sub.v: TV80 + XLINK + SMMU) at CZ_DIV system clocks per Z80 clock, its memory in the PSRAM through a
 //     fourth master of the arbiter (psram_arb4.v); the 6809 reaches the physical memory through the window of the XLINK,
@@ -120,6 +120,7 @@ module matenro_soc #(
     reg         e, q;
     reg         nreset_cpu;
     wire        timer_irq;
+    wire        disk_irq;               // an asynchronous disk command has finished (and the guest asked for the interrupt)
     wire        acia_irq;               // the console ACIA (OS-9 uses its receive and transmit interrupts)
     // MATENRO (declared here: they are used before the XLINK section)
     wire        xl_irq, xl_firq, xl_wait, xl_win, xl_on;
@@ -140,7 +141,7 @@ module matenro_soc #(
     mc6809i #(.ILLEGAL_INSTRUCTIONS("GHOST")) cpu (
         .D(cpu_d_in), .DOut(cpu_d_out), .ADDR(cpu_a), .RnW(cpu_rnw),
         .E(e), .Q(q), .BS(cpu_bs), .BA(cpu_ba),
-        .nIRQ(FREERUN ? ~acia_irq : ~(timer_irq | xl_irq | acia_irq)), .nFIRQ((FREERUN ? ~timer_irq : 1'b1) & ~xl_firq), .nNMI(1'b1),
+        .nIRQ(FREERUN ? ~(acia_irq | disk_irq) : ~(timer_irq | xl_irq | acia_irq | disk_irq)), .nFIRQ((FREERUN ? ~timer_irq : 1'b1) & ~xl_firq), .nNMI(1'b1),
         .AVMA(cpu_avma), .BUSY(), .LIC(cpu_lic),
         .nHALT(1'b1), .nRESET(nreset_cpu), .nDMABREQ(1'b1),
         .RegData(dbg_regs)
@@ -166,6 +167,16 @@ module matenro_soc #(
     reg       acc2;                 // and one clock later (the access itself: it needs the decoded address)
     reg       mem_pend;             // a PSRAM access of the CPU is under way
     wire      disk_busy;
+    reg        d_async, d_ien;          // $E049 bit 0: the asynchronous mode, bit 7: the interrupt at the end of a command
+    reg        d_arun;                  // the command that is under way is an asynchronous one
+    reg        d_done;                  // an asynchronous command has finished and its result has not been read ($E049 bit 7)
+    reg [7:0]  dm_blk0, dm_blk1;        // the map at the command (the guest may switch the task while the disk transfers)
+    reg [2:0]  dm_idx;
+    reg        m4_req = 1'b0, m4_wrr = 1'b0;       // the PSRAM master 4: the disk
+    reg [21:0] m4_addr;
+    reg [7:0]  m4_din;
+    wire       m4_ack;
+    wire [15:0] m4_rdata;
     wire      acia_tx_full;         // the transmitter cannot take a character now
     wire      ps_busy_m;
     wire [15:0] ps_dout_m;           // the word the arbiter read for master 0 (the CPU, the disk)
@@ -178,15 +189,16 @@ module matenro_soc #(
     // (the carry chain, 49 ns in the timing report) of the core before that (on the board this was a wrong result of ADDB with an operand
     // from the PSRAM, +-$10).
     reg [5:0] settle = 6'd0;
-    always @(posedge clk) settle <= {settle[4:0], mem_pend | disk_busy};
-    wire      stall = mem_pend | disk_busy | pwroff | acia_pend | (|settle) | xl_wait | xl_rcap;
+    wire      disk_hold = disk_busy & ~d_arun;     // a disk command holds the 6809, unless the guest asked for the asynchronous mode
+    always @(posedge clk) settle <= {settle[4:0], mem_pend | disk_hold};
+    wire      stall = mem_pend | disk_hold | pwroff | acia_pend | (|settle) | xl_wait | xl_rcap;
     // The phase counter looks at the window of the XLINK through a register: xl_wait / xl_rcap start at acc2, two phases before
     // the clock of ph 0 that is held (a clock late is still in time), and come from the deep logic of the XLINK (they were on
     // the slowest paths into the counter); their release is a clock later.  The PSRAM and the others act at once (the 6809 runs
     // from the PSRAM: a clock more on each access would make it 6 % slower).
     // The disk, the ACIA and the power-off are slow sources too (registered the same way: they start at acc2 or later by a few clocks).
     reg       xlst_q = 1'b0;
-    always @(posedge clk) xlst_q <= xl_wait | xl_rcap | disk_busy | acia_pend | pwroff;
+    always @(posedge clk) xlst_q <= xl_wait | xl_rcap | disk_hold | acia_pend | pwroff;
     wire      stall_ph = mem_pend | (|settle) | xlst_q;
 
     always @(posedge clk) begin
@@ -270,13 +282,15 @@ module matenro_soc #(
             if (go_req) begin nreset_cpu <= 1'b0; rcnt <= 4'd0; end      // the mode register: reset the CPU (in the Level 2 mode)
             case (cs_)
                 C_WAIT:  if (bsy_d == 4'b0000 && !ps_busy) cs_ <= MEMTEST ? M_HDR : C_CLR;
-                M_HDR: if (MEMTEST && !p_go && !st_wr && !st_d) begin                    // "Memory "
+                M_HDR: if (MEMTEST && !p_go && !st_wr && !st_d) begin                    // "Matenro Memory " (tells this system from a plain sim09 board)
                     case (mi)
-                        4'd0: p_ch <= "M"; 4'd1: p_ch <= "e"; 4'd2: p_ch <= "m"; 4'd3: p_ch <= "o";
-                        4'd4: p_ch <= "r"; 4'd5: p_ch <= "y"; default: p_ch <= " ";
+                        4'd0: p_ch <= "M"; 4'd1: p_ch <= "a"; 4'd2: p_ch <= "t"; 4'd3: p_ch <= "e";
+                        4'd4: p_ch <= "n"; 4'd5: p_ch <= "r"; 4'd6: p_ch <= "o"; 4'd7: p_ch <= " ";
+                        4'd8: p_ch <= "M"; 4'd9: p_ch <= "e"; 4'd10: p_ch <= "m"; 4'd11: p_ch <= "o";
+                        4'd12: p_ch <= "r"; 4'd13: p_ch <= "y"; default: p_ch <= " ";
                     endcase
                     p_go <= 1'b1;
-                    if (mi == 4'd6) begin mi <= 4'd0; cs_ <= M_W; end else mi <= mi + 1'b1;
+                    if (mi == 4'd14) begin mi <= 4'd0; cs_ <= M_W; end else mi <= mi + 1'b1;
                 end
                 M_W: if (MEMTEST) begin c_wr <= 1'b1; cs_ <= M_WW; end
                 M_WW: if (MEMTEST && !c_wr && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) begin
@@ -335,7 +349,7 @@ module matenro_soc #(
     // Level 1: the registers are at $E000 (the page $E000-$E1FF); Level 2: at $FF80 (the same offsets), in the fixed page.
     wire        in_io  = l2 ? (a[15:7] == 9'h1ff) : (a[15:9] == 7'b1110000);
     wire [8:0]  off    = l2 ? {2'b00, a[6:0]} : a[8:0];
-    reg io_acia, io_power, io_timer, io_disk, io_hit, io_quiet, rom_sel, io_mmu, io_map, io_ta, io_modr, io_xl;
+    reg io_acia, io_power, io_timer, io_disk, io_dctl, io_hit, io_quiet, rom_sel, io_mmu, io_map, io_ta, io_modr, io_xl;
     // Level 2: the registers of the clock are in the fixed page, and the OS reads the time with F$Move, i.e. through another
     // window of the same physical page ($7FFB1-B6).  In the simulator the registers live in that RAM; here a read of that
     // physical address gives the registers of the clock too.  (pa is declared below: it is the physical address of a.)
@@ -354,13 +368,14 @@ module matenro_soc #(
         io_power <= in_io_q && off_q == 9'h00f;
         io_timer <= in_io_q && off_q >= 9'h030 && off_q <= 9'h036;
         io_disk  <= in_io_q && off_q >= 9'h040 && off_q <= 9'h047;
-        io_xl    <= in_io_q && off_q >= 9'h049 && off_q <= 9'h04d;                 // the cross link
+        io_dctl  <= in_io_q && off_q == 9'h049;                 // control / status of the asynchronous mode of the disk
+        io_xl    <= in_io_q && off_q >= 9'h04a && off_q <= 9'h04e;                 // the cross link
         io_mmu   <= l2 && in_io_q && off_q == 9'h011;            // the task register
         io_map   <= l2 && in_io_q && off_q >= 9'h020 && off_q <= 9'h02f;   // the system map, the user map
-        io_hit   <= (in_io_q && ((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047)
-                              || (off_q >= 9'h049 && off_q <= 9'h04d)
+        io_hit   <= (in_io_q && ((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049
+                              || (off_q >= 9'h04a && off_q <= 9'h04e)
                               || (l2 && (off_q == 9'h011 || (off_q >= 9'h020 && off_q <= 9'h02f))))) || ta;
-        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || (off_q >= 9'h049 && off_q <= 9'h04d));
+        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= 9'h04e));
         rom_sel  <= !l2 && (a >= ROM_BASE);
     end
 
@@ -422,12 +437,15 @@ module matenro_soc #(
     wire        sd_ready, sd_fail, sd_active;
     wire [5:0]  sd_st;
     reg         disk_busy_d;
+    assign disk_irq = d_ien & d_done;
+    reg         disk_rd;                // a clock after the read of $E040, the result of the disk command
+    always @(posedge clk) disk_rd <= acc2 && vma_pend && cpu_rnw && io_disk && off[2:0] == 3'd0;
 
     sd_disk #(.DRIVE1_BLK(DRIVE1_BLK)) disk (
         .clk(clk), .rst(rst),
         .go(dgo), .wr(dwr), .drive(d_drive), .lsn({d_lsn2, d_lsn1, d_lsn0}), .buf_addr({d_bufh, d_bufl}),
         .busy(disk_busy), .result(disk_result),
-        .m_rd(d_rd), .m_wr(d_wr), .m_addr(d_addr), .m_din(d_din), .m_dout(ps_dout_m), .m_busy(ps_busy_m),
+        .m_rd(d_rd), .m_wr(d_wr), .m_addr(d_addr), .m_din(d_din), .m_dout(m4_rdata), .m_busy(m4_req),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ready(sd_ready), .fail(sd_fail), .active(sd_active), .dbg_st(sd_st)
     );
@@ -439,6 +457,7 @@ module matenro_soc #(
         if (io_acia)       io_rdata = off[0] ? acia_rdata : acia_status;
         else if (io_timer || io_ta) io_rdata = timer_rdata;
         else if (io_xl)    io_rdata = xl_rdata;
+        else if (io_dctl)  io_rdata = {d_done, d_ien, 4'b0000, d_async, disk_busy};      // $E049: the status
         else if (io_mmu)   io_rdata = tr_raw;
         else if (io_map)   io_rdata = off[3] ? map_u[off[2:0]] : map_s[off[2:0]];
     end
@@ -496,13 +515,14 @@ module matenro_soc #(
         c_rd <= 1'b0;
         c_cwr <= 1'b0;
         disk_busy_d <= disk_busy;
-        if (disk_busy_d && !disk_busy) e040 <= disk_result;
+        if (disk_busy_d && !disk_busy) begin e040 <= disk_result; if (d_arun) d_done <= 1'b1; end
+        if (disk_rd) d_done <= 1'b0;                                    // the guest has read the result
         if (rst) begin
             mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
             for (mk = 0; mk < 8; mk = mk + 1) begin map_s[mk] <= 8'hff; map_u[mk] <= 8'hff; end
             map_s[7] <= 8'h3f; tr <= 1'b0; tr_raw <= 8'hff; l2 <= 1'b0;
             rd_reg <= 8'h00; e040 <= 8'h00; d_drive <= 0; d_lsn2 <= 0; d_lsn1 <= 0; d_lsn0 <= 0;
-            d_bufh <= 0; d_bufl <= 0; d_47 <= 0;
+            d_bufh <= 0; d_bufl <= 0; d_47 <= 0; d_async <= 0; d_ien <= 0; d_arun <= 0; d_done <= 0;
         end else begin
             c_addr  <= l2 ? pa : {6'd0, a};
             c_wdata <= cpu_d_out;
@@ -516,8 +536,9 @@ module matenro_soc #(
                             if (io_power && cpu_d_out == 8'ha5) begin pwroff <= 1'b1; osrun <= 1'b0; end      // shutdown: LED5 on, LED4 off
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
                             if (io_power && (cpu_d_out == 8'ha7 || cpu_d_out == 8'ha6)) reboot_r <= 1'b1;      // reboot: the same as the reset button
+                            if (io_dctl) begin d_async <= cpu_d_out[0]; d_ien <= cpu_d_out[7]; end      // $E049
                             if (io_mmu) begin tr_raw <= cpu_d_out; tr <= cpu_d_out[0]; end
-                            if (io_modr) begin acia_cwr <= 1'b1; acia_cbyte <= 8'h03; end      // a new machine mode: the ACIA interrupts are off
+                            if (io_modr) begin acia_cwr <= 1'b1; acia_cbyte <= 8'h03; d_async <= 1'b0; d_ien <= 1'b0; end      // a new machine mode: the ACIA interrupts are off
                             if (io_acia && !off[0]) begin
                                 acia_cwr <= 1'b1;                   // the control register: interrupt enables, master reset
                                 acia_cbyte <= cpu_d_out;
@@ -544,7 +565,14 @@ module matenro_soc #(
                 case (w_off)
                     3'd0: begin
                         if (c_wdata == 8'h81 || c_wdata == 8'h55) begin
-                            dgo <= 1'b1; dwr <= (c_wdata == 8'h55);
+                            if (!disk_busy) begin                         // (a command that is under way is not disturbed)
+                                dgo <= 1'b1; dwr <= (c_wdata == 8'h55);
+                                d_arun <= d_async; d_done <= 1'b0;
+                                if (d_async) e040 <= 8'hfe;              // not finished: the result comes at the end
+                                dm_idx  <= d_bufh[7:5];
+                                dm_blk0 <= tr ? map_u[d_bufh[7:5]] : map_s[d_bufh[7:5]];
+                                dm_blk1 <= tr ? map_u[d_bufh[7:5] + 3'd1] : map_s[d_bufh[7:5] + 3'd1];
+                            end
                         end else e040 <= 8'hff;                       // no VRBF (host files) on the FPGA
                     end
                     3'd1: d_drive <= c_wdata;
@@ -586,13 +614,11 @@ module matenro_soc #(
     // until then (so no master has to count clocks).
     // the buffer address of the disk port is a logical address: it goes through the map that is active (like the simulator)
     wire [15:0] dl     = d_addr[15:0];
-    wire [7:0]  dblk   = (dl[15:9] == 7'b1111111) ? 8'h3f : (tr ? map_u[dl[15:13]] : map_s[dl[15:13]]);
+    wire [7:0]  dblk   = (dl[15:9] == 7'b1111111) ? 8'h3f : (dl[15:13] == dm_idx) ? dm_blk0 : dm_blk1;
     wire [21:0] d_pa   = {1'b0, dblk, dl[12:0]};
     wire use_clr  = !run;
-    reg  disk_sel = 1'b0;                       // the disk owns the port (a clock late: the CPU is waiting at both ends)
-    always @(posedge clk) disk_sel <= disk_busy;
-    wire m_rd_s   = use_clr ? t_rd : xw_act ? xw_rdp : disk_sel ? d_rd : c_rd;
-    wire m_wr_s   = use_clr ? c_wr : xw_act ? xw_wrp : disk_sel ? d_wr : c_cwr;
+    wire m_rd_s   = use_clr ? t_rd : xw_act ? xw_rdp : c_rd;
+    wire m_wr_s   = use_clr ? c_wr : xw_act ? xw_wrp : c_cwr;
     wire m0_pulse = m_rd_s | m_wr_s;
     reg         m0_req = 1'b0, m0_wrr = 1'b0;
     reg  [21:0] m0_addr;
@@ -603,11 +629,23 @@ module matenro_soc #(
         if (m0_pulse) begin
             m0_req  <= 1'b1;
             m0_wrr  <= m_wr_s;
-            m0_addr <= use_clr ? cw : xw_act ? {1'b0, win_addr} : disk_sel ? (l2 ? d_pa : d_addr) : c_addr;
-            m0_din  <= use_clr ? td_r : xw_act ? win_wdata : disk_sel ? d_din : c_wdata;
+            m0_addr <= use_clr ? cw : xw_act ? {1'b0, win_addr} : c_addr;
+            m0_din  <= use_clr ? td_r : xw_act ? win_wdata : c_wdata;
         end
     end
     assign ps_busy_m = m0_req;                  // (high from the clock after the pulse: nobody looks at the clock of the pulse itself)
+
+    // master 4 of the arbiter: the disk (byte reads / writes of the sector; a request held until the ack), the lowest priority:
+    // it gets the gaps between the accesses, so that the 6809 goes on while the sector is transferred.
+    always @(posedge clk) begin
+        if (m4_ack || rst) m4_req <= 1'b0;
+        if ((d_rd | d_wr) && !rst) begin
+            m4_req  <= 1'b1;
+            m4_wrr  <= d_wr;
+            m4_addr <= l2 ? d_pa : d_addr;
+            m4_din  <= d_din;
+        end
+    end
 
     psram_arb4 arb (
         .clk(clk), .rst(rst),
@@ -615,13 +653,14 @@ module matenro_soc #(
         .m0_req(m0_req), .m0_wr(m0_wrr), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),
-        .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr({1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w)
+        .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr({1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w),
+        .m4_req(m4_req), .m4_wr(m4_wrr), .m4_addr(m4_addr), .m4_din(m4_din), .m4_ack(m4_ack), .m4_rdata(m4_rdata)
     );
 
     // ---------------------------------------------------------------- MATENRO: the cross link and the Z80
-    // 6809 side: a read or a write of $49-$4D is one clock pulse at the access (acc2); after a read the data are taken
+    // 6809 side: a read or a write of $4A-$4E is one clock pulse at the access (acc2); after a read the data are taken
     // again when the window (if it was a read of XDAT) is done, so the CPU waits (xl_rcap) until then.
-    wire [2:0]  xl_a   = off[2:0] - 3'd1;                         // $49..$4D -> 0..4
+    wire [2:0]  xl_a   = off[2:0] - 3'd2;                         // $4A..$4E -> 0..4
     // the read / write strobes of the XLINK at acc2, decided at acc_go (registers: vma_pend and the decode were in front of the
     // window address counter); the register number and the data stay live (stable long before)
     reg         xl_re = 1'b0, xl_we = 1'b0;

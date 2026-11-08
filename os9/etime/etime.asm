@@ -8,7 +8,7 @@
 *   Sub CPU 90123456 clocks (12016 ms at 7500 kHz)               with -c: what the sub CPU (Z80 / 8088) executed
 *
 * The time comes from the microsecond counter of the cross link (XE_US, the extended registers $14-$17 behind
-* XIDX / XDAT at $FFCC / $FFCD of the I/O page that every task sees): the clock of OS-9 (F$Time) counts only whole
+* XIDX / XDAT at $FFCD / $FFCE of the I/O page that every task sees): the clock of OS-9 (F$Time) counts only whole
 * seconds.  The counter wraps after 71 minutes; a longer command shows a wrong time.  With -c the clock counter of
 * the sub CPU (XE_CLK, also 32 bits: 9.5 minutes at 7.5 MHz) is read before and after; the milliseconds are
 * clocks / kHz.  The exit status is that of the command.
@@ -31,9 +31,9 @@ atrv     set   ReEnt+rev
 rev      set   $00
 edition  set   1
 
-XID      equ   $FFCB
-XIDX     equ   $FFCC
-XDAT     equ   $FFCD
+XID      equ   $FFCC
+XIDX     equ   $FFCD
+XDAT     equ   $FFCE
 XE_KHZ   equ   $0E
 XE_CLK   equ   $10
 XE_US    equ   $14
