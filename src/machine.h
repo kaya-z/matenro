@@ -129,7 +129,7 @@ typedef struct machine {
     xlink_t *xl;                   /* NULL when no sub CPU is plugged in      */
     uint64_t p6809_ps;             /* 6809 clock period in picoseconds        */
     /* FPGA wait states (-hw): the real time of the board.  The 6809 waits for the PSRAM (docs/DESIGN.md, chapter 17);
-     * stall_ps is the time the CPU was held, on top of total_cycles (executed cycles: the timer counts those, like the board). */
+     * stall_ps is the time the CPU was held, on top of total_cycles (executed cycles; the timer and the clock count total_cycles + stall_ps, like the board: its timer runs on the system clock). */
     int      hw_waits;
     uint64_t stall_ps;
     uint64_t hw_insn;              /* insn_count of the last instruction whose opcode was fetched (-hw) */

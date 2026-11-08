@@ -122,6 +122,13 @@ void machine_set_timer(machine_t *m, long hz, int irq_line, int mode)
     m->timer_period = (uint64_t)m->clock_hz / (uint64_t)m->timer_hz;
 }
 
+/* The time of the timer and of the clock, in cycles of the 6809: the executed cycles plus the time that the CPU was held (stall_ps, the -hw model).
+ * The board's timer runs on the system clock, not on the E cycles, so that a CPU that waits for the PSRAM does not lose time (-nohw: no stall). */
+static uint64_t timer_now(const machine_t *m)
+{
+    return m->cpu.total_cycles + (m->p6809_ps ? m->stall_ps / m->p6809_ps : 0);
+}
+
 void machine_reset(machine_t *m)
 {
     uint8_t *io = iomem(m);
@@ -133,7 +140,7 @@ void machine_reset(machine_t *m)
     if (m->xl) xlink_reset(m->xl);
     if (!(m->timer_mode & 3)) {     /* default (monitor ROM): free running timer */
         m->timer_running = 1;
-        m->timer_next = m->cpu.total_cycles + m->timer_period;
+        m->timer_next = timer_now(m) + m->timer_period;
     }
 }
 
@@ -207,7 +214,7 @@ void do_timer_write(machine_t *m, int off, uint8_t v)
         if (v == 0x8f) {
             if (!(m->timer_mode & 2)) return;
             m->timer_running = 1;
-            m->timer_next = m->cpu.total_cycles + m->timer_period;
+            m->timer_next = timer_now(m) + m->timer_period;
             m->timer_pending = 0;
             machine_update_irq(m);
             r[0] = v;
@@ -219,7 +226,7 @@ void do_timer_write(machine_t *m, int off, uint8_t v)
         } else if (v == 0x04) {
             /* the RTC runs with the emulated time (start time of the host + cycles / clock), so that the OS-9 time agrees with
              * its ticks and sleeps also at full speed (-max); a fixed time for cross check runs */
-            time_t t = m->det_icount ? (time_t)1790000000 : (time_t)(m->start_time + (long)(m->cpu.total_cycles / (uint64_t)m->clock_hz));
+            time_t t = m->det_icount ? (time_t)1790000000 : (time_t)(m->start_time + (long)(timer_now(m) / (uint64_t)m->clock_hz));
             struct tm tmv;
             localtime_r(&t, &tmv);
             r[1] = (uint8_t)tmv.tm_year;
@@ -550,7 +557,7 @@ static void timer_fire(machine_t *m)
 static int dev_timer(machine_t *m)
 {
     int changed = 0;
-    uint64_t now = m->cpu.total_cycles;
+    uint64_t now = timer_now(m);
 
     if (m->det_icount) {
         /* -icount: the timer ticks every N executed instructions (idle steps count
@@ -704,7 +711,8 @@ static uint64_t cycles_to_event(machine_t *m, uint64_t slice)
     uint64_t now = m->cpu.total_cycles;
     uint64_t lim = slice;
     if (m->timer_running && !m->det_icount) {
-        uint64_t d = m->timer_next > now ? m->timer_next - now : 1;
+        uint64_t tn = timer_now(m);
+        uint64_t d = m->timer_next > tn ? m->timer_next - tn : 1;
         if (d < lim) lim = d;
     }
     uint64_t w = acia_irq_wait(m);

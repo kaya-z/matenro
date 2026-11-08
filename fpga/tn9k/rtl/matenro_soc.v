@@ -106,8 +106,15 @@ module matenro_soc #(
     output wire [7:0]  dbg_dbus             // the data bus of the 6809: the byte read (RnW high) or written
 );
 
-    localparam ECYC_PER_SEC  = CLK_HZ / (4 * PH_DIV);
-    localparam ECYC_PER_TICK = ECYC_PER_SEC / 50;
+    // The timer and the clock run on the system clock, not on the E cycles of the CPU: a pulse every RT_DIV clocks (a power of two: the low bits
+    // of the free running counter hb).  The E cycle is longer than 4 * PH_DIV clocks when the CPU waits for the PSRAM (a CPU that runs from the PSRAM
+    // got about 70 % of the nominal E rate), and a timer that counted E cycles lost that time.  While a synchronous disk command holds the CPU the pulses
+    // stop (as before: the CPU cannot take the interrupt, a tick would be lost).
+    localparam RT_DIV        = 32;
+    localparam ECYC_PER_SEC  = CLK_HZ / RT_DIV;
+    localparam ECYC_PER_TICK = (ECYC_PER_SEC + 25) / 50;
+    reg [23:0] hb;                              // free running (the LEDs, the pulse of the timer)
+    always @(posedge clk) hb <= hb + 1'b1;
 
     reg rst = 1'b1;
     always @(posedge clk) rst <= ~resetn;
@@ -416,12 +423,15 @@ module matenro_soc #(
         .tx_full(acia_tx_full), .status(acia_status), .rdata(acia_rdata), .irq(acia_irq)
     );
 
+    reg rt_ecyc = 1'b0;
+    always @(posedge clk) rt_ecyc <= (hb[4:0] == 5'd31) && !disk_hold;
+
     timer_rtc #(
         .FREERUN(FREERUN), .ECYC_PER_TICK(ECYC_PER_TICK), .ECYC_PER_SEC(ECYC_PER_SEC),
         .START_YEAR(RTC_YEAR), .START_MONTH(RTC_MONTH), .START_DAY(RTC_DAY),
         .START_HOUR(RTC_HOUR), .START_MIN(RTC_MIN), .START_SEC(RTC_SEC)
     ) timer (
-        .clk(clk), .rst(rst), .ecyc(ecyc),
+        .clk(clk), .rst(rst), .ecyc(rt_ecyc),
         .wr(timer_wr), .off(off[2:0]), .wdata(cpu_d_out), .iack(iack),
         .rdata(timer_rdata), .irq(timer_irq)
     );
@@ -725,8 +735,6 @@ module matenro_soc #(
     always @(*) cpu_d_in = rd_reg;
 
     // ---------------------------------------------------------------- the LEDs (active low)
-    reg [23:0] hb;
-    always @(posedge clk) hb <= hb + 1'b1;
     // LED2: card ready (steady) / card failed (blinking); LED4: the OS has been started
     assign reboot_req = reboot_r;
     assign led = led_mode ? ~{5'b00000, xl_on}
