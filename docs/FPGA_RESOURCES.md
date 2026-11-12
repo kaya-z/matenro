@@ -93,3 +93,21 @@ TV80=<tv80s.v のあるディレクトリ> fpga/tn9k/scripts/build.sh boot      
 # 合計: impl/pnr/matenro_boot.rpt.txt の "Resource Usage Summary"、タイミング: matenro_boot_tr_content.html
 # モジュール別: impl/gwsynthesis/matenro_boot_syn_resource.html
 ```
+
+## 7. Tang Nano 20K (6809 + 8088、2026-11-12。ボードには書いていない)
+
+`GW2AR-LV18QN88C8/I7` (LUT4 20,736、BSRAM 46)。詳しい説明と 67.5 / 60 / 54 MHz の比較は [TN20K.md](TN20K.md) の 5 章。54 MHz (既定)、配置配線後 (`fpga/tn20k/build/<rom>/impl/pnr/matenro20k_<rom>.rpt.txt`):
+
+| 項目 | `xltest88` (8088 の自己判定) | `boot` (SD から OS-9) |
+|---|---|---|
+| Logic | 7,731 / 20,736 (**38%**) | 7,727 (**38%**) |
+| LUT / ALU / SSRAM | 7,020 / 531 / 30 | 7,016 / 531 / 30 |
+| レジスタ | 2,718 / 15,915 (18%) | 2,718 |
+| CLS | 4,920 / 10,368 (**48%**) | 4,890 (47%) |
+| BSRAM | 18 / 46 (SP 1、SDPB 3、DPB 4、pROM 10) | 17 / 46 (pROM 9) |
+| I/O ポート | 15 / 66 | 15 / 66 |
+| `clk81` の Fmax (制約 54 MHz) | 56.582 MHz、負のスラックなし | 55.021 MHz、負のスラックなし |
+
+* 9K の同じ SoC (HDMI なし、Z80) は Logic 7,864 (92%)。20K では 8088 のコア (MCL86) とそのマイクロコード ROM (BSRAM 8 ブロック) が増え、SDRAM コントローラが PSRAM コントローラに代わっています。
+* 残り: Logic 約 13,000、CLS 約 5,400、BSRAM 29 ブロック。HDMI の画面 (約 2,000 LUT、BSRAM 13) は載ります。
+

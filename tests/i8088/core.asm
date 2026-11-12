@@ -568,6 +568,7 @@ start:
         xor  ax, ax
         pop  ax
         EQAX 0x1234, 125
+%ifndef HWPORTS                 ; (the FPGA has no RAM behind the ports $10-$FFFF: HWPORTS skips these two checks)
         ; I/O
         mov  al, 0x5c
         out  0x77, al
@@ -580,14 +581,26 @@ start:
         xor  al, al
         in   al, dx
         EQAL 0x3d, 127
+%endif
 
         mov  al, 0xa5
         out  0x0f, al
+%ifdef HWPORTS                  ; the FPGA machine: the result also goes to S2M[0] (port 8) and the doorbell (port 2) calls the 6809
+        out  0x08, al
+        out  0x02, al
+%endif
         hlt
 
 fail:   out  0x0e, al
+%ifdef HWPORTS
+        out  0x09, al                   ; S2M[1] = the id of the failing check
+%endif
         mov  al, 0xa6
         out  0x0f, al
+%ifdef HWPORTS
+        out  0x08, al
+        out  0x02, al
+%endif
         hlt
 
 div_handler:

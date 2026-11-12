@@ -26,3 +26,11 @@ CLAUDE.local.md
 fpga/tn9k/test/xlshr.bin
 fpga/tn9k/test/xlshr.lst
 fpga/tn9k/sim/build_disktest/
+fpga/sim/build_i8088/
+fpga/tn20k/build/
+fpga/tn20k/sim/build_*/
+fpga/tn20k/sim/memdump.txt
+fpga/tn20k/test/core88.inc
+fpga/tn20k/test/xltest88.bin
+fpga/tn20k/test/xltest88.lst
+core

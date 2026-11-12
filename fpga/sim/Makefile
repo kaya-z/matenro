@@ -26,3 +26,18 @@ build_soc/Vz80_soc: ../rtl/z80_soc.v ../rtl/z80_sub.v ../rtl/xlink.v ../rtl/shr_
 	  --binary --timing -Mdir build_soc --top-module tb_z80_soc ../rtl/z80_soc.v ../rtl/z80_sub.v ../rtl/xlink.v ../rtl/shr_ap.v \
 	  -GCLKDIV=$(CLKDIV) -GRAMLAT=$(RAMLAT) build_soc/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v tb_z80_soc.v -o Vz80_soc
 .PHONY: soc
+
+# 8088 (MCL86, fpga/vendor/mcl86) + XLINK + RAM (rtl/i8088_soc.v) running the self test of the C simulator (tests/i8088/core.asm,
+# without the two checks of the port RAM).  nasm is needed.
+I8088CLKDIV ?= 14
+I8088RAMLAT ?= 12
+i8088: build_i8088/Vi8088_soc
+	cd ../../tests/i8088 && nasm -f bin -DHWPORTS core.asm -o $(CURDIR)/build_i8088/core_hw.bin
+	@ulimit -c 0; build_i8088/Vi8088_soc +img=build_i8088/core_hw.bin
+build_i8088/Vi8088_soc: ../rtl/i8088_soc.v ../rtl/i8088_sub.v ../rtl/eu4kx32.v ../vendor/mcl86/eu.v ../vendor/mcl86/biu_min.v ../rtl/xlink.v ../rtl/shr_ap.v tb_i8088_soc.v
+	mkdir -p build_i8088
+	verilator -Wno-fatal -Wno-lint -Wno-style -Wno-DECLFILENAME -Wno-WIDTH -Wno-PINMISSING -Wno-UNDRIVEN -Wno-CASEINCOMPLETE -Wno-LATCH \
+	  -Wno-INITIALDLY -Wno-BLKSEQ -Wno-SYNCASYNCNET -Wno-MULTIDRIVEN -Wno-IMPLICIT -Wno-CASEOVERLAP -Wno-UNOPTFLAT -Wno-TIMESCALEMOD \
+	  --binary --timing $(EXTRA_V) -Mdir build_i8088 --top-module tb_i8088_soc '-DUCODE_FILE="$(abspath ../vendor/mcl86/mcl86_ucode.hex)"' \
+	  -GCLKDIV=$(I8088CLKDIV) -GRAMLAT=$(I8088RAMLAT) ../rtl/i8088_soc.v ../rtl/i8088_sub.v ../rtl/eu4kx32.v ../vendor/mcl86/eu.v ../vendor/mcl86/biu_min.v ../rtl/xlink.v ../rtl/shr_ap.v tb_i8088_soc.v -o Vi8088_soc
+.PHONY: i8088

@@ -58,7 +58,8 @@ module matenro_soc #(
     parameter MEMTEST    = 1,                       // test the PSRAM (55, AA, the address as the data) after the reset: Memory >>>> on the console
     parameter [21:0] MT_LAST = 22'h1fffff,          // the last byte to test (2 MB)
     parameter SHR_BLK    = 8'hff,                   // the physical block (8 KB, bits 20:13) that is served from the BSRAM
-    parameter CZ_DIV     = 9                        // Z80 clock = CLK_HZ / CZ_DIV (7.5 MHz)
+    parameter CZ_DIV     = 9,                       // Z80 clock = CLK_HZ / CZ_DIV (7.5 MHz)
+    parameter C88_DIV    = 14                       // `define SUB8088: the 8088 clock = CLK_HZ / C88_DIV (4.82 MHz)
 ) (
     input  wire        clk,
     input  wire        resetn,
@@ -722,6 +723,17 @@ module matenro_soc #(
         .a_req(zm_req), .a_wr(zm_wr), .a_addr(zm_addr), .a_wdata(zm_wdata), .a_hit(zb_hit), .a_ack(zb_ack), .a_rdata(zb_rdata),
         .w_req(win_req), .w_wr(win_wr), .w_addr(win_addr), .w_wdata(win_wdata), .w_hit(win_hit), .w_ack(wb_ack), .w_rdata(wb_rdata)
     );
+`ifdef SUB8088
+    // the 8088 (MCL86) instead of the Z80: the Tang Nano 20K machine (fpga/tn20k)
+    i8088_sub #(.CLKDIV(C88_DIV), .CLK_KHZ(CLK_HZ / 1000)) sub (
+        .clk(clk), .rst(rst),
+        .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win), .sub_on(xl_on),
+        .irq_o(xl_irq), .firq_o(xl_firq),
+        .win_req(win_req), .win_wr(win_wr), .win_addr(win_addr), .win_wdata(win_wdata), .win_ack(win_ack), .win_rdata(win_rdata),
+        .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(dbg_z80)
+    );
+`else
     z80_sub #(.CLKDIV(CZ_DIV), .CLK_KHZ(CLK_HZ / 1000)) sub (
         .clk(clk), .rst(rst),
         .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win), .sub_on(xl_on),
@@ -730,6 +742,7 @@ module matenro_soc #(
         .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
         .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(dbg_z80)
     );
+`endif
 
     // ---------------------------------------------------------------- feed the CPU
     always @(*) cpu_d_in = rd_reg;

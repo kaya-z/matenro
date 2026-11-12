@@ -53,3 +53,8 @@ sim09 自身が参考にしたもの (sim09 の `CREDITS.md` より。これら�
 
 * `a09` (sbc09 プロジェクトの 6809 アセンブラ、GPL v2): `new-sbc09/tools/a09` をテストと `xrun` のビルドで**実行するだけ**です (`A09=` で場所を変えられます)。
 * `nasm` (BSD-2-Clause): 8088 のテストプログラムのアセンブル。
+
+## Tang Nano 20K 版 (fpga/tn20k) で使う他人のコード
+
+* **MCL86** (Ted Fried、MicroCore Labs、各ファイルの先頭に MIT 形式の著作権表示): 8088 のコア。`fpga/vendor/mcl86/` に `eu.v` と `biu_min.v` を**無変更で**、マイクロコード `mcl86_ucode.hex` (`MCL86_Microcode_Xilinx_Version_4.coe` を 1 行 1 語に直したもの) を置いた。出どころとコミットは `fpga/vendor/mcl86/README.md`。
+* **Tang Nano 20K のピン**: Sipeed の `sipeed/TangNano-20K-example` の `.cst` (クロック 4、S1 88、S2 87、LED 15-20、UART 69/70、SD カード 80-85) から**数字だけ**を読んだ (`nestang` は GPL v3 なので、そのコード (SDRAM コントローラ `sdram.v` など) は**使っていない**。`fpga/rtl/sdram_ctl.v` は SDR SDRAM の仕様 (JEDEC のコマンド) から自分で書いた)。

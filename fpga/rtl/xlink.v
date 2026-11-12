@@ -19,6 +19,7 @@
 module xlink #(
     parameter [7:0]  SUB_ID  = 8'd1,        // 1 = Z80, 2 = 8088
     parameter [15:0] SUB_KHZ = 16'd7500,
+    parameter        SMMU_WT = 0,            // 1: write-through at the read register of the SMMU (GW2A: see below)
     parameter [16:0] CLK_KHZ = 17'd67500     // the system clock (clk) in kHz: XE_US counts microseconds of it
 ) (
     input  wire        clk,
@@ -105,11 +106,25 @@ module xlink #(
     // written and read by the 6809 at least eighteen clocks apart
     reg [7:0] smmu_rd;
     reg [7:0] smmu_rd2;                    // a flip-flop behind the output register of the BSRAM (its clock-to-output is 3.5 ns)
-    always @(posedge clk) begin smmu_rd <= smmu[mi]; smmu_rd2 <= smmu_rd; end
+    // SMMU_WT = 1 (the GW2A of the Tang Nano 20K): a write shows its data at the read register (write-through), because the DPB block of that chip does
+    // not support read-before-write (error PA2122); the 6809 never reads the entry in the clock of its write.  0: as on the 9K, unchanged.
+    wire smmu_we = m_we && (m_addr == 3'd4) && d_smmu;
+    // The table is then two RAMs with the same contents: smmu (read at once for the address of the sub CPU: RAM16 cells) and smmuB (read through
+    // the register for the 6809: a block RAM) - the tool of the 9K makes the same split by itself, the one of the GW2A made one DPB block of it.
+    reg [7:0] smmuB [0:127];
+    reg [7:0] smmu_rd_wt;
+    always @(posedge clk) if (SMMU_WT != 0) begin     // (the form of shr_ap.v: the write and the data at the output register in one branch)
+        if (smmu_we) begin smmuB[mi] <= m_wdata; smmu_rd_wt <= m_wdata; end
+        else         smmu_rd_wt <= smmuB[mi];
+    end
+    always @(posedge clk) begin
+        if (SMMU_WT == 0) smmu_rd <= smmu[mi];
+        smmu_rd2 <= (SMMU_WT != 0) ? smmu_rd_wt : smmu_rd;
+    end
 
     // reset values: block i -> $80 + i  (xbase = $80)
     integer k;
-    initial for (k = 0; k < 128; k = k + 1) smmu[k] = 8'h80 + k[7:0];
+    initial for (k = 0; k < 128; k = k + 1) begin smmu[k] = 8'h80 + k[7:0]; smmuB[k] = 8'h80 + k[7:0]; end
 
     // ------------------------------------------------------------ extended register read
     wire [6:0] ei = idx[6:0];

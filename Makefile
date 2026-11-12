@@ -44,9 +44,16 @@ test: all test-asm test-z80 test-8088 test-mh
 clean:
 	rm -f src/*.o matenro tests/z80_test tests/i8088_test
 
-.PHONY: all clean test test-asm test-z80 test-8088 test-mh os9cmds test-fpga
+.PHONY: all clean test test-asm test-z80 test-8088 test-mh os9cmds test-fpga test-tn20k
 
 # RTL tests (Verilator): XLINK; with TV80=<dir with tv80s.v ...> also the Z80 SoC and the whole Matenro SoC
+# Tang Nano 20K machine (6809 + 8088 / MCL86 + SDRAM): the 8088 self test on rtl/i8088_soc.v, the SDRAM controller against its model, and the
+# whole SoC (6809 test ROM that runs the 8088 self test).  Needs verilator, nasm and a09.
+test-tn20k:
+	make -C fpga/sim i8088
+	make -C fpga/tn20k/sim sdram
+	make -C fpga/tn20k/sim soc PH=7 D88=11 HZ=54000000
+
 test-fpga:
 	make -C fpga/sim
 	@if [ -n "$(TV80)" ]; then make -C fpga/sim soc TV80=$(TV80) && make -C fpga/tn9k/sim TV80=$(TV80); else echo "set TV80=<directory> for the Z80 tests"; fi

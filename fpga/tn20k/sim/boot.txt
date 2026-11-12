@@ -1,0 +1,4 @@
+expect OS9:
+send dir /d0\r
+expect OS9:
+quit

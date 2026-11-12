@@ -187,7 +187,7 @@ fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットスト
 
 ## できていないこと
 
-* **8088 の FPGA 版**。8088 のコアは手元になく、見積もり (3,000〜6,000 LUT) だけです。9K には載らず、20K のボードが要ります (シミュレータでは動きます)。
+* **8088 の FPGA 版 (Tang Nano 20K)**: 設計して、合成・配置配線とシミュレーションまで済ませました ([docs/TN20K.md](docs/TN20K.md))。8088 のコアは MCL86 (MicroCore Labs)、メモリはパッケージ内の SDRAM です。OS-9 Level 2 の起動と、OS-9 から CP/M-86 のプログラムを 8088 の RTL で動かすところまで Verilator で確かめました (`make test-tn20k`)。**実機のボードがまだ無いので、ボードには書いていません**。
 * FPGA 版の **HDMI の画面と RTC** (どちらも載せられますが、書いていません。9K の LUT は残り約 10% で HDMI は載りません)。
 * FPGA のタイミングの余裕は小さいです (67.5 MHz で 0.1〜0.5 ns)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0、DR の標準ツールと MBASIC です (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
