@@ -522,10 +522,13 @@ static int stdin_read(machine_t *m, acia_t *a)
     return got;
 }
 
+static void flush_out_pending(void);
+
 int console_poll(machine_t *m, int idx)
 {
     acia_t *a = &m->acia[idx];
     if (a->kind == ACIA_STDIO) {
+        flush_out_pending();
         static uint64_t last;
         if (a->rxhead != a->rxtail && m->cpu.total_cycles - last < 2000) return 0;
         last = m->cpu.total_cycles;
@@ -549,6 +552,12 @@ static void flush_out(void)
         outpendn = 0;
     }
     fflush(stdout);
+}
+
+/* the last characters of the output (a prompt) must not wait in the buffer until the next key: called by the poll */
+static void flush_out_pending(void)
+{
+    if (outpendn) flush_out();
 }
 
 void console_tx(machine_t *m, int idx, uint8_t c)
