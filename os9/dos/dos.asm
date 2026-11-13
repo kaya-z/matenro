@@ -88,6 +88,16 @@ kbv      rmb   1                 a key is waiting in kbc
 kbc      rmb   1
 rawf     rmb   1                 the terminal is in the raw mode
 done     rmb   1                 leave
+cmdp     rmb   2                 run mode: the command line (a program and its arguments), 0 = none
+scrp     rmb   2                 run mode: the keys typed ahead for DOS (0 = none)
+quiet    rmb   1                 run mode: the console output of DOS is dropped until HOSTIN has started
+hdir     rmb   1                 run mode: the OS-9 directory that HOSTIN is reading
+hfile    rmb   1                 run mode: the OS-9 file that HOSTIN / HOSTOUT transfer
+hp       rmb   1
+hcnt     rmb   2
+hname    rmb   11                the DOS name (FCB form) that is wanted
+dirent   rmb   32
+pname    rmb   40
 rq       rmb   12                request: 0 func, 1 AX, 4 BX, 6 CX, 8 DX, 10 DS (low byte first)
 rp       rmb   17                reply: 0 AL, 1 AH, 2 BX, 4 CX, 6 DX, 8 flags, 10 time (6), 16 done
 oldopt   rmb   32
@@ -116,7 +126,7 @@ fmts     fcb   $00,$02,$80,$00,$00,$02,$01,$01,$00,$02,$40,$00,$40,$01,$FE,$01,$
          fcb   $00,$80,$00,$00,$00,$02,$08,$01,$00,$02,$00,$02,$00,$40,$F8,$06,$00      8 MB
 defb2    fcc   "bios2.bin"
          fcb   C$CR
-msgusage fcc   "usage: dos [-k=kernel] -a=image [-b=image -c=image -d=image] [-p=printer -i=auxin -o=auxout] [-v=2 -s=bios2.bin]"
+msgusage fcc   "usage: dos [-v=2] [-a=image ...] [program arguments]   (see docs/MANUAL.md 6.8)"
          fcb   C$CR
 msgnosub fcc   "dos: the sub CPU is not an 8088"
          fcb   C$CR
@@ -130,6 +140,12 @@ msgsize  fcc   "dos: an image must be 160 KB, 320 KB, 360 KB or 8 MB"
 * ------------------------------------------------------------------
 start    stx   argp,u
          clr   done,u
+         ldd   #0
+         std   cmdp,u
+         std   scrp,u
+         clr   quiet,u
+         clr   hdir,u
+         clr   hfile,u
          clr   rawf,u
          clr   kbv,u
          lda   >XID
@@ -169,7 +185,7 @@ op1      lbsr  skipsp
          cmpa  #C$CR
          beq   opend
          cmpa  #'-'
-         lbne  usage
+         bne   runarg
          leax  1,x
          lda   ,x+                   the option letter
          anda  #$DF
@@ -220,8 +236,17 @@ op4      lda   ,x+                   skip the name
          bne   op4
 op5      leax  -1,x
          lbra  op1
-opend    ldd   dname,u               drive A: is needed
+runarg   stx   cmdp,u                run mode: the rest of the line is the command
+opend    ldd   dname,u               drive A: is needed (run mode: the image dosrun.img)
+         bne   opd1
+         ldd   cmdp,u
          lbeq  usage
+         leax  defrun,pcr
+         stx   dname,u
+opd1     ldd   cmdp,u
+         beq   opd2
+         lbsr  mktemp                run mode: work on a copy of the image
+opd2
          ldd   kname,u
          bne   op6
          leax  defk,pcr
@@ -407,7 +432,7 @@ ld1      lda   path,u
          lbsr  wrsub
          puls  y
          lda   lin,u                 the kernel must stay below the memory size
-         bne   toobig
+         lbne  toobig
          bra   ld1
 ld8      cmpb  #E$EOF
          lbne  nofile
@@ -427,7 +452,13 @@ ld8      cmpb  #E$EOF
          leax  rp+16,u
          ldy   #1
          lbsr  wrsub
-         lbsr  rawon
+         ldd   cmdp,u                run mode: DOS gets its first keys from here (the dates, HOSTIN, RUNJOB)
+         beq   nr1
+         leax  scrtxt,pcr
+         stx   scrp,u
+         lda   #1
+         sta   quiet,u
+nr1      lbsr  rawon
          lda   >XSTAT                a doorbell left by the previous program would look like a request
          sta   >XSTAT
          lda   #1
@@ -441,7 +472,15 @@ serve    lbsr  waitrq
          beq   serve
          clr   >XCTL                 stop the 8088
          lbsr  rawoff
-         clrb
+         ldd   cmdp,u
+         beq   sv9
+         lbsr  hclose                run mode: the work image goes away
+         lda   dpath,u
+         os9   I$Close
+         leax  tmpnm,pcr
+         lda   #UPDAT.
+         os9   I$Delete
+sv9      clrb
          os9   F$Exit
 
 nosub    leax  msgnosub,pcr
@@ -663,7 +702,7 @@ dp0      clr   ,x+
          cmpa  #2
          beq   f_inp
          cmpa  #3
-         beq   f_outp
+         lbeq  f_outp
          cmpa  #4
          lbeq  f_prt
          cmpa  #5
@@ -678,6 +717,20 @@ dp0      clr   ,x+
          lbeq  f_time
          cmpa  #13
          lbeq  f_flush
+         cmpa  #20
+         lbeq  f_hdir
+         cmpa  #21
+         lbeq  f_hopen
+         cmpa  #22
+         lbeq  f_hread
+         cmpa  #23
+         lbeq  f_hwrite
+         cmpa  #24
+         lbeq  f_hclose
+         cmpa  #25
+         lbeq  f_hdone
+         cmpa  #26
+         lbeq  f_hcmd
          rts
 
 * 1: console status, AH = 1 and AL = the key if there is one (the key stays for INP)
@@ -694,6 +747,8 @@ fs9      rts
 * 2: console input (waits)
 f_inp    tst   kbv,u
          bne   fi2
+         lbsr  scrkey                run mode: the keys typed ahead
+         bcc   fi2
 fi1      lda   #0
          leax  iobuf,u
          ldy   #1
@@ -710,13 +765,15 @@ fi4      sta   rp,u
          rts
 
 * 3: console output, AL
-f_outp   lda   rq+1,u
+f_outp   tst   quiet,u
+         bne   fo9
+         lda   rq+1,u
          sta   iobuf,u
          lda   #1
          leax  iobuf,u
          ldy   #1
          os9   I$Write
-         rts
+fo9      rts
 
 * 4: printer, 6: aux output: the character AL to the file or device (nothing without the option)
 f_prt    lda   ppath,u
@@ -892,7 +949,9 @@ fl2      clr   kbv,u
 
 * ------------------------------------------------------------------
 * a key from the keyboard if there is one: C clear and kbv = 1, kbc = the key.  The exit key sets done.
-keyrdy   lda   #0
+keyrdy   lbsr  scrkey
+         bcc   kr0
+         lda   #0
          ldb   #SS.Ready
          os9   I$GetStt
          bcs   kr8
@@ -911,6 +970,22 @@ keyrdy   lda   #0
          rts
 kr7      inc   done,u
 kr8      orcc  #1
+         rts
+kr0      rts
+
+* run mode: the next typed-ahead key into kbc / kbv (C clear), or C set if there is none
+scrkey   ldx   scrp,u
+         beq   sk8
+         lda   ,x
+         beq   sk8
+         leax  1,x
+         stx   scrp,u
+         sta   kbc,u
+         lda   #1
+         sta   kbv,u
+         andcc #$FE
+         rts
+sk8      orcc  #1
          rts
 
 * DOS echoes, edits and passes the control characters itself: the terminal must not echo, must not translate (upper case,
@@ -956,6 +1031,419 @@ rawoff   tst   rawf,u
          leax  oldopt,u
          os9   I$SetStt
 rw8      rts
+
+
+* ------------------------------------------------------------------
+* run mode:  dos [options] program arguments
+* DOS boots from a copy of the image (dosrun.img: COMMAND.COM, HOSTIN.COM, HOSTOUT.COM).
+* The first keys come from this program (scrtxt: the answers to the date and time, HOSTIN,
+* RUNJOB).
+* HOSTIN asks for the command line (26), copies the files of the current OS-9 directory to the
+* disk of DOS (20 - 24) and writes RUNJOB.BAT (the command line, then HOSTOUT); HOSTOUT copies
+* the files of the disk back (21 - 24) and ends (25).
+
+* a copy of the image dname[0] in the file dostmp.img (it becomes drive A:)
+mktemp   ldx   dname,u
+         lda   #READ.
+         os9   I$Open
+         lbcs  nofile
+         sta   hp,u
+         leax  tmpnm,pcr
+         lda   #UPDAT.
+         os9   I$Delete              (a left-over copy)
+         leax  tmpnm,pcr
+         lda   #UPDAT.
+         ldb   #$0B
+         os9   I$Create
+         lbcs  nofile
+         sta   hfile,u
+mt1      lda   hp,u
+         leax  sbuf,u
+         ldy   #512
+         os9   I$Read
+         bcs   mt2
+         lda   hfile,u
+         leax  sbuf,u
+         ldy   #512
+         os9   I$Write
+         lbcs  nofile
+         bra   mt1
+mt2      cmpb  #E$EOF
+         lbne  nofile
+         lda   hp,u
+         os9   I$Close
+         lda   hfile,u
+         os9   I$Close
+         clr   hfile,u
+         leax  tmpnm,pcr
+         stx   dname,u
+         rts
+
+* close what the host calls have open
+hclose   lda   hfile,u
+         beq   hc1
+         os9   I$Close
+         clr   hfile,u
+hc1      lda   hdir,u
+         beq   hc2
+         os9   I$Close
+         clr   hdir,u
+hc2      rts
+
+* lin = DS * 16 + BX
+dsbx     lbsr  dslin
+         lda   lin+2,u
+         adda  rq+4,u
+         sta   lin+2,u
+         lda   lin+1,u
+         adca  rq+5,u
+         sta   lin+1,u
+         lda   lin,u
+         adca  #0
+         anda  #$0F
+         sta   lin,u
+         rts
+
+* 26: the command line (up to the CR) to DS:BX
+f_hcmd   clr   quiet,u               from here on the console output of DOS is shown
+         ldx   cmdp,u
+         leay  sbuf,u
+         ldb   #127
+hm1      lda   ,x+
+         sta   ,y+
+         cmpa  #C$CR
+         beq   hm2
+         decb
+         bne   hm1
+         lda   #C$CR
+         sta   ,y+
+hm2      leax  sbuf,u
+         pshs  x
+         tfr   y,d
+         subd  ,s++
+         pshs  d
+         lbsr  dsbx
+         puls  y
+         leax  sbuf,u
+         lbra  wrsub
+
+* 20: the files of the current directory.  CX = 0: start;  CX = 1: the next one: DS:BX gets
+* 11 bytes (the name in FCB form,
+* upper case) and 4 bytes (the size, low byte first).  AL = 1: no more.  Directories and
+* other names DOS cannot hold are skipped.
+f_hdir   tst   rq+6,u
+         bne   hd1
+         lda   hdir,u
+         beq   hd0
+         os9   I$Close
+         clr   hdir,u
+hd0      lda   #DIR.+READ.
+         leax  dotname,pcr
+         os9   I$Open
+         bcs   hd_end
+         sta   hdir,u
+         rts
+hd1      lda   hdir,u
+         beq   hd_end
+hd2      lda   hdir,u
+         leax  dirent,u
+         ldy   #32
+         os9   I$Read
+         bcs   hd_close
+         cmpy  #32
+         bne   hd_close
+         lda   dirent,u
+         beq   hd2
+         lbsr  dir2dos
+         bcs   hd2
+         lbsr  isres
+         bcs   hd2
+         lda   #READ.
+         leax  pname,u
+         os9   I$Open
+         bcs   hd2                   a directory
+         sta   hp,u
+         pshs  u
+         ldb   #SS.Size
+         os9   I$GetStt
+         tfr   u,d
+         puls  u
+         stb   iobuf+11,u
+         sta   iobuf+12,u
+         tfr   x,d
+         stb   iobuf+13,u
+         sta   iobuf+14,u
+         lda   hp,u
+         os9   I$Close
+         lbsr  dsbx
+         leax  iobuf,u
+         ldy   #15
+         lbra  wrsub
+hd_close lda   hdir,u
+         os9   I$Close
+         clr   hdir,u
+hd_end   lda   #1
+         sta   rp,u
+         rts
+
+* is iobuf[0..10] a name that belongs to this program (the work image)?  C set: yes
+isres    leax  iobuf,u
+         leay  resnm,pcr
+         ldb   #11
+ir1      lda   ,x+
+         cmpa  ,y+
+         bne   ir8
+         decb
+         bne   ir1
+         orcc  #1
+         rts
+ir8      andcc #$FE
+         rts
+
+* 21: open a file. DS:BX = the name (11 bytes, FCB form), DX = 0 read, 1 create (an old
+* file is replaced).  AL = 1: failed.
+f_hopen  lbsr  dsbx
+         leax  hname,u
+         ldy   #11
+         lbsr  rdsub
+         lda   hfile,u
+         beq   ho0
+         os9   I$Close
+         clr   hfile,u
+ho0      lbsr  findname              C clear: pname = the OS-9 name of that file
+         tst   rq+8,u
+         bne   ho_w
+         bcs   ho_fail
+         lda   #READ.
+         leax  pname,u
+         os9   I$Open
+         bcs   ho_fail
+         sta   hfile,u
+         rts
+ho_w     bcs   ho_new
+         lda   #UPDAT.
+         leax  pname,u
+         os9   I$Delete
+         bra   ho_mk
+ho_new   lbsr  mkoname
+ho_mk    lda   #WRITE.
+         ldb   #$0B
+         leax  pname,u
+         os9   I$Create
+         bcs   ho_fail
+         sta   hfile,u
+         rts
+ho_fail  lda   #1
+         sta   rp,u
+         rts
+
+* the file of the current directory whose DOS name is hname.  C clear: found, pname = its
+* OS-9 name
+findname lda   #DIR.+READ.
+         leax  dotname,pcr
+         os9   I$Open
+         bcs   fn8
+         sta   hp,u
+fn1      lda   hp,u
+         leax  dirent,u
+         ldy   #32
+         os9   I$Read
+         bcs   fn7
+         cmpy  #32
+         bne   fn7
+         lda   dirent,u
+         beq   fn1
+         lbsr  dir2dos
+         bcs   fn1
+         leax  iobuf,u
+         leay  hname,u
+         ldb   #11
+fn2      lda   ,x+
+         cmpa  ,y+
+         bne   fn1
+         decb
+         bne   fn2
+         lda   hp,u
+         os9   I$Close
+         andcc #$FE
+         rts
+fn7      lda   hp,u
+         os9   I$Close
+fn8      orcc  #1
+         rts
+
+* a new OS-9 name (lower case) from hname into pname
+mkoname  leax  hname,u
+         leay  pname,u
+         ldb   #8
+mo1      lda   ,x+
+         cmpa  #' '
+         beq   mo2
+         lbsr  lowcase
+         sta   ,y+
+         decb
+         bne   mo1
+mo2      leax  hname+8,u
+         lda   ,x
+         cmpa  #' '
+         beq   mo9
+         lda   #'.'
+         sta   ,y+
+         ldb   #3
+mo3      lda   ,x+
+         cmpa  #' '
+         beq   mo9
+         lbsr  lowcase
+         sta   ,y+
+         decb
+         bne   mo3
+mo9      lda   #C$CR
+         sta   ,y
+         rts
+
+lowcase  cmpa  #'A'
+         blo   lc9
+         cmpa  #'Z'
+         bhi   lc9
+         adda  #$20
+lc9      rts
+
+* 22: read: CX bytes (up to 512) from the file to DS:BX; the reply CX = the bytes read (0 =
+* the end)
+f_hread  lda   rq+7,u
+         ldb   rq+6,u
+         cmpd  #512
+         bls   hr1
+         ldd   #512
+hr1      tfr   d,y
+         lda   hfile,u
+         beq   hr_e
+         leax  sbuf,u
+         os9   I$Read
+         bcs   hr_e
+         sty   hcnt,u
+         lbsr  dsbx
+         leax  sbuf,u
+         ldy   hcnt,u
+         lbsr  wrsub
+         ldd   hcnt,u
+         stb   rp+4,u
+         sta   rp+5,u
+         rts
+hr_e     clr   rp+4,u
+         clr   rp+5,u
+         rts
+
+* 23: write: CX bytes (up to 512) from DS:BX.  AL = 1: failed
+f_hwrite lda   rq+7,u
+         ldb   rq+6,u
+         cmpd  #512
+         bls   hw1
+         ldd   #512
+hw1      std   hcnt,u
+         lbsr  dsbx
+         leax  sbuf,u
+         ldy   hcnt,u
+         lbsr  rdsub
+         lda   hfile,u
+         beq   hw_e
+         leax  sbuf,u
+         ldy   hcnt,u
+         os9   I$Write
+         bcs   hw_e
+         rts
+hw_e     lda   #1
+         sta   rp,u
+         rts
+
+* 24: close the file
+f_hclose lda   hfile,u
+         beq   hcl9
+         os9   I$Close
+         clr   hfile,u
+hcl9     rts
+
+* 25: HOSTOUT is done: leave
+f_hdone  inc   done,u
+         rts
+
+* directory entry (dirent) -> pname (OS-9 name, CR terminated) and iobuf[0..10] (the DOS
+* name: 8.3, upper case, blank padded).
+* C set: a name that DOS cannot hold, ".", ".."
+dir2dos  leax  dirent,u
+         leay  pname,u
+         ldb   #29
+dd1      lda   ,x+
+         pshs  a
+         anda  #$7F
+         sta   ,y+
+         puls  a
+         tsta
+         bmi   dd2
+         decb
+         bne   dd1
+dd2      lda   #C$CR
+         sta   ,y
+         leax  iobuf,u
+         ldb   #11
+         lda   #' '
+dd3      sta   ,x+
+         decb
+         bne   dd3
+         leax  pname,u
+         lda   ,x
+         cmpa  #'.'
+         beq   ddbad
+         leay  iobuf,u
+         ldb   #8
+dd4      lda   ,x+
+         cmpa  #C$CR
+         beq   ddgood
+         cmpa  #'.'
+         beq   dd5
+         lbsr  upcase
+         tstb
+         beq   ddbad
+         sta   ,y+
+         decb
+         bra   dd4
+dd5      leay  iobuf+8,u
+         ldb   #3
+dd6      lda   ,x+
+         cmpa  #C$CR
+         beq   ddgood
+         cmpa  #'.'
+         beq   ddbad
+         lbsr  upcase
+         tstb
+         beq   ddbad
+         sta   ,y+
+         decb
+         bra   dd6
+ddgood   andcc #$FE
+         rts
+ddbad    orcc  #1
+         rts
+
+upcase   cmpa  #'a'
+         blo   up9
+         cmpa  #'z'
+         bhi   up9
+         suba  #$20
+up9      rts
+
+defrun   fcc   "dosrun.img"
+         fcb   C$CR
+tmpnm    fcc   "dostmp.img"
+         fcb   C$CR
+resnm    fcc   "DOSTMP  IMG"
+dotname  fcc   "."
+         fcb   C$CR
+scrtxt   fcb   13,13
+         fcc   "HOSTIN"
+         fcb   13
+         fcc   "RUNJOB"
+         fcb   13,0
 
          emod
 eom      equ   *

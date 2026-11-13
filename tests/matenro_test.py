@@ -519,6 +519,36 @@ def os9_dos2(tmp):
             ok = ok and 'Unrecognized command in CONFIG.SYS' in out and 'MYDRV loaded' in out and out.count('1 File(s) copied') == 2
         check('MS-DOS 2.0: boot from a %s, DIR, COPY, TYPE' % what, ok, out[-900:])
 
+    # run mode: `dos program arguments` boots DOS from a copy of dosrun2.img, HOSTIN copies the files of the OS-9 directory to the
+    # disk, the command runs (here the COPY of COMMAND), HOSTOUT copies the files back
+    host = os.path.join(tmp, 'host')
+    os.mkdir(host)
+    for n in ('hostin', 'hostout'):
+        r = run(['nasm', '-f', 'bin', '-I', os.path.join(ROOT, 'os9', 'dos', 'host') + os.sep, os.path.join(ROOT, 'os9', 'dos', 'host', n + '.asm'),
+                '-o', os.path.join(host, n + '.com')])
+        check('MS-DOS 2.0 run mode: %s.com assembles' % n.upper(), r.returncode == 0, r.stdout.decode(errors='replace')[-300:])
+        if r.returncode != 0:
+            return
+    im = os.path.join(tmp, 'dosrun2.img')
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkdosimg.py'), im, '360', os.path.join(bd, 'command.com'),
+             os.path.join(host, 'hostin.com'), os.path.join(host, 'hostout.com')])
+    assert r.returncode == 0, r.stdout
+    data = bytes((i * 7 + (i >> 8)) & 0xFF for i in range(3000)) + b'\x1a' + bytes(range(256))
+    fl = {'msdos.sys': files['msdos.sys'], 'bios2.bin': files['bios2.bin'], 'dosrun2.img': open(im, 'rb').read(),
+          'in.txt': hello, 'in.dat': data}
+    sc = ['send "dos -v=2 -a=dosrun2.img copy in.txt out.txt\\r"', 'expect "OS9:"',
+          'send "dos -v=2 -a=dosrun2.img copy in.dat out.dat\\r"', 'expect "OS9:"', 'send "dir\\r"', 'expect "OS9:"']
+    out, d = os9_session(tmp, 'dos2run', '8088', fl, sc, timeout=600)
+    out = out.replace('\r', '')
+    v0 = os.path.join(d, 'v0')
+    o1 = open(os.path.join(v0, 'out.txt'), 'rb').read() if os.path.isfile(os.path.join(v0, 'out.txt')) else b''
+    o2 = open(os.path.join(v0, 'out.dat'), 'rb').read() if os.path.isfile(os.path.join(v0, 'out.dat')) else b''
+    check('MS-DOS 2.0 run mode: dos copy in.txt out.txt - the new file is in the OS-9 directory, equal to the original', o1 == hello, repr(o1) + out[-600:])
+    check('MS-DOS 2.0 run mode: a binary file (3257 bytes, with ^Z and every byte value) comes back byte for byte', o2 == data, out[-600:])
+    check('MS-DOS 2.0 run mode: the work image is gone, the files of the program are not copied back (COMMAND.COM, HOSTIN.COM, RUNJOB.BAT)',
+          not os.path.exists(os.path.join(v0, 'dostmp.img')) and not any(os.path.exists(os.path.join(v0, n)) for n in ('command.com', 'runjob.bat', 'COMMAND.COM')), '')
+    check('MS-DOS 2.0 run mode: DOS leaves by itself (the OS-9 prompt is back each time)', out.count('OS9:dos') == 2 and out.rstrip().endswith('OS9:'), out[-600:])
+
 
 def os9_bigdisk(tmp):
     """/d1 as a hard disk (tools/mkrbf.py): an empty RBF volume of 24576 sectors (the allocation map fills 12 sectors, the

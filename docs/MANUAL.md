@@ -353,6 +353,30 @@ dos -v=2 -a=a.img          (BIOS は bios2.bin、カーネルは msdos.sys が�
 
 詳しくは [DESIGN.md](DESIGN.md) の 18 章。
 
+### 6.9 DOS のアプリを OS-9 のコマンドラインから動かす (実行モード)
+
+```
+dos [-v=2] [-a=イメージ] プログラム [引数...]      例: dos -v=2 -a=dosrun2.img tbasic
+```
+
+`cpm hello.com abc` のように、**DOS のプログラムを OS-9 のコマンドラインから実行**します。`-` で始まらない最初の語から行末までが、DOS に渡すコマンドです (`.COM` や `.EXE`、`COPY` のような `COMMAND` の内部コマンドも、バッチファイルも書けます。`%` は使えません)。
+
+本物の MS-DOS (1.25 または 2.0) を起動して、**カレントの OS-9 ディレクトリのファイルを DOS のディスクに出し入れ**します。
+
+1. `dos` が、`-a=` のイメージ (既定は `dosrun.img`) を `dostmp.img` に写します (元のイメージは変わりません)。
+2. DOS が起動し、`dos` が日付と時刻の質問に Enter で答え、`HOSTIN` と `RUNJOB` を打ち込みます。`HOSTIN` が OS-9 のカレントディレクトリのファイルを DOS のディスクに写し、`RUNJOB.BAT` (コマンドと `HOSTOUT`) を作ります。
+3. コマンドが走ります。プログラムは普通にキーボードを使えます。
+4. `HOSTOUT` が DOS のディスクのファイル (ルートディレクトリ) を OS-9 のカレントディレクトリに書き戻し、DOS を終わります。`dostmp.img` は消えます。
+
+* **イメージ**: `dosrun.img` (1.25、160 KB) と `dosrun2.img` (2.0、360 KB) を `tools/build_dosrun.sh OUTDIR DOSBIN DOS2BIN` で作ります (`COMMAND.COM` に `HOSTIN.COM` と `HOSTOUT.COM` を足したもの)。`DOSBIN` と `DOS2BIN` は `tools/build_dosbin.sh` / `tools/build_dosbin2.sh` の出力ディレクトリです。`msdos.sys` (2.0 は `bios2.bin` も) はカレントディレクトリに置きます (6.8 と同じ)。
+* **ファイル名**: DOS の 8.3 の名前になれるものだけが写されます (OS-9 の名前は大文字にされます)。OS-9 のディレクトリ、`.IMG` のファイル、`COMMAND.COM`、`HOSTIN.COM`、`HOSTOUT.COM`、`RUNJOB.BAT`、`MSDOS.SYS`、`BIOS2.BIN` は写しません。書き戻すとき、同じ名前 (大文字小文字を問わない) の OS-9 のファイルは置き換え、新しいファイルは小文字の名前で作ります。**DOS のサブディレクトリは書き戻しません。**
+* **中身**: バイト単位でそのまま写します (改行の変換はしません。OS-9 のテキストは LF、DOS のテキストは CR LF です)。DOS のディスクは 360 KB (1.25 は 160 KB) なので、ディレクトリのファイルが多いと `HOSTIN: the disk is full` と出ます。
+* **画面**: DOS の起動から `HOSTIN` までの出力は隠します。そのあとの `A>RUNJOB`、コマンドの行、`A>HOSTOUT` は見えます。
+* **終わりかた**: コマンドが終わると自動で OS-9 に戻ります。途中で終わりたいときは `^]` です (6.8)。端末では `matenro -e 0x1c` で起動してください (`^]` がシミュレータのモニタに取られるため)。
+* **遅さ**: 起動のたびにイメージを写して (160 KB〜360 KB)、ファイルを写します。
+
+詳しくは [DESIGN.md](DESIGN.md) の 18.9。
+
 ## 7. C で書く: `cpp80` と `cc80`
 
 ### 7.1 `cpp80` (C のプリプロセッサ)
