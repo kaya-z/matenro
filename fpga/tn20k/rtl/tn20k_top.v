@@ -3,7 +3,7 @@
 //
 //   27 MHz crystal (pin 4) -> PLL -> 67.5 MHz, and the same shifted by 180 degrees for the SDRAM clock
 //   S1 (pin 88)    reset (the buttons of the 20K are high when pressed)
-//   S2 (pin 87)    toggles the LED display (as on the 9K): the second one has LED0 = the sub CPU (8088) is enabled
+//   S2 (pin 87)    toggles the LED display (as on the 9K): the second one has LED0 = the Z80 is enabled, LED1 = the 8088 is enabled (subsel)
 //   UART           the USB serial port of the board (BL616): 115200 baud, 8N1 - the console (FPGA pins 69 = TX, 70 = RX)
 //   microSD slot   the disks (raw SPI mode: drive 0 from block 0, drive 1 from 128 MB), pins 83 CLK, 82 MOSI, 84 MISO, 81 CS
 //   SDRAM          the 64 Mbit SDR SDRAM in the package (4 MB used), through sdram_ctl.v

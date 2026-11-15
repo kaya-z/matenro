@@ -80,7 +80,7 @@ module matenro_soc #(
     input  wire        ps_busy,
     // LEDs (active low), and the CPU for the test bench
     output wire [5:0]  led,
-    input  wire        led_mode,            // 0: heartbeat / running / card / power;  1: LED0 = the sub CPU is enabled, LED1-5 off (reserved)
+    input  wire        led_mode,            // 0: heartbeat / running / card / power;  1: LED0 = the sub CPU is enabled, LED1-5 off (reserved); SUBBOTH: LED0 = the Z80 is enabled, LED1 = the 8088 is enabled
     input  wire        term_busy,           // the HDMI screen has no room for more characters now
     // two more PSRAM masters (word reads) for a screen: not used on the 9K
     input  wire        x1_req,
@@ -809,7 +809,12 @@ module matenro_soc #(
     // ---------------------------------------------------------------- the LEDs (active low)
     // LED2: card ready (steady) / card failed (blinking); LED4: the OS has been started
     assign reboot_req = reboot_r;
+`ifdef SUBBOTH
+    // the second display (S2): LED0 = the Z80 is enabled, LED1 = the 8088 is enabled (SUBBOTH: only one of them is on the cross link)
+    assign led = led_mode ? ~{4'b0000, xl_on && sel8, xl_on && !sel8}
+`else
     assign led = led_mode ? ~{5'b00000, xl_on}
+`endif
                           : ~{pwroff, osrun, sd_active, sd_fail ? hb[22] : sd_ready, run, hb[23]};
 
     // the status word of the debug UART (dbg_uart, DEBUG=1) and the watchdog of the board: what holds the CPU
