@@ -1,6 +1,6 @@
 # Tang Nano 20K 版 (6809 + 8088) の設計
 
-**状態 (2026-11-12): 実機がまだ無いので、ビットストリームを作るところまで** (合成・配置配線を通して `.fs` ができ、Verilator で OS-9 の起動と 8088 のプログラムが動く)。ボードには書いていません。ピンの数字やクロックの余裕など、実機で確かめるべきことは 8 章にまとめました。
+**状態 (2026-11-15): 実機で動きました** (54 MHz。OS-9 Level 2 が SD カードから起動し、CP/M-86 と MS-DOS 2.0 のプログラムが 8088 で動く。結果は 8 章)。それまでは合成・配置配線を通して `.fs` を作り、Verilator で確かめていました。
 
 Tang Nano 9K 版 ([FPGA.md](FPGA.md)) は 6809 + Z80 です。20K 版は同じ SoC (`matenro_soc.v`) の**サブ CPU を 8088 (MCL86) に替え**、9K の PSRAM のかわりにパッケージ内の **SDRAM** を使います。HDMI はまだありません。
 
@@ -80,7 +80,7 @@ MCL86 の EU は、マイクロコード ROM の出力 (BSRAM のクロックか
 
 1 章の表のとおりです。`sys_clk` 4、`s1` 88、`s2` 87、`uart_tx` 69、`uart_rx` 70、`sd_clk` 83、`sd_mosi` 82、`sd_miso` 84、`sd_cs` 81、`led[0..5]` 15-20。電圧は 3.3V (LVCMOS33)。
 
-## 7. 検証 (実機なし)
+## 7. 検証 (シミュレーション)
 
 | 試験 | コマンド | 結果 |
 |---|---|---|
@@ -94,15 +94,22 @@ MCL86 の EU は、マイクロコード ROM の出力 (BSRAM のクロックか
 
 **SDRAM モデルの限界**: クロックの端で動くだけの理想的なモデルです。実チップの出力遅れ (tAC)、入出力のピンの遅れ、基板上の配線は入っていません。
 
-## 8. 実機が来たら (未確認のこと)
+## 8. 実機の結果 (2026-11-15)
 
-1. **ビットストリームの書き込み** (まだしていません): `openFPGALoader -b tangnano20k fpga/tn20k/build/boot/impl/pnr/matenro20k_boot.fs` (SRAM に書く。フラッシュは `-f`)。作り直し: `fpga/tn20k/scripts/build.sh boot` (`xltest88` は 8088 の自己判定だけの試験)。
-2. **ピンの確認**: 回路図が取れなかったので、すべてサンプルの `.cst` から読んだものです。特に **S1 / S2 の極性** (H で押下とした)、**UART の TX / RX の向き** (69 = FPGA の TX)、**SD カードの 4 本** は最初に見る。S1 の極性が逆だと、リセットが外れません。
-3. **PLL**: rPLL の設定 (27 MHz × 2、VCO 864 MHz、`CLKOUTP` を 180 度) はツールを通りましたが、実機でロックするか未確認。LED2-5 が動けば PLL は上がっています。
-4. **SDRAM**: 実チップで 54 MHz のタイミング (読み出しを READ から 3 クロックで取る) が合うか。メモリ検査 (`Matenro Memory >>>… OK 2048K`) が通れば、基本は合っています。外れるときは `sdram_ctl.v` の読み取りのタイミング (`cyc == 6`) を 1 つずらす。
-5. **SD カード**: 9K と同じカードのイメージ (`fpga/tn9k/scripts/mkdisk.sh` + `bigd1.sh`) が使える (カードの先頭にドライブ 0、128MB の位置にドライブ 1)。
-6. **8088**: OS-9 で `load xlink`、`load x0`、`cpm hello86.cmd` (CP/M-86 のプログラムは `tools/mkcmd.py` で作る)。
-7. **性能**: `etime` で測り、MCL86 の 4.9 MHz 相当と、シミュレータの見積もり (docs/DESIGN.md の 8088 の章) を比べる。
+Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRAM に書いて** (`openFPGALoader -m`。フラッシュには書いていません) 確かめました。UART は FT2232 の 2 番目のチャンネル (`/dev/ttyUSB2`、115200 8N1)。
+
+| 項目 | 結果 |
+|---|---|
+| ピン、PLL、リセット | 動く。UART の向き (69 = FPGA の TX) も合っていた。S1 / S2 の極性は、リセットが外れて動いたので S1 は合っている。S2 は未確認 |
+| SDRAM (54 MHz) | `Matenro Memory >>>… OK 2048K` が通った。読み取りのタイミング (READ から 3 クロック) はそのままで合った |
+| 8088 の自己判定 (`xltest88`) | 書き込んだだけで `SLR A5 00 132D` (期待値どおり。XE は 4,909 kHz) |
+| SD カード (`boot`) | **9K と同じ形式のカード** (先頭の 1MB が `/d0`、128MB の位置に `/d1`) から OS-9 Level 2 が起動した。ピン (81-84) は合っていた |
+| CP/M-86 | `cpm hello86.cmd abc` が `Hello from CP/M-86 on the 8088` / `!` / ` ABC`。`fileio86.cmd` が `FILEIO86 OK` (SD への書き込みを含む)、`line86.cmd` (行入力) も動いた |
+| MS-DOS 2.0 | `dos -v=2 -a=dosrun2.img -t=/d1/dostmp.img tbasic` で DOS が起動し、Tiny BASIC (`tests/dos/tbasic.asm`) が `RUN` で計算と `RND` を出し、`bye` で OS-9 に戻った (MANUAL 6.9 の実行モード) |
+
+* **カード**: `fpga/tn20k/scripts/mkdisk.sh` が `/d0` を作る (9K の `/d0` に `dos`、CP/M-86 の試験、`/d0/dos` の MS-DOS 2.0 の一式を足したもの)。9K のカード全体のイメージの先頭 1MB を差し替える: `sudo dd if=fpga/tn20k/build/matenro20k_l2.dsk of=/dev/sdX bs=1M count=1 conv=fsync`。**MS-DOS の作業用イメージは 360KB で `/d0` に置けないので、`dos -t=/d1/dostmp.img` で `/d1` (64MB) に置く。**
+* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、HDMI (まだない)、S2 ボタン、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
+* **わかったこと**: 書き込み直後の UART に数文字の文字化けが出ることがある (`OOOKKHHHjymmm>`)。ツール (`openFPGALoader`) が JTAG を動かすときの雑音と見ている。UART を読む `cat` を 2 本同時に走らせると文字が欠ける (基板の不具合ではない)。
 
 ## 9. ファイル
 

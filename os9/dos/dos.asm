@@ -88,6 +88,7 @@ kbv      rmb   1                 a key is waiting in kbc
 kbc      rmb   1
 rawf     rmb   1                 the terminal is in the raw mode
 done     rmb   1                 leave
+tnm      rmb   2                 -t=: the work image of the run mode (default dostmp.img in the current directory)
 cmdp     rmb   2                 run mode: the command line (a program and its arguments), 0 = none
 scrp     rmb   2                 run mode: the keys typed ahead for DOS (0 = none)
 quiet    rmb   1                 run mode: the console output of DOS is dropped until HOSTIN has started
@@ -141,6 +142,7 @@ msgsize  fcc   "dos: an image must be 160 KB, 320 KB, 360 KB or 8 MB"
 start    stx   argp,u
          clr   done,u
          ldd   #0
+         std   tnm,u
          std   cmdp,u
          std   scrp,u
          clr   quiet,u
@@ -183,9 +185,9 @@ op0      clr   ,x+
          ldx   argp,u
 op1      lbsr  skipsp
          cmpa  #C$CR
-         beq   opend
+         lbeq  opend
          cmpa  #'-'
-         bne   runarg
+         lbne  runarg
          leax  1,x
          lda   ,x+                   the option letter
          anda  #$DF
@@ -222,7 +224,11 @@ op2d     cmpa  #'V'
          lda   #1
 op2v     sta   ver,u
          bra   op4
-op2e     suba  #'A'
+op2e     cmpa  #'T'
+         bne   op2f
+         stx   tnm,u
+         bra   op4
+op2f     suba  #'A'
          lbmi  usage
          cmpa  #3
          lbhi  usage
@@ -477,7 +483,7 @@ serve    lbsr  waitrq
          lbsr  hclose                run mode: the work image goes away
          lda   dpath,u
          os9   I$Close
-         leax  tmpnm,pcr
+         ldx   tnm,u
          lda   #UPDAT.
          os9   I$Delete
 sv9      clrb
@@ -1043,15 +1049,19 @@ rw8      rts
 * the files of the disk back (21 - 24) and ends (25).
 
 * a copy of the image dname[0] in the file dostmp.img (it becomes drive A:)
-mktemp   ldx   dname,u
+mktemp   ldx   tnm,u
+         bne   mt0
+         leax  tmpnm,pcr
+         stx   tnm,u
+mt0      ldx   dname,u
          lda   #READ.
          os9   I$Open
          lbcs  nofile
          sta   hp,u
-         leax  tmpnm,pcr
+         ldx   tnm,u
          lda   #UPDAT.
          os9   I$Delete              (a left-over copy)
-         leax  tmpnm,pcr
+         ldx   tnm,u
          lda   #UPDAT.
          ldb   #$0B
          os9   I$Create
@@ -1075,7 +1085,7 @@ mt2      cmpb  #E$EOF
          lda   hfile,u
          os9   I$Close
          clr   hfile,u
-         leax  tmpnm,pcr
+         ldx   tnm,u
          stx   dname,u
          rts
 
