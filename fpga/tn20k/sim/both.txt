@@ -1,0 +1,18 @@
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send chd /d0\r
+expect OS9:
+send subsel\r
+expect OS9:
+send cpm hello86.cmd abc\r
+expect OS9:
+send subsel z80\r
+expect OS9:
+send cpm hello.com abc\r
+expect OS9:
+send subsel 8088\r
+expect OS9:
+send cpm hello86.cmd xyz\r
+expect OS9:
+quit

@@ -76,7 +76,7 @@ module tn20k_top (
         .CLK_HZ(`CLK_HZ), .PH_DIV(`PH_DIV), .BAUD_DIV(`CLK_HZ / 115200),
         .ROM_BASE(`ROM_BASE), .ROM_AW(`ROM_AW), .ROM_FILE("rom.hex"), .FREERUN(`FREERUN),
         .RTC_YEAR(`RTC_YEAR), .RTC_MONTH(`RTC_MONTH), .RTC_DAY(`RTC_DAY),
-        .RTC_HOUR(`RTC_HOUR), .RTC_MIN(`RTC_MIN), .RTC_SEC(`RTC_SEC), .MEMTEST(`MEMTEST_EN), .C88_DIV(`C88_DIV)
+        .RTC_HOUR(`RTC_HOUR), .RTC_MIN(`RTC_MIN), .RTC_SEC(`RTC_SEC), .MEMTEST(`MEMTEST_EN), .C88_DIV(`C88_DIV), .CZ_DIV(`CZ_DIV)
     ) soc (
         .clk(clk), .resetn(resetn), .rxd(uart_rx), .txd(uart_tx),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),

@@ -59,7 +59,8 @@ module matenro_soc #(
     parameter [21:0] MT_LAST = 22'h1fffff,          // the last byte to test (2 MB)
     parameter SHR_BLK    = 8'hff,                   // the physical block (8 KB, bits 20:13) that is served from the BSRAM
     parameter CZ_DIV     = 9,                       // Z80 clock = CLK_HZ / CZ_DIV (7.5 MHz)
-    parameter C88_DIV    = 14                       // `define SUB8088: the 8088 clock = CLK_HZ / C88_DIV (4.82 MHz)
+    parameter C88_DIV    = 14,                      // `define SUB8088 / SUBBOTH: the 8088 clock = CLK_HZ / C88_DIV (4.82 MHz)
+    parameter SUB_DEF8   = 1'b1                     // `define SUBBOTH: the sub CPU after the reset: 1 = 8088, 0 = Z80
 ) (
     input  wire        clk,
     input  wire        resetn,
@@ -132,6 +133,9 @@ module matenro_soc #(
     wire        acia_irq;               // the console ACIA (OS-9 uses its receive and transmit interrupts)
     // MATENRO (declared here: they are used before the XLINK section)
     wire        xl_irq, xl_firq, xl_wait, xl_win, xl_on;
+`ifdef SUBBOTH
+    reg         sel8 = SUB_DEF8;                    // SUBSEL: 1 = the 8088 is on the cross link, 0 = the Z80
+`endif
     wire [7:0]  xl_rdata;
     reg         xl_rcap = 1'b0;
     reg  [2:0]  xl_cnt  = 3'd0;
@@ -357,7 +361,12 @@ module matenro_soc #(
     // Level 1: the registers are at $E000 (the page $E000-$E1FF); Level 2: at $FF80 (the same offsets), in the fixed page.
     wire        in_io  = l2 ? (a[15:7] == 9'h1ff) : (a[15:9] == 7'b1110000);
     wire [8:0]  off    = l2 ? {2'b00, a[6:0]} : a[8:0];
-    reg io_acia, io_power, io_timer, io_disk, io_dctl, io_hit, io_quiet, rom_sel, io_mmu, io_map, io_ta, io_modr, io_xl;
+    reg io_acia, io_power, io_timer, io_disk, io_dctl, io_hit, io_quiet, rom_sel, io_mmu, io_map, io_ta, io_modr, io_xl, io_ssel;
+`ifdef SUBBOTH
+    localparam [8:0] XL_LAST = 9'h04f;       // + $FFCF: the choice of the sub CPU (Z80 or 8088)
+`else
+    localparam [8:0] XL_LAST = 9'h04e;
+`endif
     // Level 2: the registers of the clock are in the fixed page, and the OS reads the time with F$Move, i.e. through another
     // window of the same physical page ($7FFB1-B6).  In the simulator the registers live in that RAM; here a read of that
     // physical address gives the registers of the clock too.  (pa is declared below: it is the physical address of a.)
@@ -378,12 +387,13 @@ module matenro_soc #(
         io_disk  <= in_io_q && off_q >= 9'h040 && off_q <= 9'h047;
         io_dctl  <= in_io_q && off_q == 9'h049;                 // control / status of the asynchronous mode of the disk
         io_xl    <= in_io_q && off_q >= 9'h04a && off_q <= 9'h04e;                 // the cross link
+        io_ssel  <= in_io_q && off_q == 9'h04f;                            // SUBSEL (SUBBOTH only)
         io_mmu   <= l2 && in_io_q && off_q == 9'h011;            // the task register
         io_map   <= l2 && in_io_q && off_q >= 9'h020 && off_q <= 9'h02f;   // the system map, the user map
         io_hit   <= (in_io_q && ((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049
-                              || (off_q >= 9'h04a && off_q <= 9'h04e)
+                              || (off_q >= 9'h04a && off_q <= XL_LAST)
                               || (l2 && (off_q == 9'h011 || (off_q >= 9'h020 && off_q <= 9'h02f))))) || ta;
-        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= 9'h04e));
+        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= XL_LAST));
         rom_sel  <= !l2 && (a >= ROM_BASE);
     end
 
@@ -468,6 +478,9 @@ module matenro_soc #(
         if (io_acia)       io_rdata = off[0] ? acia_rdata : acia_status;
         else if (io_timer || io_ta) io_rdata = timer_rdata;
         else if (io_xl)    io_rdata = xl_rdata;
+`ifdef SUBBOTH
+        else if (io_ssel)  io_rdata = {6'b000000, sel8, ~sel8};            // $FFCF: 1 = Z80, 2 = 8088
+`endif
         else if (io_dctl)  io_rdata = {d_done, d_ien, 4'b0000, d_async, disk_busy};      // $E049: the status
         else if (io_mmu)   io_rdata = tr_raw;
         else if (io_map)   io_rdata = off[3] ? map_u[off[2:0]] : map_s[off[2:0]];
@@ -530,6 +543,9 @@ module matenro_soc #(
         if (disk_rd) d_done <= 1'b0;                                    // the guest has read the result
         if (rst) begin
             mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
+`ifdef SUBBOTH
+            sel8 <= SUB_DEF8;
+`endif
             for (mk = 0; mk < 8; mk = mk + 1) begin map_s[mk] <= 8'hff; map_u[mk] <= 8'hff; end
             map_s[7] <= 8'h3f; tr <= 1'b0; tr_raw <= 8'hff; l2 <= 1'b0;
             rd_reg <= 8'h00; e040 <= 8'h00; d_drive <= 0; d_lsn2 <= 0; d_lsn1 <= 0; d_lsn0 <= 0;
@@ -548,6 +564,9 @@ module matenro_soc #(
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
                             if (io_power && (cpu_d_out == 8'ha7 || cpu_d_out == 8'ha6)) reboot_r <= 1'b1;      // reboot: the same as the reset button
                             if (io_dctl) begin d_async <= cpu_d_out[0]; d_ien <= cpu_d_out[7]; end      // $E049
+`ifdef SUBBOTH
+                            if (io_ssel && (cpu_d_out == 8'd1 || cpu_d_out == 8'd2)) sel8 <= cpu_d_out[1];      // $FFCF
+`endif
                             if (io_mmu) begin tr_raw <= cpu_d_out; tr <= cpu_d_out[0]; end
                             if (io_modr) begin acia_cwr <= 1'b1; acia_cbyte <= 8'h03; d_async <= 1'b0; d_ien <= 1'b0; end      // a new machine mode: the ACIA interrupts are off
                             if (io_acia && !off[0]) begin
@@ -723,7 +742,47 @@ module matenro_soc #(
         .a_req(zm_req), .a_wr(zm_wr), .a_addr(zm_addr), .a_wdata(zm_wdata), .a_hit(zb_hit), .a_ack(zb_ack), .a_rdata(zb_rdata),
         .w_req(win_req), .w_wr(win_wr), .w_addr(win_addr), .w_wdata(win_wdata), .w_hit(win_hit), .w_ack(wb_ack), .w_rdata(wb_rdata)
     );
-`ifdef SUB8088
+`ifdef SUBBOTH
+    // the Z80 and the 8088 both are in the FPGA; the register SUBSEL ($FFCF: 1 = Z80, 2 = 8088) says which one is on the cross link.
+    // The other one is held in reset (it has no state: after a change the chosen one starts from its reset like after the power on).
+    wire        z_irq, z_firq, z_wait, z_win, z_on, e_irq, e_firq, e_wait, e_win, e_on;
+    wire [7:0]  z_rdata, e_rdata;
+    wire        z_wreq, z_wwr, e_wreq, e_wwr, z_mreq, z_mwr, e_mreq, e_mwr;
+    wire [20:0] z_wadr, e_wadr, z_madr, e_madr;
+    wire [7:0]  z_wdat, e_wdat, z_mdat, e_mdat;
+    wire [39:0] z_dbg, e_dbg;
+    z80_sub #(.CLKDIV(CZ_DIV), .CLK_KHZ(CLK_HZ / 1000)) subz (
+        .clk(clk), .rst(rst || sel8),
+        .m_addr(xl_a), .m_re(xl_re && !sel8), .m_we(xl_we && !sel8), .m_wdata(cpu_d_out), .m_rdata(z_rdata), .m_wait(z_wait), .m_win(z_win), .sub_on(z_on),
+        .irq_o(z_irq), .firq_o(z_firq),
+        .win_req(z_wreq), .win_wr(z_wwr), .win_addr(z_wadr), .win_wdata(z_wdat), .win_ack(win_ack), .win_rdata(win_rdata),
+        .mem_req(z_mreq), .mem_wr(z_mwr), .mem_addr(z_madr), .mem_wdata(z_mdat), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(z_dbg)
+    );
+    i8088_sub #(.CLKDIV(C88_DIV), .CLK_KHZ(CLK_HZ / 1000)) sube (
+        .clk(clk), .rst(rst || !sel8),
+        .m_addr(xl_a), .m_re(xl_re && sel8), .m_we(xl_we && sel8), .m_wdata(cpu_d_out), .m_rdata(e_rdata), .m_wait(e_wait), .m_win(e_win), .sub_on(e_on),
+        .irq_o(e_irq), .firq_o(e_firq),
+        .win_req(e_wreq), .win_wr(e_wwr), .win_addr(e_wadr), .win_wdata(e_wdat), .win_ack(win_ack), .win_rdata(win_rdata),
+        .mem_req(e_mreq), .mem_wr(e_mwr), .mem_addr(e_madr), .mem_wdata(e_mdat), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(e_dbg)
+    );
+    assign xl_rdata  = sel8 ? e_rdata : z_rdata;
+    assign xl_wait   = sel8 ? e_wait  : z_wait;
+    assign xl_win    = sel8 ? e_win   : z_win;
+    assign xl_on     = sel8 ? e_on    : z_on;
+    assign xl_irq    = sel8 ? e_irq   : z_irq;
+    assign xl_firq   = sel8 ? e_firq  : z_firq;
+    assign win_req   = sel8 ? e_wreq  : z_wreq;
+    assign win_wr    = sel8 ? e_wwr   : z_wwr;
+    assign win_addr  = sel8 ? e_wadr  : z_wadr;
+    assign win_wdata = sel8 ? e_wdat  : z_wdat;
+    assign zm_req    = sel8 ? e_mreq  : z_mreq;
+    assign zm_wr     = sel8 ? e_mwr   : z_mwr;
+    assign zm_addr   = sel8 ? e_madr  : z_madr;
+    assign zm_wdata  = sel8 ? e_mdat  : z_mdat;
+    assign dbg_z80   = sel8 ? e_dbg   : z_dbg;
+`elsif SUB8088
     // the 8088 (MCL86) instead of the Z80: the Tang Nano 20K machine (fpga/tn20k)
     i8088_sub #(.CLKDIV(C88_DIV), .CLK_KHZ(CLK_HZ / 1000)) sub (
         .clk(clk), .rst(rst),

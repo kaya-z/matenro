@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Build a bitstream of the Matenro SoC (6809 + 8088) for the Tang Nano 20K with the Gowin IDE (command line), up to the .fs file.
-# It is NOT written to a board here: there is no board yet (openFPGALoader -b tangnano20k FILE, later).
+# Build a bitstream of the Matenro SoC (6809 + Z80 and 8088, chosen with the OS-9 command subsel) for the Tang Nano 20K with the
+# Gowin IDE (command line), up to the .fs file.  SUBS=8088 builds the 8088 alone (no Z80 core).
+# Written to the board with:  openFPGALoader -m FILE  (SRAM; -f writes the flash)
 #   fpga/tn20k/scripts/build.sh [xltest88|boot] [IDE_DIR]
 #
 # xltest88  the test ROM fpga/tn20k/test/xltest88.asm: the 6809 loads the self test of the 8088 (tests/i8088/core.asm) into the 8088 memory,
@@ -24,9 +25,9 @@ boot)     BASE="16'hFF00"; AW=8 ;;
 *) echo "unknown ROM $ROM"; exit 1 ;;
 esac
 case ${CLKMHZ:-54} in
-67.5) CLK_HZ=67500000; PH=9; D88=14; IDIV=1; FBDIV=4;  ODIV=8;  MUL=5;  DIV=2 ;;
-60)   CLK_HZ=60000000; PH=8; D88=12; IDIV=8; FBDIV=19; ODIV=16; MUL=20; DIV=9 ;;
-54)   CLK_HZ=54000000; PH=7; D88=11; IDIV=0; FBDIV=1;  ODIV=16; MUL=2;  DIV=1 ;;
+67.5) CLK_HZ=67500000; PH=9; D88=14; DZ=9; IDIV=1; FBDIV=4;  ODIV=8;  MUL=5;  DIV=2 ;;
+60)   CLK_HZ=60000000; PH=8; D88=12; DZ=8; IDIV=8; FBDIV=19; ODIV=16; MUL=20; DIV=9 ;;
+54)   CLK_HZ=54000000; PH=7; D88=11; DZ=7; IDIV=0; FBDIV=1;  ODIV=16; MUL=2;  DIV=1 ;;
 *) echo "CLKMHZ is 67.5, 60 or 54"; exit 1 ;;
 esac
 B=$HERE/build/$ROM${TAG}
@@ -44,11 +45,14 @@ else
     python3 "$SIM09/scripts/bin2hex.py" "$SIM09/../../fuzix/images/bootrom.bin" > "$B/rom.hex"
 fi
 cp "$HERE/../vendor/mcl86/mcl86_ucode.hex" "$B/mcl86_ucode.hex"
+TV80=${TV80:-$HERE/../../private/tv80src/rtl/core}
+sh "$HERE/../sim/mk_tv80s_cen.sh" "$TV80" "$B/tv80s_cen.v"
 set -- $(date +"%Y %m %d %H %M %S")
 cat > "$B/tn20k_cfg.vh" <<EOT
 \`define CLK_HZ $CLK_HZ
 \`define PH_DIV $PH
 \`define C88_DIV $D88
+\`define CZ_DIV $DZ
 \`define PLL_IDIV $IDIV
 \`define PLL_FBDIV $FBDIV
 \`define PLL_ODIV $ODIV
@@ -62,7 +66,7 @@ cat > "$B/tn20k_cfg.vh" <<EOT
 \`define RTC_MIN $(echo $5 | sed 's/^0//')
 \`define RTC_SEC $(echo $6 | sed 's/^0//')
 \`define MEMTEST_EN ${MEMTEST:-1}
-\`define SUB8088 1
+$( [ "${SUBS:-both}" = 8088 ] && echo '`define SUB8088 1' || echo '`define SUBBOTH 1' )
 \`define UCODE_FILE "$B/mcl86_ucode.hex"
 EOT
 cp "$HERE/constraints/tn20k.cst" "$B/pins.cst"
@@ -85,6 +89,12 @@ add_file -type verilog $HERE/../tn9k/rtl/psram_arb4.v
 add_file -type verilog $HERE/../tn9k/rtl/btn_toggle.v
 add_file -type verilog $HERE/../rtl/shr_ap.v
 add_file -type verilog $HERE/../rtl/i8088_sub.v
+add_file -type verilog $HERE/../rtl/z80_sub.v
+add_file -type verilog $B/tv80s_cen.v
+add_file -type verilog $TV80/tv80_core.v
+add_file -type verilog $TV80/tv80_mcode.v
+add_file -type verilog $TV80/tv80_alu.v
+add_file -type verilog $TV80/tv80_reg.v
 add_file -type verilog $HERE/../rtl/xlink.v
 add_file -type verilog $HERE/../rtl/eu4kx32.v
 add_file -type verilog $HERE/../vendor/mcl86/eu.v

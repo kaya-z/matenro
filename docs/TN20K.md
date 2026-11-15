@@ -37,6 +37,23 @@ SDRAM のピンは、パッケージの中でつながっているので `.cst` 
 * 6809 側は 9K の Level 2 の OS-9 がそのまま動きます。`SUB8088` を定義した SoC は、XLINK の `XID` が 2 になります。
 * 時計は 9K と同じ「システムクロックのパルスで進める」方式です (docs/FPGA.md の 9.13)。
 
+## 2.1 Z80 と 8088 の切り替え (`subsel`、2026-11-15)
+
+20K の FPGA には **Z80 (TV80) と 8088 (MCL86) の両方**が載っています (`` `define SUBBOTH ``、`fpga/tn20k/scripts/build.sh` の既定。`SUBS=8088` で 8088 だけ)。同時には使わず、**OS-9 の実行中に切り替えます**。
+
+```
+subsel            今のサブ CPU を表示 (subsel: 8088)
+subsel z80        Z80 に切り替える (cpm hello.com、CP/M-80)
+subsel 8088       8088 に切り替える (cpm hello86.cmd、CP/M-86、dos ...)
+```
+
+* **レジスタ** SUBSEL = `$FFCF` (XLINK の隣、`$FFCA-$FFCE`): 読むと 1 (Z80) か 2 (8088)、書くと切り替え。電源を入れた直後は 8088 (`SUB_DEF8`)。リセットで元に戻る。9K の版 (Z80 だけ) には無く、読むと 0 で、`subsel` は「サブ CPU は 1 つだけ」と言う。
+* **回路** (`matenro_soc.v`、`` `ifdef SUBBOTH ``): `z80_sub` と `i8088_sub` が同じポートを持つので、選ばれていない方を**リセットのまま**にして、出力 (XLINK の読み出し、割り込み、窓、メモリのポート) を `sel8` で選ぶだけです。XLINK は両方の中にあり、`XID` (`$FFCC`) は選ばれた方の 1 か 2 を返すので、`cpm` と `dos` はそのまま動きます。選び直したサブ CPU は、リセットから始まります (SMMU も初期値): 走らせるものは入れ直してください。
+* `subsel` は XCTL を 0 にして (サブ CPU を止めて) から切り替えます。`cpm` は、Z80 のときに `.CMD` (CP/M-86) を渡されると、止まらずに `subsel 8088` と案内します。
+* **シミュレータ**にも同じレジスタがあります (`matenro -sub 8088` で起動して `subsel z80`)。
+* **資源**: Logic 9,792 / 20,736 (**48%**)、CLS 60%、BSRAM 18 / 46、レジスタ 3,319。`clk81` の Fmax は 54.111 MHz (制約 54 MHz。**余裕は 0.1 MHz** で、8088 だけのとき (55.0 MHz) より小さい)。負のスラックはありません。
+* **検証**: `make -C fpga/tn20k/sim bothboot DISK=… SCRIPT=both.txt CLKS=2500000000 PH=7 D88=11 HZ=54000000 CZ=7` (SoC 全体の RTL で OS-9 が SD から起動し、`subsel`、`cpm hello86.cmd`、`subsel z80`、`cpm hello.com`、`subsel 8088` を通した。約 2 分)、C のシミュレータの `matenro_test.py` の `os9_subsel` (3 項目)。
+
 ## 3. メモリ: SDRAM とコントローラ (`fpga/rtl/sdram_ctl.v`)
 
 * 8MB のうち、**4MB** を使います (調停のアドレスは 22 ビットのバイトアドレス。OS-9 Level 2 の物理メモリは 2MB)。アドレスの写像: ワード (32 ビット) = `addr[21:2]`、列 = `w[7:0]`、バンク = `w[9:8]`、行 = `w[19:10]`。

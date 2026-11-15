@@ -183,10 +183,10 @@ def os9_xrun(tmp):
 
 
 def build_cpm(tmp):
-    """assemble the OS-9 commands cpm, xrun, reboot, etime, bdos, cpp80 and dos (tools/build_cpm.sh); returns the output directory"""
+    """assemble the OS-9 commands cpm, xrun, reboot, etime, subsel, bdos, cpp80 and dos (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 12:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 13:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -209,7 +209,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False, k
     if d1:                                              # another disk image as /d1
         shutil.copy(d1, os.path.join(d, 'WORK.dsk'))
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos'):
+    for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos', 'subsel'):
         if n in keep:                                   # keep the command of the OS-9 disk of new-sbc09 (the same name)
             continue
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
@@ -550,6 +550,33 @@ def os9_dos2(tmp):
     check('MS-DOS 2.0 run mode: DOS leaves by itself (the OS-9 prompt is back each time)', out.count('OS9:dos') == 2 and out.rstrip().endswith('OS9:'), out[-600:])
 
 
+def os9_subsel(tmp):
+    """the OS-9 command subsel (register $FFCF): Z80 and 8088 chosen while OS-9 runs"""
+    if not os.path.isdir(OS9):
+        return
+
+    # subsel: the Z80 and the 8088 are chosen while OS-9 runs (the register $FFCF; the FPGA of the Tang Nano 20K has both cores)
+    z80com = os.path.join(tmp, 'ss_hello.com')
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'z80asm.py'), os.path.join(ROOT, 'tests', 'cpm', 'hello.asm'), '-o', z80com])
+    assert r.returncode == 0, r.stdout
+    h86 = os.path.join(tmp, 'ss_h86.bin')
+    r = run(['nasm', '-f', 'bin', os.path.join(ROOT, 'tests', 'cpm', 'hello86.asm'), '-o', h86])
+    assert r.returncode == 0, r.stdout
+    cmd86 = os.path.join(tmp, 'ss_hello86.cmd')
+    r = run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'mkcmd.py'), '8080', h86, cmd86])
+    assert r.returncode == 0, r.stdout
+    sc = ['send "subsel\\r"', 'expect "OS9:"', 'send "cpm hello86.cmd abc\\r"', 'expect "OS9:"',
+          'send "subsel z80\\r"', 'expect "OS9:"', 'send "cpm hello.com abc\\r"', 'expect "OS9:"',
+          'send "cpm hello86.cmd abc\\r"', 'expect "OS9:"', 'send "subsel 8088\\r"', 'expect "OS9:"',
+          'send "cpm hello86.cmd xyz\\r"', 'expect "OS9:"', 'send "subsel q\\r"', 'expect "OS9:"']
+    out, d = os9_session(tmp, 'subsel', '8088', {'hello.com': open(z80com, 'rb').read(), 'hello86.cmd': open(cmd86, 'rb').read()}, sc, timeout=400)
+    out = out.replace('\r', '')
+    check('subsel: the sub CPU is shown (8088), changed to the Z80 and back (the register SUBSEL, XID follows)', 'subsel: 8088' in out and 'subsel: Z80' in out and out.count('subsel: 8088') == 2, out[-700:])
+    check('subsel: cpm runs CP/M-86 on the 8088, CP/M-80 on the Z80, and says so when a .CMD program meets the Z80',
+          out.count('Hello from CP/M-86 on the 8088') == 2 and 'Hello from CP/M-80 on the Z80' in out and 'sub CPU is the Z80 (subsel 8088)' in out, out[-900:])
+    check('subsel: a wrong argument is refused', 'usage: subsel' in out, out[-300:])
+
+
 def os9_bigdisk(tmp):
     """/d1 as a hard disk (tools/mkrbf.py): an empty RBF volume of 24576 sectors (the allocation map fills 12 sectors, the
     old limit of tools/growdisk.py was 2048 sectors); 1 MB files beyond the first map sector, read back, deleted, the free
@@ -878,6 +905,7 @@ def main():
         os9_bigdisk(tmp)
         os9_dos(tmp)
         os9_dos2(tmp)
+        os9_subsel(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print('%d tests, %d failed' % (total, fails))

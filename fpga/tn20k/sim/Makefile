@@ -51,3 +51,23 @@ build_boot/obj/Vsim_top: $(SOCSRC) build_boot/rom.hex $(SIM09)/sim/tb.cpp
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_boot/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
 .PHONY: boot
+
+# Both sub CPUs in the FPGA (`define SUBBOTH): the register SUBSEL ($FFCF, the OS-9 command subsel) chooses the Z80 or the 8088.
+#   make bothboot TV80=<dir with tv80s.v ...> DISK=../build/matenro20k_l2.dsk SCRIPT=both.txt CLKS=900000000 PH=7 D88=11 HZ=54000000 CZ=7
+TV80 ?= /export/nas/archives/matenro/private/tv80src/rtl/core
+CZ ?= 7
+BOTHSRC = $(SOCSRC) ../../rtl/z80_sub.v build_both/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
+bothboot: build_both/obj/Vsim_top
+	build_both/obj/Vsim_top -d $(DISK) -s $(SCRIPT) -c $(CLKS)
+build_both/rom.hex:
+	mkdir -p build_both
+	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
+build_both/tv80s_cen.v: ../../sim/mk_tv80s_cen.sh
+	mkdir -p build_both
+	sh ../../sim/mk_tv80s_cen.sh $(TV80) $@
+build_both/obj/Vsim_top: $(BOTHSRC) build_both/rom.hex $(SIM09)/sim/tb.cpp
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_both/obj -DSUBBOTH '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_both/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCZ_DIV=$(CZ) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
+	  -CFLAGS "-O2" $(BOTHSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
+.PHONY: bothboot

@@ -163,6 +163,7 @@ xlink_t *xlink_create(machine_t *m, const char *name, uint32_t hz)
     if (!x) return NULL;
     x->ops = ops;
     x->m = m;
+    x->hz_opt = hz;
     x->hz = hz ? hz : ops->max_hz;
     x->period_ps = 1000000000000ull / x->hz;
     x->quantum = 16;
@@ -181,6 +182,33 @@ xlink_t *xlink_create(machine_t *m, const char *name, uint32_t hz)
     ops->reset(x->cpu);
     if (m->hw_waits && ops->set_timing) ops->set_timing(x->cpu, 1);       /* -hw: the bus interface unit (prefetch queue) */
     return x;
+}
+
+void xlink_select(xlink_t *x, int id)
+{
+    const sub_cpu_ops_t *ops = sub_cpu_find(id == 1 ? "z80" : id == 2 ? "8088" : "");
+    sub_bus_t bus;
+    void *cpu;
+    if (!ops || ops == x->ops) return;
+    bus.ctx = x;
+    bus.mem_read = sub_mem_read;
+    bus.mem_write = sub_mem_write;
+    bus.io_read = sub_io_read;
+    bus.io_write = sub_io_write;
+    bus.int_ack = sub_int_ack;
+    cpu = ops->create(&bus);
+    if (!cpu) return;
+    x->ops->destroy(x->cpu);
+    x->ops = ops;
+    x->cpu = cpu;
+    x->hz = x->hz_opt ? x->hz_opt : ops->max_hz;
+    x->period_ps = 1000000000000ull / x->hz;
+    for (int i = 0; i < XL_BLOCKS; i++) x->map[i] = (uint8_t)(0x80 + i);
+    x->svec = 0xff;
+    x->idx = 0;
+    x->mi = 0;
+    xlink_reset(x);
+    if (x->m->hw_waits && ops->set_timing) ops->set_timing(x->cpu, 1);
 }
 
 void xlink_destroy(xlink_t *x)
@@ -270,6 +298,7 @@ uint8_t xlink_main_read(xlink_t *x, int off)
         if (running(x)) s |= XS_RUN;
         if (running(x) && x->ops->is_halted(x->cpu)) s |= XS_HALT;
         return s; }
+    case XR_SEL:  return (uint8_t)x->ops->id;
     case XR_IDX:  return x->idx;
     case XR_DAT: {
         uint8_t v = ext_read(x, x->idx & 0x7f);
@@ -313,6 +342,7 @@ void xlink_main_write(xlink_t *x, int off, uint8_t v)
         x->pend_s2m = 0;
         machine_update_irq(m);
         return;
+    case XR_SEL: xlink_select(x, v); return;
     case XR_IDX: x->idx = v; return;
     case XR_DAT:
         ext_write(x, x->idx & 0x7f, v);

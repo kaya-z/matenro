@@ -63,6 +63,8 @@ msgfile  fcc   "cpm: cannot read the program file"
          fcb   C$CR
 msgbad   fcc   "cpm: not a CP/M-86 .CMD file"
          fcb   C$CR
+msgcmdz  fcc   "cpm: a CP/M-86 .CMD program: the sub CPU is the Z80 (subsel 8088)"
+         fcb   C$CR
 msgbig   fcc   "cpm: program too big"
          fcb   C$CR
 msgwf    fcc   "cpm: a write failed (disk full)"
@@ -183,6 +185,23 @@ opt9     leax  -1,x
          lda   subty,u
          cmpa  #1
          lbne  load88
+* a CP/M-86 program (.CMD) for the Z80 would hang: say so (subsel 8088)
+         lda   -4,x
+         cmpa  #'.'
+         bne   zok
+         lda   -3,x
+         anda  #$DF
+         cmpa  #'C'
+         bne   zok
+         lda   -2,x
+         anda  #$DF
+         cmpa  #'M'
+         bne   zok
+         lda   -1,x
+         anda  #$DF
+         cmpa  #'D'
+         lbeq  cmdz
+zok
 * ---------------------------------------------------------------- Z80: load the .COM file at 0100h
          clr   dseg,u
          clr   dseg+1,u
@@ -255,6 +274,8 @@ usage    leax  msgusage,pcr
 nofile   leax  msgfile,pcr
          bra   say
 badcmd   leax  msgbad,pcr
+         bra   say
+cmdz     leax  msgcmdz,pcr
          bra   say
 toobig   leax  msgbig,pcr
 say      lda   #2

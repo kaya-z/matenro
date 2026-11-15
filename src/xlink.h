@@ -27,6 +27,7 @@ struct machine;
 #define XR_ID     0x4c            /* R sub CPU id (0 = none)   W ring the sub CPU doorbell          */
 #define XR_IDX    0x4d            /* extended register index; bit 7 = auto increment after XR_DAT   */
 #define XR_DAT    0x4e            /* extended register data                                         */
+#define XR_SEL    0x4f            /* SUBSEL: R the sub CPU (1 Z80, 2 8088)   W 1 / 2: choose it (the FPGA of the Tang Nano 20K has both) */
 
 /* extended registers (index) */
 #define XE_M2S    0x00            /* 4 bytes main -> sub, read / write                              */
@@ -82,6 +83,7 @@ typedef struct xlink {
     uint32_t  clk_latch;
     uint32_t  us_latch;
     uint32_t  hz;
+    uint32_t  hz_opt;             /* the clock asked for (-subclock), 0 = the maximum of the CPU */
     uint64_t  period_ps;
     uint64_t  t_ps;               /* local time of the sub CPU */
     uint64_t  clocks;             /* sub CPU clocks executed   */
@@ -96,6 +98,8 @@ typedef struct xlink {
 xlink_t *xlink_create(struct machine *m, const char *name, uint32_t hz);
 void     xlink_destroy(xlink_t *x);
 void     xlink_reset(xlink_t *x);
+/* SUBSEL: replace the sub CPU by the one with this id (1 = z80, 2 = 8088); the new one starts from reset */
+void     xlink_select(xlink_t *x, int id);
 
 /* load `len` bytes into the sub CPU address space (through the SMMU) */
 void     xlink_load(xlink_t *x, uint32_t addr, const uint8_t *data, size_t len);

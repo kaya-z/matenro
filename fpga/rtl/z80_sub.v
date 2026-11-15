@@ -130,7 +130,7 @@ module z80_sub #(
     wire [7:0] xl_rdata;
     always @(posedge clk) m_rdata <= xl_rdata;
 
-    xlink #(.SUB_ID(8'd1), .SUB_KHZ(16'd7500), .CLK_KHZ(CLK_KHZ)) xl (
+    xlink #(.SUB_ID(8'd1), .SUB_KHZ(CLK_KHZ / CLKDIV), .CLK_KHZ(CLK_KHZ)) xl (
         .clk(clk), .rst(rst),
         .m_addr(m_addr), .m_re(m_re), .m_we(m_we), .m_wdata(m_wdata), .m_rdata(xl_rdata), .m_wait(m_wait), .m_win(m_win),
         .irq_n_o(irq_o), .firq_o(firq_o), .shr_o(),
