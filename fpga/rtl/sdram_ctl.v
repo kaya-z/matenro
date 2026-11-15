@@ -29,6 +29,7 @@ module sdram_ctl #(
     input  wire [15:0] din,
     input  wire        byte_write,
     output reg  [15:0] dout,
+    output reg  [31:0] dout32,          // the whole 32 bit word of the last read (addr[21:2]), valid when busy is low
     output wire        busy,
     // the SDRAM (names of the Gowin primitives for the embedded SDRAM)
     output wire        O_sdram_clk,
@@ -139,7 +140,10 @@ module sdram_ctl #(
                     end else O_sdram_dqm <= 4'b0000;
                 end
                 if (cyc == 4'd4) dq_oe <= 1'b0;
-                if (!is_wr && cyc == 4'd6) dout <= lane_a[1] ? IO_sdram_dq[31:16] : IO_sdram_dq[15:0];   // READ at 3: taken 3 clocks later
+                if (!is_wr && cyc == 4'd6) begin                      // READ at 3: taken 3 clocks later
+                    dout   <= lane_a[1] ? IO_sdram_dq[31:16] : IO_sdram_dq[15:0];
+                    dout32 <= IO_sdram_dq;                              // the whole 32 bit word (the frame buffer reads 4 pixels at once)
+                end
                 if (cyc == 4'd9) st <= S_IDLE;                         // auto precharge done (tWR + tRP for a write)
             end
             S_REF: begin

@@ -124,8 +124,49 @@ $(KJ_DISK): kj.txt ../../../tools/build_cpm.sh ../../../os9/kanjild/kanjild.asm
 	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/kanji.bin /d0/kanji.bin\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/kanjild /d0/cmds/kanjild\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/kanjild e pe r pr\\r"\nexpect "OS9:"\nquit\n' > build_kj/prep.txt
 	cd build_kj && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 kd.dsk -v v0 -script prep.txt > prep.log 2>&1
 build_kj/obj/Vsim_top: $(SOCSRC) build_kj/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_kj/obj -DSUB8088 -DHCTL -DDUMPKJ '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_kj/obj -DSUB8088 -DHCTL -DDUMPKJ $(KJDEF) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_kj/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
 .PHONY: kjboot
+
+# The frame buffer of the HDMI screen: 320 x 240 x 8 bit in the SDRAM model at $300000 (fb32.hex: a test pattern), the screen (hdmi_screen20 + hdmi_fb)
+# shows it doubled with the default palette and the entry 7; check_fb.py compares the whole picture.   make hdmig
+HDMIG_SRC = $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v $(SIM09)/rtl/hdmi_video.v \
+            $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_fb.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmig_top.v
+hdmig: build_hdmig/obj/Vhdmi_top
+	cd build_hdmig && obj/Vhdmi_top -i $(abspath hdmig_in.txt) -o screen.ppm -f 3
+	python3 check_fb.py build_hdmig/screen.ppm
+build_hdmig/obj/Vhdmi_top: $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp fb32.hex
+	mkdir -p build_hdmig
+	cp $(SIM09)/rtl/font8x16.hex build_hdmig/
+	python3 -c "import struct; b=open('$(KANJI_BIN)','rb').read(); b+=bytes(-len(b)%4); open('build_hdmig/kanji32.hex','w').write(chr(10).join('%08x'%struct.unpack('<I',b[k:k+4])[0] for k in range(0,len(b),4))+chr(10))"
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl $(HDMIG_DEF) --top-module hdmi_top -Mdir build_hdmig/obj \
+	  -GFB_FILE='"$(abspath fb32.hex)"' -GKANJI_FILE='"$(abspath build_hdmig/kanji32.hex)"' \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -CFLAGS "-O2" $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp -o Vhdmi_top >/dev/null
+.PHONY: hdmig
+
+# The OS-9 command gfx: `gfx test` writes the test picture through the window (HCTL.1) into the SDRAM; at the end the testbench dumps the 76,800 bytes at
+# $300000 (fbdump.bin) and check_gfx.py compares them with the picture that the command should draw.   make gfxboot
+GFX_DISK = build_gfx/gd.dsk
+gfxboot: build_gfx/obj/Vsim_top $(GFX_DISK)
+	cd build_gfx && rm -f fbdump.bin && obj/Vsim_top -d gd.dsk -s $(abspath gfx.txt) -c 1500000000 | tr -d '\r' | grep -E "gfx|FBDUMP|OS9:"
+	python3 check_gfx.py build_gfx/fbdump.bin
+build_gfx/rom.hex:
+	mkdir -p build_gfx
+	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
+$(GFX_DISK): gfx.txt ../../../tools/build_cpm.sh ../../../os9/gfx/gfx.asm
+	mkdir -p build_gfx/b build_gfx/v0
+	../../../tools/build_cpm.sh $(CURDIR)/build_gfx/b > /dev/null
+	cp $(SIM09)/../../os9/OS9L2.dsk $@
+	cp -r $(SIM09)/../../os9/level2/cmds build_gfx/v0/cmds
+	cp build_gfx/b/gfx build_gfx/v0/cmds/
+	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/gfx /d0/cmds/gfx\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/gfx e pe r pr\\r"\nexpect "OS9:"\nquit\n' > build_gfx/prep.txt
+	cd build_gfx && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 gd.dsk -v v0 -script prep.txt > prep.log 2>&1
+build_gfx/obj/Vsim_top: $(SOCSRC) build_gfx/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfx/obj -DSUB8088 -DHCTL -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_gfx/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
+	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
+.PHONY: gfxboot

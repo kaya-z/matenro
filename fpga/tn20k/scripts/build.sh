@@ -92,7 +92,7 @@ set_device -name GW2AR-18C GW2AR-LV18QN88C8/I7
 add_file -type verilog $HERE/rtl/tn20k_top.v
 add_file -type verilog $HERE/rtl/tn20k_pll.v
 $( [ "$HDMI" != 0 ] && { echo "add_file -type verilog $HERE/rtl/hdmi_phy20.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_text20.v"; for f in hdmi_term hdmi_video tmds_enc; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done; } )
-$( [ "$KANJI" != 0 ] && for f in hdmi_text hdmi_decode hdmi_glyph psram_xfer; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done )
+$( [ "$KANJI" != 0 ] && { for f in hdmi_decode hdmi_glyph psram_xfer; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done; echo "add_file -type verilog $HERE/../rtl/hdmi_screen20.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_fb.v"; } )
 add_file -type verilog $HERE/../rtl/sdram_ctl.v
 add_file -type verilog $HERE/../tn9k/rtl/matenro_soc.v
 add_file -type verilog $HERE/../tn9k/rtl/psram_arb4.v

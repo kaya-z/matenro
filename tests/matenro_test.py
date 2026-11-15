@@ -186,7 +186,7 @@ def build_cpm(tmp):
     """assemble the OS-9 commands cpm, xrun, reboot, etime, subsel, bdos, cpp80 and dos (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 14:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 15:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 
@@ -209,7 +209,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False, k
     if d1:                                              # another disk image as /d1
         shutil.copy(d1, os.path.join(d, 'WORK.dsk'))
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
-    for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos', 'subsel', 'kanjild'):
+    for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos', 'subsel', 'kanjild', 'gfx'):
         if n in keep:                                   # keep the command of the OS-9 disk of new-sbc09 (the same name)
             continue
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))

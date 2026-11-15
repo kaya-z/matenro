@@ -77,6 +77,13 @@ module sim_top #(
 `ifdef TRACE88
     always @(posedge clk) if (soc.zm_ack) $display("%s %h %h", soc.zm_wr ? "W" : "R", soc.zm_addr, soc.zm_wr ? soc.zm_wdata : soc.zm_rdata);
 `endif
+`ifdef DBGIO
+    integer dbgn = 0;
+    always @(posedge clk) if (soc.acc2 && soc.vma_pend && soc.in_io_q && soc.off_q >= 9'h060 && soc.off_q <= 9'h062 && dbgn < 12) begin
+        dbgn = dbgn + 1;
+        $display("IO %h rnw=%b d=%h a=%h l2=%b", soc.off_q, soc.cpu_rnw, soc.cpu_d_out, soc.a, soc.l2);
+    end
+`endif
 `ifdef DUMPKJ
     // when the kanji image is declared valid (HCTL bit 0 set by the OS-9 command kanjild): the first 185,856 bytes at $200000 of the SDRAM model
     integer kfd, kk;
@@ -93,6 +100,24 @@ module sim_top #(
         end
         $fclose(kfd);
         $display("KJDUMP written");
+    end
+`endif
+`ifdef DUMPFB
+    // when the window goes back below 2 MB (the OS-9 command gfx has written the picture): the 76,800 bytes at $300000 of the SDRAM model
+    integer ffd, fk;
+    reg [21:0] fba;
+    reg [19:0] fw;
+    reg [31:0] fdw;
+    always @(negedge soc.win_hi) begin
+        ffd = $fopen("fbdump.bin", "wb");
+        for (fk = 0; fk < 76800; fk = fk + 1) begin
+            fba = 22'h300000 + fk;
+            fw = fba[21:2];
+            fdw = mdl.mem[{fw[9:8], 1'b0, fw[19:10], fw[7:0]}];
+            $fwrite(ffd, "%c", fdw[8 * fba[1:0] +: 8]);
+        end
+        $fclose(ffd);
+        $display("FBDUMP written");
     end
 `endif
 `ifdef DUMPMEM

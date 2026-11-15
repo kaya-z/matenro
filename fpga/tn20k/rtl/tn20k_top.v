@@ -66,6 +66,20 @@ module tn20k_top (
     btn_toggle #(.DEB_BITS(20)) s2_toggle (.clk(clk), .rst_n(resetn), .btn_n(~s2), .state(led_mode));       // 15 ms debounce
 
     wire        ps_rd, ps_wr, ps_bw, ps_busy;
+    // the frame buffer of the HDMI screen reads the SDRAM itself (32 bits at a time), before the requests of the SoC: it takes the clock in
+    // which the controller is free and the SoC has no pulse; the SoC sees "busy" in that clock (the combinational fb_go), so it does not start
+    wire        ctl_busy, fb_rq, fb_go;
+    wire [21:0] fb_addr;
+    wire [31:0] fb_dout32;
+`ifdef KANJI
+    assign      fb_go = fb_rq && !ctl_busy && !ps_rd && !ps_wr;
+`else
+    assign      fb_go = 1'b0;
+`endif
+    assign      ps_busy = ctl_busy || fb_go;
+    wire        gfx_on, pal_we;
+    wire [7:0]  pal_idx;
+    wire [23:0] pal_rgb;
     wire [21:0] ps_addr;
     wire [15:0] ps_din, ps_dout;
     wire [111:0] dbg_regs;
@@ -75,7 +89,7 @@ module tn20k_top (
 
     sdram_ctl #(.FREQ(`CLK_HZ), .REFRESH_CLKS(`CLK_HZ / 1000 * 74 / 10000)) sdram (
         .clk(clk), .clk_sdram(clk_p), .resetn(resetn),
-        .read(ps_rd), .write(ps_wr), .addr(ps_addr), .din(ps_din), .byte_write(ps_bw), .dout(ps_dout), .busy(ps_busy),
+        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(ps_din), .byte_write(ps_bw), .dout(ps_dout), .dout32(fb_dout32), .busy(ctl_busy),
         .O_sdram_clk(O_sdram_clk), .O_sdram_cke(O_sdram_cke), .O_sdram_cs_n(O_sdram_cs_n), .O_sdram_cas_n(O_sdram_cas_n),
         .O_sdram_ras_n(O_sdram_ras_n), .O_sdram_wen_n(O_sdram_wen_n), .O_sdram_dqm(O_sdram_dqm), .O_sdram_addr(O_sdram_addr),
         .O_sdram_ba(O_sdram_ba), .IO_sdram_dq(IO_sdram_dq)
@@ -98,11 +112,13 @@ module tn20k_top (
 `ifdef KANJI
     // the screen of sim09 with the character decoder (UTF-8, EUC-JP, Shift_JIS) and the kanji glyphs: the image (OS-9 command
     // kanjild) is in the SDRAM at $200000, the tables and the glyph lines are read through the masters 1 and 2 of the arbiter
-    hdmi_text #(.ROWS(25), .CHARSET(`HDMI_CHARSET), .FONT_FILE("font8x16.hex")) screen (
+    hdmi_screen20 #(.ROWS(25), .CHARSET(`HDMI_CHARSET), .FONT_FILE("font8x16.hex")) screen (
         .clk(clk), .rst(~resetn), .stb(term_stb), .din(term_byte), .busy(term_busy), .kanji_ok(kanji_ok),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
-        .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r)
+        .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
+        .gfx_on(gfx_on), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
+        .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dout32(fb_dout32)
     );
 `else
     hdmi_text20 #(.ROWS(25), .FONT_FILE("font8x16.hex")) screen (
@@ -120,6 +136,7 @@ module tn20k_top (
 `endif
 `ifndef KANJI
     assign x1_req = 1'b0, x1_addr = 22'd0, x2_req = 1'b0, x2_addr = 22'd0;
+    assign fb_rq = 1'b0, fb_addr = 22'd0;
 `endif
 
     matenro_soc #(
@@ -135,7 +152,7 @@ module tn20k_top (
         .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
-        .kanji_ok(kanji_ok), .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
+        .kanji_ok(kanji_ok), .gfx_on(gfx_on), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb), .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
         .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma(), .dbg_dbus()
     );
 endmodule

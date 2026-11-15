@@ -18,7 +18,7 @@ MSDOS2_SRC=${MSDOS2_SRC:?} UASM=${UASM:?} sh "$ROOT/tools/build_dosbin2.sh" "$T/
 sh "$ROOT/tools/build_dosrun.sh" "$T/dr" "" "$T/d2" > /dev/null
 mkdir -p "$T/v0/dos"
 cp -r "$SIM09/os9/level2/cmds" "$T/v0/cmds"
-CMDS="cpm xrun reboot etime duo bdos bdostest xlink x0 cpp80 cc80 dos subsel kanjild"
+CMDS="cpm xrun reboot etime duo bdos bdostest xlink x0 cpp80 cc80 dos subsel kanjild gfx"
 for n in $CMDS; do cp "$T/b/$n" "$T/v0/cmds/$n"; done
 python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/hello.asm" -o "$T/v0/hello.com" > /dev/null
 for n in hello86 fileio86 line86; do
