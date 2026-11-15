@@ -13,7 +13,8 @@
 // The SDRAM clock (O_sdram_clk) is the system clock inverted (a PLL output 180 degrees off): the SDRAM takes the commands half a clock after
 // they are registered here; the read data of a READ at clock n are taken at the clock n + 3.
 //
-// Refresh: AUTO REFRESH every REFRESH_CLKS clocks (7.4 us), when no access is pending; a request that comes during a refresh is kept.
+// Refresh: AUTO REFRESH every REFRESH_CLKS clocks (7.4 us), as soon as the controller is idle (before a pending request: a stream of
+// requests must not keep it off); a request that comes during a refresh is kept.
 // This module is not derived from the SDRAM controller of the Sipeed nestang example (GPL v3).
 module sdram_ctl #(
     parameter FREQ         = 67_500_000,
@@ -33,9 +34,9 @@ module sdram_ctl #(
     output wire        O_sdram_clk,
     output wire        O_sdram_cke,
     output wire        O_sdram_cs_n,
-    output reg         O_sdram_cas_n,
-    output reg         O_sdram_ras_n,
-    output reg         O_sdram_wen_n,
+    output reg         O_sdram_cas_n = 1'b1,    // (a command of 1 1 1 = NOP from the start: the flops would begin with 0 0 0 = a mode register set)
+    output reg         O_sdram_ras_n = 1'b1,
+    output reg         O_sdram_wen_n = 1'b1,
     output reg  [3:0]  O_sdram_dqm,
     output reg  [10:0] O_sdram_addr,
     output reg  [1:0]  O_sdram_ba,
@@ -112,14 +113,14 @@ module sdram_ctl #(
             end
             S_IDLE: begin
                 dq_oe <= 1'b0;
-                if (req_pend) begin         // ACTIVE
+                if (ref_due) begin          // the refresh first: requests that come one after the other (the HDMI screen) must not keep it off
+                    {O_sdram_ras_n, O_sdram_cas_n, O_sdram_wen_n} <= C_REF;
+                    rcnt <= 10'd0; st <= S_REF; cyc <= 4'd1;
+                end else if (req_pend) begin    // ACTIVE
                     {O_sdram_ras_n, O_sdram_cas_n, O_sdram_wen_n} <= C_ACT;
                     O_sdram_ba <= bnk; O_sdram_addr <= row; O_sdram_dqm <= 4'b0000;
                     is_wr <= req_wr; lane_a <= req_addr[1:0];
                     req_pend <= 1'b0; st <= S_RW; cyc <= 4'd1;
-                end else if (ref_due) begin
-                    {O_sdram_ras_n, O_sdram_cas_n, O_sdram_wen_n} <= C_REF;
-                    rcnt <= 10'd0; st <= S_REF; cyc <= 4'd1;
                 end
             end
             S_RW: begin                     // cyc 1 = the clock after ACTIVE; READ / WRITE at cyc 3 (tRCD = 2 clocks)

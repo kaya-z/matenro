@@ -77,6 +77,24 @@ module sim_top #(
 `ifdef TRACE88
     always @(posedge clk) if (soc.zm_ack) $display("%s %h %h", soc.zm_wr ? "W" : "R", soc.zm_addr, soc.zm_wr ? soc.zm_wdata : soc.zm_rdata);
 `endif
+`ifdef DUMPKJ
+    // when the kanji image is declared valid (HCTL bit 0 set by the OS-9 command kanjild): the first 185,856 bytes at $200000 of the SDRAM model
+    integer kfd, kk;
+    reg [21:0] kba;
+    reg [19:0] kw;
+    reg [31:0] kdw;
+    always @(negedge soc.win_hi) begin
+        kfd = $fopen("kjdump.bin", "wb");
+        for (kk = 0; kk < 185856; kk = kk + 1) begin
+            kba = 22'h200000 + kk;
+            kw = kba[21:2];
+            kdw = mdl.mem[{kw[9:8], 1'b0, kw[19:10], kw[7:0]}];
+            $fwrite(kfd, "%c", kdw[8 * kba[1:0] +: 8]);
+        end
+        $fclose(kfd);
+        $display("KJDUMP written");
+    end
+`endif
 `ifdef DUMPMEM
     always @(posedge clk) if (ps_wr && ps_addr >= 22'h100404 && ps_addr < 22'h10040c) $display("WR %h din=%h bw=%b", ps_addr, ps_din, ps_bw);
     // at the end: the bytes 0x100400 ... of the SDRAM model, to compare with the image that the 6809 loaded

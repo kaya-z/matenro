@@ -5,7 +5,9 @@
 // tRP >= 2 after the auto precharge, tWR >= 2 after a write, refresh at least every 1100 clocks.  Read data come CL = 2 clocks after READ and
 // stay for one clock.  `errors` counts the violations.
 module sdram_model #(
-    parameter MAXREFRESH = 1100
+    parameter MAXREFRESH = 1100,
+    parameter INIT_FILE = "",                // 32 bit words ($readmemh), put at the word INIT_WORD (the byte address / 4 of the controller's map)
+    parameter INIT_WORD = 0
 ) (
     input  wire        clk,
     input  wire        cke,
@@ -22,9 +24,20 @@ module sdram_model #(
 );
     reg [31:0] mem [0:(1<<21)-1];            // 2 K rows x 256 columns x 4 banks x 32 bit = 8 MB
     integer i;
+    reg [31:0] ini [0:65535];
+    reg [19:0] wd;
     initial begin
         for (i = 0; i < (1<<21); i = i + 1) mem[i] = 32'h0;
         errors = 0; init_done = 0;
+        if (INIT_FILE != "") begin
+            for (i = 0; i < 65536; i = i + 1) ini[i] = 32'h0;
+            $readmemh(INIT_FILE, ini);
+            // the map of sdram_ctl: w = byte address / 4: column = w[7:0], bank = w[9:8], row = w[19:10]
+            for (i = 0; i < 65536; i = i + 1) begin
+                wd = INIT_WORD + i;
+                mem[{wd[9:8], 1'b0, wd[19:10], wd[7:0]}] = ini[i];
+            end
+        end
     end
 
     wire [2:0] cmd = {ras_n, cas_n, we_n};

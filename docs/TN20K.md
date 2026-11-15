@@ -60,10 +60,17 @@ subsel 8088       8088 に切り替える (cpm hello86.cmd、CP/M-86、dos ...)
 
 * **回路**: 端末 (`hdmi_term.v`: ESC シーケンス、色、スクロール)、表示 (`hdmi_video.v`)、TMDS のエンコーダ (`tmds_enc.v`) は **sim09 のものをそのまま**使います (`new-sbc09/fpga/tn9k/rtl`、同じ作者の MIT。build.sh とシミュレーションがそこから読み、コピーはしません)。20K 用に書いたのは `fpga/rtl/hdmi_text20.v` (9K の文字コードの復号と漢字の字形の読み出しを除いたまとめ役) と `fpga/tn20k/rtl/hdmi_phy20.v` (126 MHz の PLL = 27 × 14 / 3、画素クロック 25.2 MHz、OSER10 の 10:1 のシリアライザ、TLVDS の出力)。
 * **ピン**: Sipeed の HDMI の例の `.cst` から: クロック 33/34、データ 0-2 は 35/36、37/38、39/40 (LVDS25)。d0 = 青 (同期つき)、d1 = 緑、d2 = 赤。
-* **文字**: 1 バイト = フォント (`font8x16.hex`) の 1 字で、ASCII と、フォントの上半分です。UTF-8 や EUC-JP、漢字は**まだありません** (次の段階: sim09 の復号器と、字形を SDRAM から読む回路)。
+* **文字** (漢字の版、既定): 文字コードの復号 (UTF-8 が既定、`HDMI_CHARSET=0..3` で 0 raw、1 UTF-8、2 EUC-JP、3 Shift_JIS。動作中は `ESC % G` / `E` / `S` / `@`) と、JIS X 0208 の記号・ひらがな・カタカナ・第 1 水準漢字 (16×16、東雲フォント) は sim09 の `hdmi_decode.v` `hdmi_glyph.v` `psram_xfer.v` をそのまま使います。ASCII、半角カナ、Latin-1 は 8×16 のフォント。第 2 水準以降は〓。`KANJI=0` で漢字なし (`hdmi_text20.v`: 1 バイト = フォントの 1 字) の版を作れます。
+* **字形のデータ** (`kanji.bin`、185,856 バイト、`new-sbc09/fpga/tn9k/images/kanji.bin`): SDRAM の **`$200000`** (OS-9 の 2 MB の上) にあります。復号器と字形の読み出しは、アービタのマスタ 1 と 2 で SDRAM から読みます。**SD カードから OS-9 のコマンド `kanjild` で読み込みます** (SPI フラッシュの版は 9K のもの。20K の SDRAM は電源を切ると消えるので、電源を入れるたびに `kanjild` が要ります):
+  ```
+  chx /d0/cmds
+  kanjild                       (既定: /d1/kanji.bin)
+  ```
+  `$200000` は XLINK の窓 (21 ビット = 2 MB) の外なので、レジスタ **HCTL (`$FFC8`)** を足しました: ビット 1 = 窓が 2 MB 以降を見る (物理アドレスの bit 21)、ビット 0 = 字形のデータが入った (HDMI が漢字を出す。入るまでは〓)。`kanjild` はビット 1 を立てて、窓から書き、`KJF1` を読み戻して確かめて、ビット 0 を立てます。レジスタの有無は、`$FE` を書いて 2 が返るかで見ます (9K やシミュレータの RAM は `$FE` を返す)。
+* **実機** (2026-11-15): SD カードの `/d1/kanji.bin` を `kanjild` で読み込み、`echo 日本語の表示テスト ひらがな カタカナ 漢字` (UTF-8) が HDMI のモニタに**漢字で出ることを確かめました**。
 * **ビルド**: 既定で入る (`HDMI=0 fpga/tn20k/scripts/build.sh boot` で省く)。PLL は 2 つとも使います (システムと HDMI)。
-* **資源** (`boot`、Z80 + 8088、54 MHz): Logic 11,316 / 20,736 (**55%**、HDMI で +1,528)、CLS 68%、BSRAM 28 / 46 (**+10**: 文字のフォント 4 KB と、画面のメモリ 2 面)、PLL 2 / 2。`clk81` の Fmax は 54.403 MHz (制約 54 MHz)、`clk_pix` は 75.5 MHz。負のスラックなし。
-* **検証**: `make -C fpga/tn20k/sim hdmi` (sim09 の `tb_hdmi.cpp` が TMDS を復号して DC バランスと記号を調べ、1 画面を PPM にし、`check_hdmi.py` がフォントと突き合わせる: 色つきの 3 行で誤り 0 画素)、実機のモニタ。
+* **資源** (`boot`、Z80 + 8088、54 MHz): 文字だけ (`KANJI=0`): Logic 11,316 / 20,736 (**55%**、HDMI で +1,528)、BSRAM 28 / 46、`clk81` 54.403 MHz。**漢字つき (既定)**: Logic 11,755 (**57%**、漢字で +439)、CLS 71%、BSRAM 31 / 46、PLL 2 / 2、`clk81` の Fmax は 54.324 MHz (制約 54 MHz)、`clk_pix` は 89.7 MHz。負のスラックなし。
+* **検証**: `make -C fpga/tn20k/sim hdmik` (漢字つきの画面を SDRAM のモデルと `sdram_ctl` の上で: `kanji.bin` を `$200000` に置き、UTF-8 の日本語を送って、1 画面の漢字とひらがなとカタカナを字形のデータと突き合わせる: **誤り 0 画素**)、`make -C fpga/tn20k/sim kjboot` (SoC 全体の RTL で OS-9 が起動し、`kanjild` で読み込んだ SDRAM の `$200000` からの 185,856 バイトが `kanji.bin` と一致)、`make -C fpga/tn20k/sim hdmi` (sim09 の `tb_hdmi.cpp` が TMDS を復号して DC バランスと記号を調べ、1 画面を PPM にし、`check_hdmi.py` がフォントと突き合わせる: 色つきの 3 行で誤り 0 画素)、実機のモニタ。
 
 ## 3. メモリ: SDRAM とコントローラ (`fpga/rtl/sdram_ctl.v`)
 
@@ -135,8 +142,9 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 | CP/M-86 | `cpm hello86.cmd abc` が `Hello from CP/M-86 on the 8088` / `!` / ` ABC`。`fileio86.cmd` が `FILEIO86 OK` (SD への書き込みを含む)、`line86.cmd` (行入力) も動いた |
 | MS-DOS 2.0 | `dos -v=2 -a=dosrun2.img -t=/d1/dostmp.img tbasic` で DOS が起動し、Tiny BASIC (`tests/dos/tbasic.asm`) が `RUN` で計算と `RND` を出し、`bye` で OS-9 に戻った (MANUAL 6.9 の実行モード) |
 
+* **ブートのメッセージ**: `Tang Nano 9K` は、カードの ROM イメージ (LSN 1100 から 112 セクタ) の INIT モジュールの中の名前です。`mkdisk.sh` が sim09 の `init.asm` の写し (名前だけ `Tang Nano 20K` にしたもの。sim09 は変えない) からモジュールを作り直し、`make9rom` でイメージを作り直して差し替えます。
 * **カード**: `fpga/tn20k/scripts/mkdisk.sh` が `/d0` を作る (9K の `/d0` に `dos`、CP/M-86 の試験、`/d0/dos` の MS-DOS 2.0 の一式を足したもの)。9K のカード全体のイメージの先頭 1MB を差し替える: `sudo dd if=fpga/tn20k/build/matenro20k_l2.dsk of=/dev/sdX bs=1M count=1 conv=fsync`。**MS-DOS の作業用イメージは 360KB で `/d0` に置けないので、`dos -t=/d1/dostmp.img` で `/d1` (64MB) に置く。**
-* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、HDMI の漢字 (まだない)、S2 ボタン、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
+* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、S2 ボタン、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
 * **わかったこと**: 書き込み直後の UART に数文字の文字化けが出ることがある (`OOOKKHHHjymmm>`)。ツール (`openFPGALoader`) が JTAG を動かすときの雑音と見ている。UART を読む `cat` を 2 本同時に走らせると文字が欠ける (基板の不具合ではない)。
 
 ## 9. ファイル

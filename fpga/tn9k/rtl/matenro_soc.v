@@ -92,6 +92,7 @@ module matenro_soc #(
     output wire        x2_ack,
     output wire [15:0] x2_rdata,
     output wire        reboot_req,          // the guest wrote $A6 or $A7 to the power register: the top level does what the reset button does
+    output wire        kanji_ok,            // `define HCTL: the kanji image is in the memory ($FFC8 bit 0)
     output wire        term_stb,            // a byte the guest wrote to the console (for the HDMI screen)
     output wire [7:0]  term_byte,
     output wire [111:0] dbg_regs,
@@ -133,6 +134,14 @@ module matenro_soc #(
     wire        acia_irq;               // the console ACIA (OS-9 uses its receive and transmit interrupts)
     // MATENRO (declared here: they are used before the XLINK section)
     wire        xl_irq, xl_firq, xl_wait, xl_win, xl_on;
+`ifdef HCTL
+    // HCTL ($FFC8): bit 0 = the kanji image is in the memory (the HDMI screen shows kanji), bit 1 = the window of the XLINK looks at
+    // the memory above 2 MB (physical bit 21 = 1): the loader of the image (OS-9 command kanjild) writes it there
+    reg         kj_ok = 1'b0, win_hi = 1'b0;
+`else
+    wire        kj_ok = 1'b0, win_hi = 1'b0;
+`endif
+    assign      kanji_ok = kj_ok;
 `ifdef SUBBOTH
     reg         sel8 = SUB_DEF8;                    // SUBSEL: 1 = the 8088 is on the cross link, 0 = the Z80
 `endif
@@ -361,7 +370,12 @@ module matenro_soc #(
     // Level 1: the registers are at $E000 (the page $E000-$E1FF); Level 2: at $FF80 (the same offsets), in the fixed page.
     wire        in_io  = l2 ? (a[15:7] == 9'h1ff) : (a[15:9] == 7'b1110000);
     wire [8:0]  off    = l2 ? {2'b00, a[6:0]} : a[8:0];
-    reg io_acia, io_power, io_timer, io_disk, io_dctl, io_hit, io_quiet, rom_sel, io_mmu, io_map, io_ta, io_modr, io_xl, io_ssel;
+    reg io_acia, io_power, io_timer, io_disk, io_dctl, io_hit, io_quiet, rom_sel, io_mmu, io_map, io_ta, io_modr, io_xl, io_ssel, io_hctl;
+`ifdef HCTL
+    localparam HAS_H = 1;
+`else
+    localparam HAS_H = 0;
+`endif
 `ifdef SUBBOTH
     localparam [8:0] XL_LAST = 9'h04f;       // + $FFCF: the choice of the sub CPU (Z80 or 8088)
 `else
@@ -388,12 +402,13 @@ module matenro_soc #(
         io_dctl  <= in_io_q && off_q == 9'h049;                 // control / status of the asynchronous mode of the disk
         io_xl    <= in_io_q && off_q >= 9'h04a && off_q <= 9'h04e;                 // the cross link
         io_ssel  <= in_io_q && off_q == 9'h04f;                            // SUBSEL (SUBBOTH only)
+        io_hctl  <= HAS_H && in_io_q && off_q == 9'h048;                    // HCTL (`define HCTL)
         io_mmu   <= l2 && in_io_q && off_q == 9'h011;            // the task register
         io_map   <= l2 && in_io_q && off_q >= 9'h020 && off_q <= 9'h02f;   // the system map, the user map
         io_hit   <= (in_io_q && ((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049
-                              || (off_q >= 9'h04a && off_q <= XL_LAST)
+                              || (off_q >= 9'h04a && off_q <= XL_LAST) || (HAS_H && off_q == 9'h048)
                               || (l2 && (off_q == 9'h011 || (off_q >= 9'h020 && off_q <= 9'h02f))))) || ta;
-        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= XL_LAST));
+        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= XL_LAST) || (HAS_H && off_q == 9'h048));
         rom_sel  <= !l2 && (a >= ROM_BASE);
     end
 
@@ -478,6 +493,7 @@ module matenro_soc #(
         if (io_acia)       io_rdata = off[0] ? acia_rdata : acia_status;
         else if (io_timer || io_ta) io_rdata = timer_rdata;
         else if (io_xl)    io_rdata = xl_rdata;
+        else if (io_hctl)  io_rdata = {6'b000000, win_hi, kj_ok};          // $FFC8
 `ifdef SUBBOTH
         else if (io_ssel)  io_rdata = {6'b000000, sel8, ~sel8};            // $FFCF: 1 = Z80, 2 = 8088
 `endif
@@ -543,6 +559,9 @@ module matenro_soc #(
         if (disk_rd) d_done <= 1'b0;                                    // the guest has read the result
         if (rst) begin
             mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
+`ifdef HCTL
+            kj_ok <= 1'b0; win_hi <= 1'b0;
+`endif
 `ifdef SUBBOTH
             sel8 <= SUB_DEF8;
 `endif
@@ -564,6 +583,9 @@ module matenro_soc #(
                             if (io_power && cpu_d_out == 8'ha4) osrun <= 1'b1;
                             if (io_power && (cpu_d_out == 8'ha7 || cpu_d_out == 8'ha6)) reboot_r <= 1'b1;      // reboot: the same as the reset button
                             if (io_dctl) begin d_async <= cpu_d_out[0]; d_ien <= cpu_d_out[7]; end      // $E049
+`ifdef HCTL
+                            if (io_hctl) begin kj_ok <= cpu_d_out[0]; win_hi <= cpu_d_out[1]; end      // $FFC8
+`endif
 `ifdef SUBBOTH
                             if (io_ssel && (cpu_d_out == 8'd1 || cpu_d_out == 8'd2)) sel8 <= cpu_d_out[1];      // $FFCF
 `endif
@@ -659,7 +681,7 @@ module matenro_soc #(
         if (m0_pulse) begin
             m0_req  <= 1'b1;
             m0_wrr  <= m_wr_s;
-            m0_addr <= use_clr ? cw : xw_act ? {1'b0, win_addr} : c_addr;
+            m0_addr <= use_clr ? cw : xw_act ? {win_hi, win_addr} : c_addr;
             m0_din  <= use_clr ? td_r : xw_act ? win_wdata : c_wdata;
         end
     end
@@ -740,7 +762,7 @@ module matenro_soc #(
     shr_ap #(.BLK(SHR_BLK)) shr (
         .clk(clk), .rst(rst),
         .a_req(zm_req), .a_wr(zm_wr), .a_addr(zm_addr), .a_wdata(zm_wdata), .a_hit(zb_hit), .a_ack(zb_ack), .a_rdata(zb_rdata),
-        .w_req(win_req), .w_wr(win_wr), .w_addr(win_addr), .w_wdata(win_wdata), .w_hit(win_hit), .w_ack(wb_ack), .w_rdata(wb_rdata)
+        .w_req(win_req && !win_hi), .w_wr(win_wr), .w_addr(win_addr), .w_wdata(win_wdata), .w_hit(win_hit), .w_ack(wb_ack), .w_rdata(wb_rdata)
     );
 `ifdef SUBBOTH
     // the Z80 and the 8088 both are in the FPGA; the register SUBSEL ($FFCF: 1 = Z80, 2 = 8088) says which one is on the cross link.

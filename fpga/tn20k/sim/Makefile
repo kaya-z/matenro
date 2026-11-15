@@ -86,3 +86,46 @@ build_hdmi/obj/Vhdmi_top: $(HDMI_SRC) $(SIM09)/sim/tb_hdmi.cpp
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -CFLAGS "-O2" $(HDMI_SRC) $(SIM09)/sim/tb_hdmi.cpp -o Vhdmi_top >/dev/null
 .PHONY: hdmi
+
+# The HDMI screen with kanji: the screen of sim09 (decoder UTF-8, glyph engine) on the SDRAM with the kanji image at $200000 (the model is
+# loaded with it), behind psram_arb4 and sdram_ctl; the picture against the glyphs of the image (check_kanji.py).   make hdmik
+KANJI_BIN ?= $(SIM09)/images/kanji.bin
+HDMIK_SRC = $(SIM09)/rtl/hdmi_text.v $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v \
+            $(SIM09)/rtl/hdmi_video.v $(SIM09)/rtl/tmds_enc.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmik_top.v
+hdmik: build_hdmik/obj/Vhdmi_top
+	cd build_hdmik && obj/Vhdmi_top -i $(abspath hdmik_in.txt) -o screen.ppm -f 3
+	python3 check_kanji.py build_hdmik/screen.ppm $(KANJI_BIN) $(SIM09)/rtl/font8x16.hex
+build_hdmik/obj/Vhdmi_top: $(HDMIK_SRC) $(SIM09)/sim/tb_hdmi.cpp $(KANJI_BIN)
+	mkdir -p build_hdmik
+	cp $(SIM09)/rtl/font8x16.hex build_hdmik/
+	python3 -c "import struct,sys; b=open('$(KANJI_BIN)','rb').read(); b+=bytes(-len(b)%4); open('build_hdmik/kanji32.hex','w').write(chr(10).join('%08x'%struct.unpack('<I',b[k:k+4])[0] for k in range(0,len(b),4))+chr(10))"
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module hdmi_top -Mdir build_hdmik/obj \
+	  -GKANJI_FILE='"$(abspath build_hdmik/kanji32.hex)"' \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -CFLAGS "-O2" $(HDMIK_SRC) $(SIM09)/sim/tb_hdmi.cpp -o Vhdmi_top >/dev/null
+.PHONY: hdmik
+
+# The loader of the kanji image: the OS-9 command kanjild writes kanji.bin through the window of the XLINK (HCTL bit 1: above 2 MB) into the SDRAM;
+# at HCTL bit 0 the testbench dumps the model at $200000 (kjdump.bin) and check_kjload.py compares it with the file.   make kjboot
+KJ_DISK = build_kj/kd.dsk
+kjboot: build_kj/obj/Vsim_top $(KJ_DISK)
+	cd build_kj && rm -f kjdump.bin && obj/Vsim_top -d kd.dsk -s $(abspath kj.txt) -c 1500000000 | tr -d '\r' | grep -E "kanjild|KJDUMP|OS9:"
+	cmp build_kj/kjdump.bin $(KANJI_BIN) && echo "kanjild: the image in the SDRAM equals kanji.bin (185856 bytes)"
+build_kj/rom.hex:
+	mkdir -p build_kj
+	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
+$(KJ_DISK): kj.txt ../../../tools/build_cpm.sh ../../../os9/kanjild/kanjild.asm
+	mkdir -p build_kj/b build_kj/v0
+	../../../tools/build_cpm.sh $(CURDIR)/build_kj/b > /dev/null
+	cp $(SIM09)/../../os9/OS9L2.dsk $@
+	cp $(KANJI_BIN) build_kj/v0/kanji.bin
+	cp -r $(SIM09)/../../os9/level2/cmds build_kj/v0/cmds
+	cp build_kj/b/kanjild build_kj/v0/cmds/
+	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/kanji.bin /d0/kanji.bin\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/kanjild /d0/cmds/kanjild\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/kanjild e pe r pr\\r"\nexpect "OS9:"\nquit\n' > build_kj/prep.txt
+	cd build_kj && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 kd.dsk -v v0 -script prep.txt > prep.log 2>&1
+build_kj/obj/Vsim_top: $(SOCSRC) build_kj/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_kj/obj -DSUB8088 -DHCTL -DDUMPKJ '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_kj/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
+	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
+.PHONY: kjboot

@@ -1,0 +1,6 @@
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send kanjild /d0/kanji.bin\r
+expect OS9:
+quit

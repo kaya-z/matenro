@@ -70,7 +70,11 @@ $( [ "${SUBS:-both}" = 8088 ] && echo '`define SUB8088 1' || echo '`define SUBBO
 \`define UCODE_FILE "$B/mcl86_ucode.hex"
 EOT
 HDMI=${HDMI:-1}
+KANJI=${KANJI:-1}
+[ "$HDMI" = 0 ] && KANJI=0
 if [ "$HDMI" != 0 ]; then echo '`define HDMI 1' >> "$B/tn20k_cfg.vh"; cp "$SIM09/rtl/font8x16.hex" "$B/font8x16.hex"; fi
+# KANJI=1 (default with HDMI): the screen of sim09 with the decoder and the kanji glyphs (the image: the OS-9 command kanjild); the register HCTL ($FFC8)
+if [ "$KANJI" != 0 ]; then printf '`define KANJI 1\n`define HCTL 1\n`define HDMI_CHARSET %s\n' "${HDMI_CHARSET:-1}" >> "$B/tn20k_cfg.vh"; fi
 cp "$HERE/constraints/tn20k.cst" "$B/pins.cst"
 if [ "$HDMI" != 0 ]; then cat "$HERE/constraints/hdmi.cst" >> "$B/pins.cst"; fi
 python3 - "$HERE/constraints/tn20k.sdc" "$B/timing.sdc" "$MUL" "$DIV" "$PH" "$CLK_HZ" <<'PYEOF'
@@ -88,6 +92,7 @@ set_device -name GW2AR-18C GW2AR-LV18QN88C8/I7
 add_file -type verilog $HERE/rtl/tn20k_top.v
 add_file -type verilog $HERE/rtl/tn20k_pll.v
 $( [ "$HDMI" != 0 ] && { echo "add_file -type verilog $HERE/rtl/hdmi_phy20.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_text20.v"; for f in hdmi_term hdmi_video tmds_enc; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done; } )
+$( [ "$KANJI" != 0 ] && for f in hdmi_text hdmi_decode hdmi_glyph psram_xfer; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done )
 add_file -type verilog $HERE/../rtl/sdram_ctl.v
 add_file -type verilog $HERE/../tn9k/rtl/matenro_soc.v
 add_file -type verilog $HERE/../tn9k/rtl/psram_arb4.v

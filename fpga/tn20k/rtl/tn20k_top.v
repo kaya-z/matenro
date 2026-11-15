@@ -81,7 +81,10 @@ module tn20k_top (
         .O_sdram_ba(O_sdram_ba), .IO_sdram_dq(IO_sdram_dq)
     );
 
-    wire        term_stb, term_busy;
+    wire        term_stb, term_busy, kanji_ok;
+    wire        x1_req, x1_ack, x2_req, x2_ack;
+    wire [21:0] x1_addr, x2_addr;
+    wire [15:0] x1_rdata, x2_rdata;
     wire [7:0]  term_byte;
 `ifdef HDMI
     wire clk_pix, hlocked;
@@ -92,10 +95,21 @@ module tn20k_top (
         else          rpx <= {rpx[2:0], 1'b0};
     end
     wire rst_pix = rpx[3];
+`ifdef KANJI
+    // the screen of sim09 with the character decoder (UTF-8, EUC-JP, Shift_JIS) and the kanji glyphs: the image (OS-9 command
+    // kanjild) is in the SDRAM at $200000, the tables and the glyph lines are read through the masters 1 and 2 of the arbiter
+    hdmi_text #(.ROWS(25), .CHARSET(`HDMI_CHARSET), .FONT_FILE("font8x16.hex")) screen (
+        .clk(clk), .rst(~resetn), .stb(term_stb), .din(term_byte), .busy(term_busy), .kanji_ok(kanji_ok),
+        .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
+        .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
+        .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r)
+    );
+`else
     hdmi_text20 #(.ROWS(25), .FONT_FILE("font8x16.hex")) screen (
         .clk(clk), .rst(~resetn), .stb(term_stb), .din(term_byte), .busy(term_busy),
         .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r)
     );
+`endif
     hdmi_phy20 phy (
         .clkin(sys_clk), .clk_pix(clk_pix), .locked(hlocked), .rst_pix(rst_pix),
         .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
@@ -103,6 +117,9 @@ module tn20k_top (
     );
 `else
     assign term_busy = 1'b0;
+`endif
+`ifndef KANJI
+    assign x1_req = 1'b0, x1_addr = 22'd0, x2_req = 1'b0, x2_addr = 22'd0;
 `endif
 
     matenro_soc #(
@@ -116,9 +133,9 @@ module tn20k_top (
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy),
         .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
-        .x1_req(1'b0), .x1_addr(22'd0), .x1_ack(), .x1_rdata(),
-        .x2_req(1'b0), .x2_addr(22'd0), .x2_ack(), .x2_rdata(),
-        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
+        .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
+        .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
+        .kanji_ok(kanji_ok), .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
         .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma(), .dbg_dbus()
     );
 endmodule
