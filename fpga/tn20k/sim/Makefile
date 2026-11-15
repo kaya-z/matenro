@@ -136,7 +136,7 @@ HDMIG_SRC = $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/ps
             $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_fb.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmig_top.v
 hdmig: build_hdmig/obj/Vhdmi_top
 	cd build_hdmig && obj/Vhdmi_top -i $(abspath hdmig_in.txt) -o screen.ppm -f 3
-	python3 check_fb.py build_hdmig/screen.ppm
+	python3 check_fb.py build_hdmig/screen.ppm $(SIM09)/rtl/font8x16.hex
 build_hdmig/obj/Vhdmi_top: $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp fb32.hex
 	mkdir -p build_hdmig
 	cp $(SIM09)/rtl/font8x16.hex build_hdmig/
@@ -170,3 +170,20 @@ build_gfx/obj/Vsim_top: $(SOCSRC) build_gfx/rom.hex $(SIM09)/sim/tb.cpp sim_top.
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_gfx/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
 .PHONY: gfxboot
+
+# The whole SoC with the HDMI screen and the frame buffer (FBSOC): `gfx test` and `gfx on`, then the console must go on (the read of the frame buffer
+# goes between the requests of the SoC; FBFIX=1: the arbiter's c_issue keeps it from slipping in between the decision and the pulse).   make fbsoc FBFIX=1
+FBSRC = $(SOCSRC) $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v $(SIM09)/rtl/hdmi_video.v \
+        $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_fb.v
+FBDIR = build_fbsoc$(if $(FBFIX),,_nofix)
+fbsoc: $(FBDIR)/obj/Vsim_top $(GFX_DISK)
+	cd $(FBDIR) && cp $(SIM09)/rtl/font8x16.hex . && obj/Vsim_top -d ../build_gfx/gd.dsk -s $(abspath fbsoc.txt) -c 1500000000 | tr -d '\r' | grep -E "FBALIVE|OS9:|time out"
+$(FBDIR)/rom.hex:
+	mkdir -p $(FBDIR)
+	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
+$(FBDIR)/obj/Vsim_top: $(FBSRC) $(FBDIR)/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir $(FBDIR)/obj -DSUB8088 -DHCTL -DFBSOC $(if $(FBFIX),-DFBFIX) $(KJDEF) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath $(FBDIR)/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
+	  -CFLAGS "-O2" $(FBSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
+.PHONY: fbsoc

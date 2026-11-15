@@ -9,6 +9,8 @@
 //   busy           high from the clock after the pulse until the access is done (and during a refresh)
 //
 // Written from the SDR SDRAM command set (JEDEC): every access is ACTIVE, READ/WRITE with auto precharge, wait; CAS latency 2, burst length 1.
+// A `wide` read (the frame buffer) keeps the whole 32 bit word in dout32 and does not touch dout.  (Burst length 4 for 16 byte reads was tried: the
+// memory test failed on the board with it.)
 // No access overlaps another one.  Timing at the system clock of 67.5 MHz (14.8 ns): tRCD 2 clocks, tRP 2, tWR 2, tRC > 5; an access takes 9 clocks.
 // The SDRAM clock (O_sdram_clk) is the system clock inverted (a PLL output 180 degrees off): the SDRAM takes the commands half a clock after
 // they are registered here; the read data of a READ at clock n are taken at the clock n + 3.
@@ -28,8 +30,9 @@ module sdram_ctl #(
     input  wire [21:0] addr,
     input  wire [15:0] din,
     input  wire        byte_write,
+    input  wire        wide,                // with read: the read is for dout32 (the whole 32 bit word of addr[21:2]), dout stays as it is (the frame buffer)
     output reg  [15:0] dout,
-    output reg  [31:0] dout32,          // the whole 32 bit word of the last read (addr[21:2]), valid when busy is low
+    output reg  [31:0] dout32,          // the whole 32 bit word of the last wide read, valid when busy is low
     output wire        busy,
     // the SDRAM (names of the Gowin primitives for the embedded SDRAM)
     output wire        O_sdram_clk,
@@ -55,7 +58,7 @@ module sdram_ctl #(
     reg [3:0]  cyc;                         // clocks since the ACTIVE / REFRESH / first command of the sequence
     reg        is_wr;
     reg        req_pend;                    // a request that has not been started
-    reg        req_wr, req_bw;
+    reg        req_wr, req_bw, req_bst, bst_a;
     reg [21:0] req_addr;
     reg [15:0] req_din;
     reg [1:0]  lane_a;                      // addr[1:0] of the access that is under way
@@ -84,7 +87,7 @@ module sdram_ctl #(
         cyc <= (cyc == 4'd15) ? 4'd15 : cyc + 4'd1;
         rcnt <= (rcnt == 10'd1023) ? rcnt : rcnt + 10'd1;
         if (read || write) begin
-            req_pend <= 1'b1; req_wr <= write; req_bw <= byte_write; req_addr <= addr; req_din <= din;
+            req_pend <= 1'b1; req_wr <= write; req_bst <= read && wide; req_bw <= byte_write; req_addr <= addr; req_din <= din;
         end
         if (!resetn) begin
             st <= S_INIT; cyc <= 4'd0; req_pend <= 1'b0; dq_oe <= 1'b0; pcnt <= 16'd0; pdone <= 1'b0; rcnt <= 10'd0;
@@ -120,7 +123,7 @@ module sdram_ctl #(
                 end else if (req_pend) begin    // ACTIVE
                     {O_sdram_ras_n, O_sdram_cas_n, O_sdram_wen_n} <= C_ACT;
                     O_sdram_ba <= bnk; O_sdram_addr <= row; O_sdram_dqm <= 4'b0000;
-                    is_wr <= req_wr; lane_a <= req_addr[1:0];
+                    is_wr <= req_wr; lane_a <= req_addr[1:0]; bst_a <= req_bst;
                     req_pend <= 1'b0; st <= S_RW; cyc <= 4'd1;
                 end
             end
@@ -140,9 +143,11 @@ module sdram_ctl #(
                     end else O_sdram_dqm <= 4'b0000;
                 end
                 if (cyc == 4'd4) dq_oe <= 1'b0;
-                if (!is_wr && cyc == 4'd6) begin                      // READ at 3: taken 3 clocks later
-                    dout   <= lane_a[1] ? IO_sdram_dq[31:16] : IO_sdram_dq[15:0];
-                    dout32 <= IO_sdram_dq;                              // the whole 32 bit word (the frame buffer reads 4 pixels at once)
+                // READ at 3: taken 3 clocks later.  A burst read (the frame buffer) leaves dout alone: the arbiter fetches the data of the access before it
+                // when the controller is free again, which can be after a burst that started in between
+                if (!is_wr && cyc == 4'd6) begin
+                    if (bst_a) dout32 <= IO_sdram_dq;
+                    else       dout   <= lane_a[1] ? IO_sdram_dq[31:16] : IO_sdram_dq[15:0];
                 end
                 if (cyc == 4'd9) st <= S_IDLE;                         // auto precharge done (tWR + tRP for a write)
             end

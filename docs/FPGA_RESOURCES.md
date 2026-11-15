@@ -110,6 +110,7 @@ TV80=<tv80s.v のあるディレクトリ> fpga/tn9k/scripts/build.sh boot      
 
 * **Z80 と 8088 の両方を載せた版 (`subsel`、2026-11-15、`boot`、54 MHz)**: Logic 9,792 / 20,736 (**48%**)、CLS 6,197 / 10,368 (**60%**)、レジスタ 3,319、BSRAM 18 / 46。`clk81` の Fmax は 54.111 MHz (**余裕 0.1 MHz**)、負のスラックなし。8088 だけの版より Logic が約 2,060 (Z80 のコアと XLINK、共有 RAM のつなぎ) 増えた。
 * **HDMI の文字画面を足した版 (2026-11-15、`boot`、Z80 + 8088、54 MHz)**: Logic 11,316 / 20,736 (**55%**)、CLS 6,977 / 10,368 (**68%**)、BSRAM 28 / 46、rPLL 2 / 2。`clk81` の Fmax は 54.403 MHz、`clk_pix` は 75.545 MHz。HDMI の分は Logic +1,528、BSRAM +10 (docs/TN20K.md の 2.2)。
+* **フレームバッファ、重ね合わせ、漢字、HDMI を足した版 (2026-11-16、`boot`、Z80 + 8088、54 MHz)**: Logic 12,234 / 20,736 (**59%**)、CLS 74%、BSRAM 33 / 46、rPLL 2 / 2。`clk81` の Fmax は 54.2 MHz 前後で、**余裕は 0.2 MHz 前後しかない**: `PLACE` の既定 (1) では負のスラックが出ることがあり、`PLACE=0` で通った。ビルドのたびに `Total Negative Slack` を見る。
 * 9K の同じ SoC (HDMI なし、Z80) は Logic 7,864 (92%)。20K では 8088 のコア (MCL86) とそのマイクロコード ROM (BSRAM 8 ブロック) が増え、SDRAM コントローラが PSRAM コントローラに代わっています。
 * 残り: Logic 約 13,000、CLS 約 5,400、BSRAM 29 ブロック。HDMI の画面 (約 2,000 LUT、BSRAM 13) は載ります。
 

@@ -26,6 +26,7 @@ module psram_arb4 (
     output wire        c_bw,
     input  wire [15:0] c_dout,
     input  wire        c_busy,
+    output wire        c_issue,             // a request is decided and goes to the controller in the next clock: nobody else may start one now
     // master 0
     input  wire        m0_req,
     input  wire        m0_wr,               // 1: write the byte m0_din
@@ -63,6 +64,7 @@ module psram_arb4 (
     reg [2:0] sel;
 
     assign c_bw = 1'b1;
+    assign c_issue = (st == S_ISSUE);
 
     always @(posedge clk) begin
         c_rd   <= 1'b0;

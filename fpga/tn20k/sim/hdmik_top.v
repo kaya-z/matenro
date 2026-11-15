@@ -50,7 +50,7 @@ module hdmi_top #(
     wire [31:0] sd_dq;
     sdram_ctl #(.FREQ(67500000), .REFRESH_CLKS(67500000 / 1000 * 74 / 10000)) ctl (
         .clk(clk), .clk_sdram(clk_sdram), .resetn(~rst),
-        .read(ps_rd), .write(ps_wr), .addr(ps_addr), .din(ps_din), .byte_write(ps_bw), .dout(ps_dout), .busy(ps_busy),
+        .read(ps_rd), .write(ps_wr), .addr(ps_addr), .din(ps_din), .byte_write(ps_bw), .wide(1'b0), .dout(ps_dout), .busy(ps_busy),
         .O_sdram_clk(sd_clk), .O_sdram_cke(sd_cke), .O_sdram_cs_n(sd_cs_n), .O_sdram_cas_n(sd_cas_n), .O_sdram_ras_n(sd_ras_n),
         .O_sdram_wen_n(sd_wen_n), .O_sdram_dqm(sd_dqm), .O_sdram_addr(sd_a), .O_sdram_ba(sd_ba), .IO_sdram_dq(sd_dq)
     );

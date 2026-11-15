@@ -18,7 +18,7 @@ module tb_sdram;
     wire [31:0] errors;
     wire init_done;
 
-    sdram_ctl #(.FREQ(67_500_000)) dut (.clk(clk), .clk_sdram(clk_sdram), .resetn(resetn), .read(rd), .write(wr), .addr(addr), .din(din), .byte_write(bw),
+    sdram_ctl #(.FREQ(67_500_000)) dut (.clk(clk), .clk_sdram(clk_sdram), .resetn(resetn), .read(rd), .write(wr), .addr(addr), .din(din), .byte_write(bw), .wide(wide), .dout32(dout32),
         .dout(dout), .busy(busy), .O_sdram_clk(sdclk), .O_sdram_cke(cke), .O_sdram_cs_n(cs_n), .O_sdram_cas_n(cas_n), .O_sdram_ras_n(ras_n),
         .O_sdram_wen_n(wen_n), .O_sdram_dqm(dqm), .O_sdram_addr(sa), .O_sdram_ba(sba), .IO_sdram_dq(dq));
     sdram_model mdl (.clk(sdclk), .cke(cke), .cs_n(cs_n), .ras_n(ras_n), .cas_n(cas_n), .we_n(wen_n), .dqm(dqm), .a(sa), .ba(sba), .dq(dq),
@@ -31,6 +31,8 @@ module tb_sdram;
     reg [21:0] a;
     reg [15:0] expw;
     reg [7:0]  b;
+    reg        wide = 1'b0;
+    wire [31:0] dout32;
 
     task do_write_byte(input [21:0] ad, input [7:0] v);
         begin
@@ -59,6 +61,23 @@ module tb_sdram;
         end
     endtask
 
+    task do_wide_check(input [21:0] ad);               // a wide read (the frame buffer): dout32 is the 32 bit word, dout is not touched
+        reg [31:0] e;
+        reg [15:0] keep;
+        integer k;
+        begin
+            while (busy) @(posedge clk);
+            keep = dout;
+            @(posedge clk); addr <= {ad[21:2], 2'd0}; wide <= 1; rd <= 1; @(posedge clk); rd <= 0; wide <= 0;
+            @(posedge clk); @(posedge clk);
+            while (busy) @(posedge clk);
+            for (k = 0; k < 4; k = k + 1) e[8 * k +: 8] = ref_mem[{ad[15:2], 2'd0} + k];
+            checks = checks + 2;
+            if (dout32 !== e) begin fails = fails + 1; if (fails < 10) $display("FAIL wide read %06X got %08X want %08X", ad, dout32, e); end
+            if (dout !== keep) begin fails = fails + 1; if (fails < 10) $display("FAIL a wide read changed dout %04X -> %04X", keep, dout); end
+        end
+    endtask
+
     initial begin
         for (i = 0; i < (1<<16); i = i + 1) ref_mem[i] = 8'h00;
         repeat (4) @(posedge clk);
@@ -80,6 +99,17 @@ module tb_sdram;
         for (i = 0; i < 20000; i = i + 1) begin
             a = $urandom % 65536;
             if (i & 1) do_write_byte(a, i[7:0]); else do_read_check(a);
+        end
+        // wide reads (the frame buffer), in between writes and single reads, back to back, with refreshes
+        for (i = 0; i < 6000; i = i + 1) begin
+            a = $urandom % 65536;
+            case (i % 4)
+            0: do_wide_check(a);
+            1: do_wide_check(a);
+            2: do_write_byte(a, i[7:0]);
+            default: do_read_check(a);
+            endcase
+            if (i % 211 == 0) repeat ($urandom % 800) @(posedge clk);
         end
         // the upper part of the 4 MB window: the address bits of the bank and the row
         do_write_byte(22'h3fffff, 8'h5a); do_write_byte(22'h200001, 8'ha5); do_write_byte(22'h100000, 8'h11);

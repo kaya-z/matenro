@@ -1,0 +1,15 @@
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send gfx test\r
+expect OS9:
+send gfx on\r
+expect OS9:
+send dir /d0\r
+expect OS9:
+send echo FBALIVE\r
+expect FBALIVE
+expect OS9:
+send gfx off\r
+expect OS9:
+quit

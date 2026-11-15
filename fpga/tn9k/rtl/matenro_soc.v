@@ -73,6 +73,7 @@ module matenro_soc #(
     // PSRAM controller
     output wire        ps_rd,
     output wire        ps_wr,
+    output wire        ps_issue,            // the arbiter has decided a request: the controller must not take another one in this clock (tn20k_top.v)
     output wire [21:0] ps_addr,
     output wire [15:0] ps_din,
     output wire        ps_bw,
@@ -94,6 +95,7 @@ module matenro_soc #(
     output wire        reboot_req,          // the guest wrote $A6 or $A7 to the power register: the top level does what the reset button does
     output wire        kanji_ok,            // `define HCTL: the kanji image is in the memory ($FFC8 bit 0)
     output wire        gfx_on,              // `define HCTL: the frame buffer is shown instead of the text ($FFB8 bit 0)
+    output wire        gfx_ov,              // the text is shown over the picture ($FFB8 bit 1)
     output wire        pal_we,              // a palette entry is written (one clock): pal_idx, pal_rgb
     output wire [7:0]  pal_idx,
     output wire [23:0] pal_rgb,
@@ -149,16 +151,17 @@ module matenro_soc #(
     // the frame buffer of the HDMI screen: GCTL $FFB8 (bit 0: show it), PIDX $FFB9 (the palette entry), PDAT $FFBA (the red, green, blue bytes of
     // the entry, one after the other; the third write sets it, the index goes on)
 `ifdef HCTL
-    reg         gfx_r = 1'b0, pal_we_r = 1'b0;
+    reg         gfx_r = 1'b0, ov_r = 1'b0, pal_we_r = 1'b0;
     reg  [7:0]  pidx_r = 8'd0, pal_ix_r = 8'd0, pred_r, pgrn_r;
     reg  [1:0]  pcnt_r = 2'd0;
     reg  [7:0]  pblu_r;
     assign      gfx_on = gfx_r;
+    assign      gfx_ov = ov_r;
     assign      pal_we = pal_we_r;
     assign      pal_idx = pal_ix_r;
     assign      pal_rgb = {pred_r, pgrn_r, pblu_r};
 `else
-    assign      gfx_on = 1'b0, pal_we = 1'b0, pal_idx = 8'd0, pal_rgb = 24'd0;
+    assign      gfx_on = 1'b0, gfx_ov = 1'b0, pal_we = 1'b0, pal_idx = 8'd0, pal_rgb = 24'd0;
 `endif
 `ifdef SUBBOTH
     reg         sel8 = SUB_DEF8;                    // SUBSEL: 1 = the 8088 is on the cross link, 0 = the Z80
@@ -514,7 +517,7 @@ module matenro_soc #(
         else if (io_xl)    io_rdata = xl_rdata;
         else if (io_hctl)  io_rdata = {6'b000000, win_hi, kj_ok};          // $FFC8
 `ifdef HCTL
-        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {7'd0, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
+        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {6'd0, ov_r, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
 `endif
 `ifdef SUBBOTH
         else if (io_ssel)  io_rdata = {6'b000000, sel8, ~sel8};            // $FFCF: 1 = Z80, 2 = 8088
@@ -585,7 +588,7 @@ module matenro_soc #(
         if (rst) begin
             mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
 `ifdef HCTL
-            kj_ok <= 1'b0; win_hi <= 1'b0; gfx_r <= 1'b0; pcnt_r <= 2'd0; pidx_r <= 8'd0;
+            kj_ok <= 1'b0; win_hi <= 1'b0; gfx_r <= 1'b0; ov_r <= 1'b0; pcnt_r <= 2'd0; pidx_r <= 8'd0;
 `endif
 `ifdef SUBBOTH
             sel8 <= SUB_DEF8;
@@ -610,7 +613,7 @@ module matenro_soc #(
                             if (io_dctl) begin d_async <= cpu_d_out[0]; d_ien <= cpu_d_out[7]; end      // $E049
 `ifdef HCTL
                             if (io_hctl) begin kj_ok <= cpu_d_out[0]; win_hi <= cpu_d_out[1]; end      // $FFC8
-                            if (io_gfx && off[1:0] == 2'd0) gfx_r <= cpu_d_out[0];                       // $FFB8
+                            if (io_gfx && off[1:0] == 2'd0) begin gfx_r <= cpu_d_out[0]; ov_r <= cpu_d_out[1]; end                       // $FFB8
                             if (io_gfx && off[1:0] == 2'd1) begin pidx_r <= cpu_d_out; pcnt_r <= 2'd0; end      // $FFB9
                             if (io_gfx && off[1:0] == 2'd2) begin                                            // $FFBA
                                 if (pcnt_r == 2'd0) begin pred_r <= cpu_d_out; pcnt_r <= 2'd1; end
@@ -733,7 +736,7 @@ module matenro_soc #(
 
     psram_arb4 arb (
         .clk(clk), .rst(rst),
-        .c_rd(ps_rd), .c_wr(ps_wr), .c_addr(ps_addr), .c_din(ps_din), .c_bw(ps_bw), .c_dout(ps_dout), .c_busy(ps_busy),
+        .c_rd(ps_rd), .c_wr(ps_wr), .c_addr(ps_addr), .c_din(ps_din), .c_bw(ps_bw), .c_dout(ps_dout), .c_busy(ps_busy), .c_issue(ps_issue),
         .m0_req(m0_req), .m0_wr(m0_wrr), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),

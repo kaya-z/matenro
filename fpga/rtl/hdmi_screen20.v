@@ -30,6 +30,7 @@ module hdmi_screen20 #(
     output wire [9:0]  tmds_r,
     // the frame buffer
     input  wire        gfx_on,
+    input  wire        gfx_ov,
     input  wire        pal_we,
     input  wire [7:0]  pal_idx,
     input  wire [23:0] pal_rgb,
@@ -139,7 +140,7 @@ module hdmi_screen20 #(
     wire        de_f, hs_f, vs_f;
     wire [23:0] rgb_f;
     hdmi_fb fb (
-        .clk(clk), .rst(rst), .gfx_on(gfx_on), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
+        .clk(clk), .rst(rst), .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
         .rq(fb_rq), .rq_addr(fb_addr), .go(fb_go), .busy(fb_busy), .dout32(fb_dout32),
         .clk_pix(clk_pix), .rst_pix(rst_pix), .de_i(de), .hs_i(hs), .vs_i(vs), .rgb_i(rgb),
         .de_o(de_f), .hs_o(hs_f), .vs_o(vs_f), .rgb_o(rgb_f)

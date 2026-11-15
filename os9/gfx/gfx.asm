@@ -4,6 +4,7 @@
 * bits, shown doubled (640 x 480)
 *
 *   gfx on                show the frame buffer (instead of the text)
+*   gfx over              show the frame buffer with the text of the console over it (where the text is not black)
 *   gfx off               show the text again
 *   gfx fill n            fill the picture with the byte n (0 .. 255; 0 = black)
 *   gfx test              draw a test picture (blocks of the 3-3-2 colours)
@@ -16,7 +17,7 @@
 * through the window of the cross link with
 * HCTL.1 set ($FFC8: the window looks at the memory above 2 MB; the window address $100000
 * is physical $300000).  The registers:
-* GCTL $FFB8 (bit 0: show the frame buffer), PIDX $FFB9 (the palette entry), PDAT $FFBA
+* GCTL $FFB8 (bit 0: show the frame buffer, bit 1: the text over it), PIDX $FFB9 (the palette entry), PDAT $FFBA
 * (red, green, blue, one byte after the other;
 * the third write sets the entry and the index goes on).  Without a palette the byte is a
 * colour of the form rrrgggbb (3-3-2).
@@ -70,7 +71,7 @@ msgnoreg fcc   "gfx: no frame buffer (this machine has no HDMI frame buffer)"
          fcb   C$CR
 msgfile  fcc   "gfx: cannot read the file"
          fcb   C$CR
-msguse   fcc   "usage: gfx on | off | fill n | test | load file | pal file"
+msguse   fcc   "usage: gfx on | over | off | fill n | test | load file | pal file"
          fcb   C$CR
 
 start    lda   #$FE                is there a register?  after $FE a read of HCTL gives 2 (plain RAM gives $FE)
@@ -98,13 +99,17 @@ cmdo     lda   ,x+
          anda  #$DF
          cmpa  #'N'
          beq   on
+         cmpa  #'V'
+         beq   over
          cmpa  #'F'
-         bne   usage
+         lbne  usage
          clra
          sta   >GCTL
          bra   done
 on       lda   #1
-         sta   >GCTL
+         bra   setg
+over     lda   #3                  the picture and the text over it
+setg     sta   >GCTL
 done     clrb
          os9   F$Exit
 noreg    clr   >HCTL

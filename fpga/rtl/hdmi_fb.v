@@ -16,6 +16,7 @@ module hdmi_fb #(
     input  wire        clk,                 // system clock
     input  wire        rst,
     input  wire        gfx_on,
+    input  wire        gfx_ov,              // the text over the picture: where the text pixel is not black, the text is shown
     input  wire        pal_we,              // palette write (system clock): entry pal_idx = pal_rgb {r, g, b}
     input  wire [7:0]  pal_idx,
     input  wire [23:0] pal_rgb,
@@ -73,13 +74,14 @@ module hdmi_fb #(
     reg        de1, hs1, vs1, de2, hs2, vs2, de3, hs3, vs3;
     reg [23:0] t1, t2, t3;
     reg [2:0]  gs;
-    always @(posedge clk_pix) gs <= {gs[1:0], gfx_on};
+    reg [1:0]  ovs;
+    always @(posedge clk_pix) begin gs <= {gs[1:0], gfx_on}; ovs <= {ovs[0], gfx_ov}; end
     always @(posedge clk_pix) begin
         de1 <= de_i; hs1 <= hs_i; vs1 <= vs_i; t1 <= rgb_i;
         de2 <= de1;  hs2 <= hs1;  vs2 <= vs1;  t2 <= t1;
         de3 <= de2;  hs3 <= hs2;  vs3 <= vs2;  t3 <= t2;
         de_o <= de3; hs_o <= hs3; vs_o <= vs3;
-        rgb_o <= gs[2] ? pq : t3;
+        rgb_o <= gs[2] ? ((ovs[1] && t3 != 24'd0) ? t3 : pq) : t3;
     end
 
     // ---------------------------------------------------------------- the fetch of the lines (system clock)
