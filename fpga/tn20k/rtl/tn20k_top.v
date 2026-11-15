@@ -9,6 +9,7 @@
 //   SDRAM          the 64 Mbit SDR SDRAM in the package (4 MB used), through sdram_ctl.v
 //   LEDs           pins 15-20, low active: 0 heartbeat, 1 running, 2 card ready, 3 card busy, 4 card failed, 5 powered off
 //
+// With `define HDMI (build.sh, HDMI=0 leaves it out) the console is shown on the HDMI connector too (hdmi_text20.v, hdmi_phy20.v).
 // The SoC is matenro_soc.v of the Tang Nano 9K machine, with `define SUB8088 (the 8088 instead of the Z80) and the SDRAM controller in
 // place of the PSRAM controller (the same request interface: psram_arb4.v and everything behind it are unchanged).  No HDMI screen yet.
 // The configuration (ROM image and address, clock, date) comes from tn20k_cfg.vh, which scripts/build.sh writes.
@@ -37,6 +38,14 @@ module tn20k_top (
     output wire [10:0] O_sdram_addr,
     output wire [1:0]  O_sdram_ba,
     inout  wire [31:0] IO_sdram_dq
+`ifdef HDMI
+    ,
+    // the HDMI connector (TMDS): the console on a monitor, 640x480, 80 x 25 characters (hdmi_text20.v)
+    output wire        tmds_clk_p,
+    output wire        tmds_clk_n,
+    output wire [2:0]  tmds_d_p,
+    output wire [2:0]  tmds_d_n
+`endif
 );
     wire clk, clk_p, locked;
     tn20k_pll #(.IDIV(`PLL_IDIV), .FBDIV(`PLL_FBDIV), .ODIV(`PLL_ODIV)) pll (.clkin(sys_clk), .clkout(clk), .clkoutp(clk_p), .lock(locked));
@@ -72,6 +81,30 @@ module tn20k_top (
         .O_sdram_ba(O_sdram_ba), .IO_sdram_dq(IO_sdram_dq)
     );
 
+    wire        term_stb, term_busy;
+    wire [7:0]  term_byte;
+`ifdef HDMI
+    wire clk_pix, hlocked;
+    wire [9:0] tmds_b, tmds_g, tmds_r;
+    reg  [3:0] rpx = 4'hf;
+    always @(posedge clk_pix or negedge hlocked) begin
+        if (!hlocked) rpx <= 4'hf;
+        else          rpx <= {rpx[2:0], 1'b0};
+    end
+    wire rst_pix = rpx[3];
+    hdmi_text20 #(.ROWS(25), .FONT_FILE("font8x16.hex")) screen (
+        .clk(clk), .rst(~resetn), .stb(term_stb), .din(term_byte), .busy(term_busy),
+        .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r)
+    );
+    hdmi_phy20 phy (
+        .clkin(sys_clk), .clk_pix(clk_pix), .locked(hlocked), .rst_pix(rst_pix),
+        .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
+        .tmds_clk_p(tmds_clk_p), .tmds_clk_n(tmds_clk_n), .tmds_d_p(tmds_d_p), .tmds_d_n(tmds_d_n)
+    );
+`else
+    assign term_busy = 1'b0;
+`endif
+
     matenro_soc #(
         .CLK_HZ(`CLK_HZ), .PH_DIV(`PH_DIV), .BAUD_DIV(`CLK_HZ / 115200),
         .ROM_BASE(`ROM_BASE), .ROM_AW(`ROM_AW), .ROM_FILE("rom.hex"), .FREERUN(`FREERUN),
@@ -82,10 +115,10 @@ module tn20k_top (
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy),
-        .led(led), .led_mode(led_mode), .term_busy(1'b0), .reboot_req(reboot_req),
+        .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(1'b0), .x1_addr(22'd0), .x1_ack(), .x1_rdata(),
         .x2_req(1'b0), .x2_addr(22'd0), .x2_ack(), .x2_rdata(),
-        .term_stb(), .term_byte(), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
+        .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
         .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma(), .dbg_dbus()
     );
 endmodule

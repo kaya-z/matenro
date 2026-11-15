@@ -1,0 +1,10 @@
+// The HDMI connector of the Tang Nano 20K: TMDS (DVI) on four LVDS pairs (positive, negative pin), as in Sipeed's HDMI example
+// (private/tn20k/sipeed_ex/hdmi/src/hdmi.cst).  d0 = blue (with the syncs), d1 = green, d2 = red.
+IO_LOC "tmds_clk_p" 33,34;
+IO_PORT "tmds_clk_p" IO_TYPE=LVDS25 PULL_MODE=NONE DRIVE=3.5 BANK_VCCIO=3.3;
+IO_LOC "tmds_d_p[0]" 35,36;
+IO_PORT "tmds_d_p[0]" IO_TYPE=LVDS25 PULL_MODE=NONE DRIVE=3.5 BANK_VCCIO=3.3;
+IO_LOC "tmds_d_p[1]" 37,38;
+IO_PORT "tmds_d_p[1]" IO_TYPE=LVDS25 PULL_MODE=NONE DRIVE=3.5 BANK_VCCIO=3.3;
+IO_LOC "tmds_d_p[2]" 39,40;
+IO_PORT "tmds_d_p[2]" IO_TYPE=LVDS25 PULL_MODE=NONE DRIVE=3.5 BANK_VCCIO=3.3;

@@ -69,7 +69,10 @@ cat > "$B/tn20k_cfg.vh" <<EOT
 $( [ "${SUBS:-both}" = 8088 ] && echo '`define SUB8088 1' || echo '`define SUBBOTH 1' )
 \`define UCODE_FILE "$B/mcl86_ucode.hex"
 EOT
+HDMI=${HDMI:-1}
+if [ "$HDMI" != 0 ]; then echo '`define HDMI 1' >> "$B/tn20k_cfg.vh"; cp "$SIM09/rtl/font8x16.hex" "$B/font8x16.hex"; fi
 cp "$HERE/constraints/tn20k.cst" "$B/pins.cst"
+if [ "$HDMI" != 0 ]; then cat "$HERE/constraints/hdmi.cst" >> "$B/pins.cst"; fi
 python3 - "$HERE/constraints/tn20k.sdc" "$B/timing.sdc" "$MUL" "$DIV" "$PH" "$CLK_HZ" <<'PYEOF'
 import sys
 src, dst, mul, div, ph, hz = sys.argv[1:7]
@@ -79,10 +82,12 @@ for k, v in (("@PER@", per), ("@HALF@", per / 2), ("@Q1@", per / 4), ("@Q3@", pe
     s = s.replace(k, "%.2f" % v)
 open(dst, "w").write(s)
 PYEOF
+if [ "$HDMI" != 0 ]; then cat "$HERE/constraints/hdmi.sdc" >> "$B/timing.sdc"; fi
 cat > "$B/build.tcl" <<EOT
 set_device -name GW2AR-18C GW2AR-LV18QN88C8/I7
 add_file -type verilog $HERE/rtl/tn20k_top.v
 add_file -type verilog $HERE/rtl/tn20k_pll.v
+$( [ "$HDMI" != 0 ] && { echo "add_file -type verilog $HERE/rtl/hdmi_phy20.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_text20.v"; for f in hdmi_term hdmi_video tmds_enc; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done; } )
 add_file -type verilog $HERE/../rtl/sdram_ctl.v
 add_file -type verilog $HERE/../tn9k/rtl/matenro_soc.v
 add_file -type verilog $HERE/../tn9k/rtl/psram_arb4.v

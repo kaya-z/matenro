@@ -54,6 +54,17 @@ subsel 8088       8088 に切り替える (cpm hello86.cmd、CP/M-86、dos ...)
 * **資源**: Logic 9,792 / 20,736 (**48%**)、CLS 60%、BSRAM 18 / 46、レジスタ 3,319。`clk81` の Fmax は 54.111 MHz (制約 54 MHz。**余裕は 0.1 MHz** で、8088 だけのとき (55.0 MHz) より小さい)。負のスラックはありません。
 * **検証**: `make -C fpga/tn20k/sim bothboot DISK=… SCRIPT=both.txt CLKS=2500000000 PH=7 D88=11 HZ=54000000 CZ=7` (SoC 全体の RTL で OS-9 が SD から起動し、`subsel`、`cpm hello86.cmd`、`subsel z80`、`cpm hello.com`、`subsel 8088` を通した。約 2 分)、C のシミュレータの `matenro_test.py` の `os9_subsel` (3 項目)。
 
+## 2.2 HDMI の文字画面 (2026-11-15)
+
+コンソール (OS-9 が UART に出す文字) を、HDMI コネクタのモニタに **80 × 25 の文字画面**で出します (640 × 480、60 Hz、DVI)。**出力だけ**で、入力は USB シリアルです。**実機のモニタに映ることを確かめました。**
+
+* **回路**: 端末 (`hdmi_term.v`: ESC シーケンス、色、スクロール)、表示 (`hdmi_video.v`)、TMDS のエンコーダ (`tmds_enc.v`) は **sim09 のものをそのまま**使います (`new-sbc09/fpga/tn9k/rtl`、同じ作者の MIT。build.sh とシミュレーションがそこから読み、コピーはしません)。20K 用に書いたのは `fpga/rtl/hdmi_text20.v` (9K の文字コードの復号と漢字の字形の読み出しを除いたまとめ役) と `fpga/tn20k/rtl/hdmi_phy20.v` (126 MHz の PLL = 27 × 14 / 3、画素クロック 25.2 MHz、OSER10 の 10:1 のシリアライザ、TLVDS の出力)。
+* **ピン**: Sipeed の HDMI の例の `.cst` から: クロック 33/34、データ 0-2 は 35/36、37/38、39/40 (LVDS25)。d0 = 青 (同期つき)、d1 = 緑、d2 = 赤。
+* **文字**: 1 バイト = フォント (`font8x16.hex`) の 1 字で、ASCII と、フォントの上半分です。UTF-8 や EUC-JP、漢字は**まだありません** (次の段階: sim09 の復号器と、字形を SDRAM から読む回路)。
+* **ビルド**: 既定で入る (`HDMI=0 fpga/tn20k/scripts/build.sh boot` で省く)。PLL は 2 つとも使います (システムと HDMI)。
+* **資源** (`boot`、Z80 + 8088、54 MHz): Logic 11,316 / 20,736 (**55%**、HDMI で +1,528)、CLS 68%、BSRAM 28 / 46 (**+10**: 文字のフォント 4 KB と、画面のメモリ 2 面)、PLL 2 / 2。`clk81` の Fmax は 54.403 MHz (制約 54 MHz)、`clk_pix` は 75.5 MHz。負のスラックなし。
+* **検証**: `make -C fpga/tn20k/sim hdmi` (sim09 の `tb_hdmi.cpp` が TMDS を復号して DC バランスと記号を調べ、1 画面を PPM にし、`check_hdmi.py` がフォントと突き合わせる: 色つきの 3 行で誤り 0 画素)、実機のモニタ。
+
 ## 3. メモリ: SDRAM とコントローラ (`fpga/rtl/sdram_ctl.v`)
 
 * 8MB のうち、**4MB** を使います (調停のアドレスは 22 ビットのバイトアドレス。OS-9 Level 2 の物理メモリは 2MB)。アドレスの写像: ワード (32 ビット) = `addr[21:2]`、列 = `w[7:0]`、バンク = `w[9:8]`、行 = `w[19:10]`。
@@ -125,7 +136,7 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 | MS-DOS 2.0 | `dos -v=2 -a=dosrun2.img -t=/d1/dostmp.img tbasic` で DOS が起動し、Tiny BASIC (`tests/dos/tbasic.asm`) が `RUN` で計算と `RND` を出し、`bye` で OS-9 に戻った (MANUAL 6.9 の実行モード) |
 
 * **カード**: `fpga/tn20k/scripts/mkdisk.sh` が `/d0` を作る (9K の `/d0` に `dos`、CP/M-86 の試験、`/d0/dos` の MS-DOS 2.0 の一式を足したもの)。9K のカード全体のイメージの先頭 1MB を差し替える: `sudo dd if=fpga/tn20k/build/matenro20k_l2.dsk of=/dev/sdX bs=1M count=1 conv=fsync`。**MS-DOS の作業用イメージは 360KB で `/d0` に置けないので、`dos -t=/d1/dostmp.img` で `/d1` (64MB) に置く。**
-* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、HDMI (まだない)、S2 ボタン、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
+* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、HDMI の漢字 (まだない)、S2 ボタン、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
 * **わかったこと**: 書き込み直後の UART に数文字の文字化けが出ることがある (`OOOKKHHHjymmm>`)。ツール (`openFPGALoader`) が JTAG を動かすときの雑音と見ている。UART を読む `cat` を 2 本同時に走らせると文字が欠ける (基板の不具合ではない)。
 
 ## 9. ファイル

@@ -71,3 +71,18 @@ build_both/obj/Vsim_top: $(BOTHSRC) build_both/rom.hex $(SIM09)/sim/tb.cpp
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_both/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCZ_DIV=$(CZ) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(BOTHSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
 .PHONY: bothboot
+
+# The HDMI text screen alone (hdmi_text20 + the terminal, display and TMDS encoder of sim09), with the test bench tb_hdmi.cpp of sim09:
+# the TMDS symbols are decoded like a monitor does (DC balance, valid symbols) and a frame is written as a PPM; check_hdmi.py compares
+# the picture with the 8x16 font.   make hdmi
+HDMI_SRC = ../../rtl/hdmi_text20.v $(SIM09)/rtl/hdmi_term.v $(SIM09)/rtl/hdmi_video.v $(SIM09)/rtl/tmds_enc.v hdmi_top.v
+hdmi: build_hdmi/obj/Vhdmi_top
+	cd build_hdmi && obj/Vhdmi_top -i $(abspath hdmi_in.txt) -o screen.ppm -f 3
+	python3 check_hdmi.py build_hdmi/screen.ppm $(SIM09)/rtl/font8x16.hex
+build_hdmi/obj/Vhdmi_top: $(HDMI_SRC) $(SIM09)/sim/tb_hdmi.cpp
+	mkdir -p build_hdmi
+	cp $(SIM09)/rtl/font8x16.hex build_hdmi/
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module hdmi_top -Mdir build_hdmi/obj \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -CFLAGS "-O2" $(HDMI_SRC) $(SIM09)/sim/tb_hdmi.cpp -o Vhdmi_top >/dev/null
+.PHONY: hdmi
