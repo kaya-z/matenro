@@ -187,3 +187,9 @@ $(FBDIR)/obj/Vsim_top: $(FBSRC) $(FBDIR)/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath $(FBDIR)/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(FBSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
 .PHONY: fbsoc
+
+# The drawing commands of gfx (pix, line, rect, box, text) on the whole SoC: the dump of the SDRAM at $300000 against the picture that check_gfxdraw.py draws again.   make gfxdraw
+gfxdraw: build_gfx/obj/Vsim_top $(GFX_DISK)
+	cd build_gfx && rm -f fbdump.bin && obj/Vsim_top -d gd.dsk -s $(abspath gfxdraw.txt) -c 3000000000 | tr -d '\r' | grep -E "gfx|FBDUMP|OS9:" | tail -3
+	python3 check_gfxdraw.py build_gfx/fbdump.bin $(SIM09)/rtl/font8x16.hex
+.PHONY: gfxdraw

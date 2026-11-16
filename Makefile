@@ -57,6 +57,8 @@ test-tn20k:
 	make -C fpga/tn20k/sim hdmik
 	make -C fpga/tn20k/sim hdmig
 	make -C fpga/tn20k/sim fbsoc FBFIX=1 PH=7 D88=11 HZ=54000000 | grep -q FBALIVE
+	make -C fpga/tn20k/sim gfxboot PH=7 D88=11 HZ=54000000
+	make -C fpga/tn20k/sim gfxdraw PH=7 D88=11 HZ=54000000
 
 test-fpga:
 	make -C fpga/sim

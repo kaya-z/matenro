@@ -25,7 +25,8 @@ echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/reboot.lst" -o "$OUT/re
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/etime.lst" -o "$OUT/etime" etime/etime.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/subsel.lst" -o "$OUT/subsel" subsel/subsel.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/kanjild.lst" -o "$OUT/kanjild" kanjild/kanjild.asm
-echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/gfx.lst" -o "$OUT/gfx" gfx/gfx.asm
+python3 "$ROOT/os9/gfx/mkfont.py" "$OS9DIR/../fpga/tn9k/rtl/font8x16.hex" "$OUT/gfxfont.inc"
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -l "$OUT/gfx.lst" -o "$OUT/gfx" gfx/gfx.asm
 python3 "$ROOT/os9/duo/mkduoz80.py" "$OUT/duoz80.inc"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -l "$OUT/duo.lst" -o "$OUT/duo" duo/duo.asm
 cd "$ROOT/os9"

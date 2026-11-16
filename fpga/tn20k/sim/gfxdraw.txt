@@ -1,0 +1,28 @@
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send gfx fill 0\r
+expect OS9:
+send gfx box 10 10 50 30 28\r
+expect OS9:
+send gfx rect 5 5 100 60 255\r
+expect OS9:
+send gfx line 0 0 319 239 7\r
+expect OS9:
+send gfx line 319 0 0 239 224\r
+expect OS9:
+send gfx line 100 200 150 200 3\r
+expect OS9:
+send gfx line 40 100 40 150 5\r
+expect OS9:
+send gfx pix 160 120 255\r
+expect OS9:
+send gfx pix 400 10 255\r
+expect OS9:
+send gfx text 8 160 255 16 Hello Matenro 20K.\r
+expect OS9:
+send gfx text 290 230 255 0 Clipped text\r
+expect OS9:
+send gfx box 300 220 40 40 12\r
+expect OS9:
+quit
