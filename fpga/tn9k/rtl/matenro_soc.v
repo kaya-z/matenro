@@ -151,7 +151,7 @@ module matenro_soc #(
     // the frame buffer of the HDMI screen: GCTL $FFB8 (bit 0: show it), PIDX $FFB9 (the palette entry), PDAT $FFBA (the red, green, blue bytes of
     // the entry, one after the other; the third write sets it, the index goes on)
 `ifdef HCTL
-    reg         gfx_r = 1'b0, ov_r = 1'b0, pal_we_r = 1'b0;
+    reg         gfx_r = 1'b0, ov_r = 1'b0, sv_r = 1'b0, pal_we_r = 1'b0;   // sv_r: GCTL bit 2, the blocks $70-$7F of the sub CPU memory are the picture
     reg  [7:0]  pidx_r = 8'd0, pal_ix_r = 8'd0, pred_r, pgrn_r;
     reg  [1:0]  pcnt_r = 2'd0;
     reg  [7:0]  pblu_r;
@@ -161,6 +161,7 @@ module matenro_soc #(
     assign      pal_idx = pal_ix_r;
     assign      pal_rgb = {pred_r, pgrn_r, pblu_r};
 `else
+    wire        sv_r = 1'b0;
     assign      gfx_on = 1'b0, gfx_ov = 1'b0, pal_we = 1'b0, pal_idx = 8'd0, pal_rgb = 24'd0;
 `endif
 `ifdef SUBBOTH
@@ -177,6 +178,8 @@ module matenro_soc #(
     wire        zb_hit, zb_ack, win_hit, wb_ack;      // the shared RAM in the BSRAM (shr_ap.v)
     wire [7:0]  zb_rdata, wb_rdata;
     wire [20:0] zm_addr;
+    wire        zm_vram;                                // the sub CPU access is to the picture (SDRAM $300000): the blocks $70-$7F, if GCTL bit 2 is set
+    assign      zm_vram = sv_r && (zm_addr[20:17] == 4'b0111);
     wire [7:0]  zm_wdata;
     wire [15:0] zm_rdata_w;
 
@@ -517,7 +520,7 @@ module matenro_soc #(
         else if (io_xl)    io_rdata = xl_rdata;
         else if (io_hctl)  io_rdata = {6'b000000, win_hi, kj_ok};          // $FFC8
 `ifdef HCTL
-        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {6'd0, ov_r, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
+        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {5'd0, sv_r, ov_r, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
 `endif
 `ifdef SUBBOTH
         else if (io_ssel)  io_rdata = {6'b000000, sel8, ~sel8};            // $FFCF: 1 = Z80, 2 = 8088
@@ -588,7 +591,7 @@ module matenro_soc #(
         if (rst) begin
             mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
 `ifdef HCTL
-            kj_ok <= 1'b0; win_hi <= 1'b0; gfx_r <= 1'b0; ov_r <= 1'b0; pcnt_r <= 2'd0; pidx_r <= 8'd0;
+            kj_ok <= 1'b0; win_hi <= 1'b0; gfx_r <= 1'b0; ov_r <= 1'b0; sv_r <= 1'b0; pcnt_r <= 2'd0; pidx_r <= 8'd0;
 `endif
 `ifdef SUBBOTH
             sel8 <= SUB_DEF8;
@@ -613,7 +616,7 @@ module matenro_soc #(
                             if (io_dctl) begin d_async <= cpu_d_out[0]; d_ien <= cpu_d_out[7]; end      // $E049
 `ifdef HCTL
                             if (io_hctl) begin kj_ok <= cpu_d_out[0]; win_hi <= cpu_d_out[1]; end      // $FFC8
-                            if (io_gfx && off[1:0] == 2'd0) begin gfx_r <= cpu_d_out[0]; ov_r <= cpu_d_out[1]; end                       // $FFB8
+                            if (io_gfx && off[1:0] == 2'd0) begin gfx_r <= cpu_d_out[0]; ov_r <= cpu_d_out[1]; sv_r <= cpu_d_out[2]; end                       // $FFB8
                             if (io_gfx && off[1:0] == 2'd1) begin pidx_r <= cpu_d_out; pcnt_r <= 2'd0; end      // $FFB9
                             if (io_gfx && off[1:0] == 2'd2) begin                                            // $FFBA
                                 if (pcnt_r == 2'd0) begin pred_r <= cpu_d_out; pcnt_r <= 2'd1; end
@@ -740,7 +743,7 @@ module matenro_soc #(
         .m0_req(m0_req), .m0_wr(m0_wrr), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),
-        .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr({1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w),
+        .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr(zm_vram ? {2'b11, 3'b000, zm_addr[16:0]} : {1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w),
         .m4_req(m4_req), .m4_wr(m4_wrr), .m4_addr(m4_addr), .m4_din(m4_din), .m4_ack(m4_ack), .m4_rdata(m4_rdata)
     );
 

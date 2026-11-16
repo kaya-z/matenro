@@ -203,22 +203,29 @@ gfxsub: build_gfxsub/obj/Vsim_top $(SUB_DISK)
 	python3 check_gdemo.py build_gfxsub/fbdump.bin $(SIM09)/rtl/font8x16.hex "Hello from CP/M-80"
 	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gs.dsk -s $(abspath gfx88.txt) -c 3500000000 | tr -d '\r' | grep -E "FBDUMP|OS9:" | tail -2
 	python3 check_gdemo.py build_gfxsub/fbdump.bin $(SIM09)/rtl/font8x16.hex "Hello from CP/M-86"
+	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gs.dsk -s $(abspath gfxdirect.txt) -c 3500000000 | tr -d '\r' | grep -E "FBDUMP|OS9:" | tail -2
+	python3 check_gdirect.py build_gfxsub/fbdump.bin
+	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gs.dsk -s $(abspath gfxdirect88.txt) -c 3500000000 | tr -d '\r' | grep -E "FBDUMP|OS9:" | tail -2
+	python3 check_gdirect.py build_gfxsub/fbdump.bin
 build_gfxsub/rom.hex:
 	mkdir -p build_gfxsub
 	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
 build_gfxsub/tv80s_cen.v: ../../sim/mk_tv80s_cen.sh
 	mkdir -p build_gfxsub
 	sh ../../sim/mk_tv80s_cen.sh $(TV80) $@
-$(SUB_DISK): gfxz80.txt gfx88.txt ../../../tools/build_cpm.sh ../../../os9/gfx/gfxlib.inc ../../../os9/cpm/cpmgfx.asm ../../../tests/cpm/gdemo.asm ../../../tests/cpm/gdemo86.asm
+$(SUB_DISK): gfxz80.txt gfx88.txt gfxdirect.txt gfxdirect88.txt ../../../tests/cpm/gdirect.asm ../../../tests/cpm/gdirect86.asm ../../../tools/build_cpm.sh ../../../os9/gfx/gfxlib.inc ../../../os9/cpm/cpmgfx.asm ../../../tests/cpm/gdemo.asm ../../../tests/cpm/gdemo86.asm
 	mkdir -p build_gfxsub/b build_gfxsub/v0
 	../../../tools/build_cpm.sh $(CURDIR)/build_gfxsub/b > /dev/null
 	cp $(SIM09)/../../os9/OS9L2.dsk $@
 	cp -r $(SIM09)/../../os9/level2/cmds build_gfxsub/v0/cmds
 	cp build_gfxsub/b/cpm build_gfxsub/b/subsel build_gfxsub/v0/cmds/
 	python3 ../../../tools/z80asm.py ../../../tests/cpm/gdemo.asm -o build_gfxsub/v0/gdemo.com > /dev/null
+	python3 ../../../tools/z80asm.py ../../../tests/cpm/gdirect.asm -o build_gfxsub/v0/gdirect.com > /dev/null
+	nasm -f bin ../../../tests/cpm/gdirect86.asm -o build_gfxsub/gdr86.bin
+	python3 ../../../tools/mkcmd.py 8080 build_gfxsub/gdr86.bin build_gfxsub/v0/gdirect86.cmd
 	nasm -f bin ../../../tests/cpm/gdemo86.asm -o build_gfxsub/gd86.bin
 	python3 ../../../tools/mkcmd.py 8080 build_gfxsub/gd86.bin build_gfxsub/v0/gdemo86.cmd
-	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/cpm /d0/cmds/cpm\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/subsel /d0/cmds/subsel\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/cpm e pe r pr\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/subsel e pe r pr\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo.com /d0/gdemo.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo86.cmd /d0/gdemo86.cmd\\r"\nexpect "OS9:"\nquit\n' > build_gfxsub/prep.txt
+	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/cpm /d0/cmds/cpm\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/subsel /d0/cmds/subsel\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/cpm e pe r pr\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/subsel e pe r pr\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo.com /d0/gdemo.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo86.cmd /d0/gdemo86.cmd\\r"\nexpect "OS9:"\nsend "copy /v0/gdirect.com /d0/gdirect.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdirect86.cmd /d0/gdirect86.cmd\\r"\nexpect "OS9:"\nquit\n' > build_gfxsub/prep.txt
 	cd build_gfxsub && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 gs.dsk -v v0 -script prep.txt > prep.log 2>&1
 build_gfxsub/obj/Vsim_top: $(SUBSRC) build_gfxsub/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
 	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfxsub/obj -DSUBBOTH -DHCTL -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
@@ -233,7 +240,9 @@ DOS_DISK = build_gfxsub/gdos.dsk
 gfxdos: build_gfxsub/obj/Vsim_top $(DOS_DISK)
 	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gdos.dsk -s $(abspath gfxdos.txt) -c 12000000000 | tr -d '\r' | grep -E "FBDUMP|OS9:|A:|A>|time out" | tail -6
 	python3 check_gdemo.py build_gfxsub/fbdump.bin $(SIM09)/rtl/font8x16.hex "Hello from MS-DOS"
-$(DOS_DISK): gfxdos.txt ../../../tools/build_cpm.sh ../../../os9/dos/dos.asm ../../../os9/dos/bios88.asm ../../../tests/dos/gdemo.asm
+	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gdos.dsk -s $(abspath gfxdosdirect.txt) -c 12000000000 | tr -d '\r' | grep -E "FBDUMP|OS9:|A:|A>|time out" | tail -6
+	python3 check_gdirect.py build_gfxsub/fbdump.bin
+$(DOS_DISK): gfxdos.txt gfxdosdirect.txt ../../../tests/dos/gdirect.asm ../../../tools/build_cpm.sh ../../../os9/dos/dos.asm ../../../os9/dos/bios88.asm ../../../tests/dos/gdemo.asm
 	mkdir -p build_gfxsub/b build_gfxsub/v1/dos
 	../../../tools/build_cpm.sh $(CURDIR)/build_gfxsub/b > /dev/null
 	sh ../../../tools/build_dosrun.sh $(CURDIR)/build_gfxsub/dr $(DOSOUT) > /dev/null
@@ -242,6 +251,7 @@ $(DOS_DISK): gfxdos.txt ../../../tools/build_cpm.sh ../../../os9/dos/dos.asm ../
 	cp build_gfxsub/b/dos build_gfxsub/v1/cmds/
 	cp $(DOSOUT)/msdos.sys build_gfxsub/dr/dosrun.img build_gfxsub/v1/dos/
 	nasm -f bin ../../../tests/dos/gdemo.asm -o build_gfxsub/v1/dos/gdemo.com
-	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/dos /d0/cmds/dos\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/dos e pe r pr\\r"\nexpect "OS9:"\nsend "makdir /d0/dos\\r"\nexpect "OS9:"\nsend "copy /v0/dos/msdos.sys /d0/dos/msdos.sys\\r"\nexpect "OS9:"\nsend "copy /v0/dos/dosrun.img /d0/dos/dosrun.img\\r"\nexpect "OS9:"\nsend "copy /v0/dos/gdemo.com /d0/dos/gdemo.com\\r"\nexpect "OS9:"\nsend "free /d0\\r"\nexpect "OS9:"\nquit\n' > build_gfxsub/prepd.txt
+	nasm -f bin ../../../tests/dos/gdirect.asm -o build_gfxsub/v1/dos/gdirect.com
+	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/dos /d0/cmds/dos\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/dos e pe r pr\\r"\nexpect "OS9:"\nsend "makdir /d0/dos\\r"\nexpect "OS9:"\nsend "copy /v0/dos/msdos.sys /d0/dos/msdos.sys\\r"\nexpect "OS9:"\nsend "copy /v0/dos/dosrun.img /d0/dos/dosrun.img\\r"\nexpect "OS9:"\nsend "copy /v0/dos/gdemo.com /d0/dos/gdemo.com\\r"\nexpect "OS9:"\nsend "copy /v0/dos/gdirect.com /d0/dos/gdirect.com\\r"\nexpect "OS9:"\nsend "free /d0\\r"\nexpect "OS9:"\nquit\n' > build_gfxsub/prepd.txt
 	cd build_gfxsub && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 gdos.dsk -v v1 -script prepd.txt > prepd.log 2>&1
 .PHONY: gfxdos

@@ -314,7 +314,11 @@ zgf2      stb   >XDAT
          bne   zgf1
          lbra  g_end
 
-g_mode   sta   >GCTL
+g_mode   ldb   >GCTL               (bit 2, the sub CPU window, stays)
+         andb  #4
+         pshs  b
+         ora   ,s+
+         sta   >GCTL
          rts
 
 g_pal    lda   vx+1,u
@@ -347,6 +351,8 @@ g_run    stx   gblk,u
          lbeq  gr_mod
          cmpb  #8
          lbeq  gr_pal
+         cmpb  #9
+         lbeq  gr_map
          lda   #$FE
          rts
 * D = the word B (1 ... 6) of the block
@@ -431,6 +437,32 @@ gr_pal   ldb   #1
          lbsr  g_pal
 gr_ok    clra
          rts
+* map: the block w1 of the sub CPU memory (8 KB) is the block w2 (0 ... 9, 8 KB of the picture each) of the frame buffer, or w2 = $FFFF: its
+* own memory again.  The physical blocks $70-$7F of the SMMU are the picture (GCTL bit 2, set here)
+gr_map   ldb   #1
+         lbsr  g_word
+         tfr   b,a                 the SMMU index
+         pshs  a
+         ldb   #2
+         lbsr  g_word
+         cmpd  #$FFFF
+         bne   grm1
+         lda   ,s
+         ora   #$80                its own memory: $80 + index
+         bra   grm2
+grm1     tfr   b,a
+         ora   #$70
+grm2     ldb   #XE_MI
+         stb   >XIDX
+         ldb   ,s+
+         stb   >XDAT
+         ldb   #XE_MD
+         stb   >XIDX
+         sta   >XDAT
+         lda   >GCTL
+         ora   #4
+         sta   >GCTL
+         bra   gr_ok
 * the rectangle: x y w h c
 gr_getr  ldb   #1
          lbsr  g_word

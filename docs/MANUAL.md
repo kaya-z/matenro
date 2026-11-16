@@ -404,6 +404,8 @@ Z80 の CP/M-80、8088 の CP/M-86 と MS-DOS のプログラムから、6.8.3 �
 * **例**: `tests/cpm/gdemo.asm` (CP/M-80)、`tests/cpm/gdemo86.asm` (CP/M-86)、`tests/dos/gdemo.asm` (MS-DOS)。どれも、箱、枠、線 2 本、点、文字を描いて、絵の上に文字を重ねます。CP/M-80 は `subsel z80` のあと `cpm gdemo.com`、CP/M-86 は `subsel 8088` のあと `cpm gdemo86.cmd`、MS-DOS は `subsel 8088` のあと `cd /d0/dos` して `dos -v=2 -a=dosrun2.img -t=/d1/dostmp.img gdemo` (カードの `/d0` に入っています)。
 * **仕組み**: `cpm` は BDOS の関数 112 (`os9/cpm/cpmgfx.asm`)、`dos` は BIOS の割り込み E2h を要求の 30 番にして (`os9/dos/dos.asm` の `f_gfx`)、どちらも `os9/gfx/gfxlib.inc` の描画 (6.8.3 の `gfx` と同じコード) を呼びます。サブ CPU が直接 VRAM に書く経路は、まだありません。
 
+**サブ CPU が直接書く** (操作 9、`map`): ブロックの `w1` (サブ CPU のメモリの 8KB のブロック。Z80 なら 0〜7、`$A000` は 5) を、`w2` (フレームバッファの 8KB のブロック、0〜9) に割り当てます。`w2` が `$FFFF` なら元のメモリに戻ります。割り当てたあとは、そのアドレスへの普通の書き込みと読み出しが、6809 を通さずにフレームバッファに届きます (`GCTL` のビット 2。物理ブロック `$70`〜`$7F`)。1 点は `$A000 + y*320 + x` のように (1 行 320 バイト、ブロックをまたぐので 2 つ以上割り当てます) 書けます。例: `tests/cpm/gdirect.asm` (`subsel z80` のあと `cpm gdirect.com`: `$A000` から 16KB に勾配を書いて、絵に切り替えます)。MS-DOS からも同じブロックを `INT 0E2h` で渡せます (`tests/dos/gdirect.asm`: `dos -v=2 -a=dosrun2.img -t=/d1/dostmp.img gdirect`)。CP/M-86 の例は `tests/cpm/gdirect86.asm` (セグメント `$A000`)。実機で確認しました (Z80、8088)。
+
 ### 6.9 DOS のアプリを OS-9 のコマンドラインから動かす (実行モード)
 
 ```

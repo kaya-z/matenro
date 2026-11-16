@@ -27,10 +27,14 @@ for n in hello86 fileio86 line86; do
 done
 nasm -f bin "$ROOT/os9/sub/sum8088.asm" -o "$T/v0/sum8088.bin"
 python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/gdemo.asm" -o "$T/v0/gdemo.com" > /dev/null
+python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/gdirect.asm" -o "$T/v0/gdirect.com" > /dev/null
+nasm -f bin "$ROOT/tests/cpm/gdirect86.asm" -o "$T/gdirect86.bin"
+python3 "$ROOT/tools/mkcmd.py" 8080 "$T/gdirect86.bin" "$T/v0/gdirect86.cmd"
 nasm -f bin "$ROOT/tests/cpm/gdemo86.asm" -o "$T/gdemo86.bin"
 python3 "$ROOT/tools/mkcmd.py" 8080 "$T/gdemo86.bin" "$T/v0/gdemo86.cmd"
 nasm -f bin "$ROOT/tests/dos/tbasic.asm" -o "$T/v0/dos/tbasic.com"
 nasm -f bin "$ROOT/tests/dos/gdemo.asm" -o "$T/v0/dos/gdemo.com"
+nasm -f bin "$ROOT/tests/dos/gdirect.asm" -o "$T/v0/dos/gdirect.com"
 cp "$T/d2/msdos.sys" "$T/d2/bios2.bin" "$T/dr/dosrun2.img" "$T/v0/dos/"
 cp "$SIM09/os9/OS9L2.dsk" "$OUT"
 # the boot message says "Tang Nano 9K": the name is in the INIT module of the ROM image of the Level 2 machine (LSN 1100, 112 sectors of the
@@ -52,12 +56,12 @@ dd if="$T/rom/os9v2_tn20k.rom" of="$OUT" bs=256 seek=1100 conv=notrunc status=no
     echo "send \"copy /v0/cmds/$n /d0/cmds/$n\\r\""; echo 'expect "OS9:"'
     echo "send \"attr /d0/cmds/$n e pe r pr\\r\""; echo 'expect "OS9:"'
   done
-  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin gdemo.com gdemo86.cmd; do
+  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin gdemo.com gdemo86.cmd gdirect.com gdirect86.cmd; do
     echo "send \"del /d0/$f\\r\""; echo 'expect "OS9:"'
     echo "send \"copy /v0/$f /d0/$f\\r\""; echo 'expect "OS9:"'
   done
   echo 'send "makdir /d0/dos\r"'; echo 'expect "OS9:"'
-  for f in msdos.sys bios2.bin tbasic.com gdemo.com dosrun2.img; do
+  for f in msdos.sys bios2.bin tbasic.com gdemo.com gdirect.com dosrun2.img; do
     echo "send \"copy /v0/dos/$f /d0/dos/$f\\r\""; echo 'expect "OS9:"'
   done
   echo 'send "free /d0\r"'; echo 'expect "OS9:"'; echo 'quit'
@@ -69,13 +73,19 @@ if [ -n "$2" ]; then
   dd if="$OUT" of="$3" bs=1M count=1 conv=notrunc status=none
   # the kanji image of the HDMI screen goes to /d1 (the OS-9 command kanjild loads it): /d1 of the card starts at 128 MB (64 MB)
   KJ=${KANJI_BIN:-$SIM09/fpga/tn9k/images/kanji.bin}
+  # the SKK dictionary of jwp (/d1/skk.dic, UTF-8) is made from SKK-JISYO.L (apt install skkdic)
+  SKKJISYO=${SKKJISYO:-/usr/share/skk/SKK-JISYO.L}
   if [ -f "$KJ" ]; then
     T=$(mktemp -d)
     mkdir -p "$T/v0"
     cp "$KJ" "$T/v0/kanji.bin"
+    CPSKK=
+    if [ -f "$SKKJISYO" ]; then
+      python3 "$SIM09/tools/mkskkdic.py" -e utf8 -o "$T/v0/skk.dic" "$SKKJISYO" > /dev/null && CPSKK='send "copy /v0/skk.dic /d1/skk.dic\\r"\nexpect "OS9:"\n'
+    fi
     dd if="$3" of="$T/d1.dsk" bs=1M skip=128 count=64 status=none
-    printf 'timeout 60000000\nexpect "OS9:"\nsend "chx /d0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/kanji.bin /d1/kanji.bin\\r"\nexpect "OS9:"\nsend "dir /d1\\r"\nexpect "OS9:"\nquit\n' > "$T/s.txt"
-    "$ROOT/matenro" -max -rom "$SIM09/os9/os9v2.rom" -0 "$OUT" -1 "$T/d1.dsk" -v "$T/v0" -script "$T/s.txt" 2>&1 | tr '\r' '\n' | grep -i "kanji\|error" || true
+    printf 'timeout 60000000\nexpect "OS9:"\nsend "chx /d0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/kanji.bin /d1/kanji.bin\\r"\nexpect "OS9:"\n%bsend "dir /d1\\r"\nexpect "OS9:"\nquit\n' "$CPSKK" > "$T/s.txt"
+    "$ROOT/matenro" -max -rom "$SIM09/os9/os9v2.rom" -0 "$OUT" -1 "$T/d1.dsk" -v "$T/v0" -script "$T/s.txt" 2>&1 | tr '\r' '\n' | grep -i "kanji\|skk\|error" || true
     dd if="$T/d1.dsk" of="$3" bs=1M seek=128 conv=notrunc status=none
     rm -rf "$T"
   fi

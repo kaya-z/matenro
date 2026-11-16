@@ -1,0 +1,8 @@
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send subsel z80\r
+expect OS9:
+send cpm gdirect.com\r
+expect OS9:
+quit

@@ -53,6 +53,8 @@ edition  set   1
 
 XIDX     equ   $FFCD
 XDAT     equ   $FFCE
+XE_MI    equ   $08
+XE_MD    equ   $09
 XE_WA    equ   $0A
 XE_WD    equ   $0D
 
