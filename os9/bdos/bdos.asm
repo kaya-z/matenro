@@ -105,6 +105,7 @@ wrs1     lda   ,x+
 wrs9     rts
 
          use   cpmengine.asm
+f_gfx    rts                       (the graphics of cpm: not in this module)
 
          emod
 eom      equ   *

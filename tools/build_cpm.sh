@@ -11,9 +11,10 @@ OS9DIR=${OS9DIR:-/export/nas/archives/MC6809/new-sbc09/os9}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 PYTHONUTF8=1 python3 "$ROOT/os9/cpm/mkshims.py" "$OUT/shims.inc"
+python3 "$ROOT/os9/gfx/mkfont.py" "$OS9DIR/../fpga/tn9k/rtl/font8x16.hex" "$OUT/gfxfont.inc"
 cd "$ROOT/os9"
 # a09 asks "Continue?" after errors and waits for a key: answer no
-echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/cpm/" -l "$OUT/cpm.lst" -o "$OUT/cpm" cpm/cpm.asm
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/cpm/" -I "$ROOT/os9/gfx/" -l "$OUT/cpm.lst" -o "$OUT/cpm" cpm/cpm.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/xrun.lst" -o "$OUT/xrun" xrun.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$ROOT/os9/cpm/" -I "$ROOT/os9/bdos/" -l "$OUT/bdos.lst" -o "$OUT/bdos" bdos/bdos.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$ROOT/os9/bdos/" -l "$OUT/bdostest.lst" -o "$OUT/bdostest" ../tests/bdos/bdostest.asm
@@ -25,7 +26,6 @@ echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/reboot.lst" -o "$OUT/re
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/etime.lst" -o "$OUT/etime" etime/etime.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/subsel.lst" -o "$OUT/subsel" subsel/subsel.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/kanjild.lst" -o "$OUT/kanjild" kanjild/kanjild.asm
-python3 "$ROOT/os9/gfx/mkfont.py" "$OS9DIR/../fpga/tn9k/rtl/font8x16.hex" "$OUT/gfxfont.inc"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -l "$OUT/gfx.lst" -o "$OUT/gfx" gfx/gfx.asm
 python3 "$ROOT/os9/duo/mkduoz80.py" "$OUT/duoz80.inc"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -l "$OUT/duo.lst" -o "$OUT/duo" duo/duo.asm
@@ -35,4 +35,4 @@ echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cc80.lst" -o "$OUT/cc80
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/xlink.lst" -o "$OUT/xlink" xlink/xlink.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/x0.lst" -o "$OUT/x0" xlink/x0.asm
 PYTHONUTF8=1 python3 "$ROOT/os9/dos/mkbios.py" "$OUT/bios.inc"
-echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/cpm/" -l "$OUT/dos.lst" -o "$OUT/dos" dos/dos.asm
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/cpm/" -I "$ROOT/os9/gfx/" -l "$OUT/dos.lst" -o "$OUT/dos" dos/dos.asm

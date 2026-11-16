@@ -26,7 +26,11 @@ for n in hello86 fileio86 line86; do
   python3 "$ROOT/tools/mkcmd.py" 8080 "$T/$n.bin" "$T/v0/$n.cmd"
 done
 nasm -f bin "$ROOT/os9/sub/sum8088.asm" -o "$T/v0/sum8088.bin"
+python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/gdemo.asm" -o "$T/v0/gdemo.com" > /dev/null
+nasm -f bin "$ROOT/tests/cpm/gdemo86.asm" -o "$T/gdemo86.bin"
+python3 "$ROOT/tools/mkcmd.py" 8080 "$T/gdemo86.bin" "$T/v0/gdemo86.cmd"
 nasm -f bin "$ROOT/tests/dos/tbasic.asm" -o "$T/v0/dos/tbasic.com"
+nasm -f bin "$ROOT/tests/dos/gdemo.asm" -o "$T/v0/dos/gdemo.com"
 cp "$T/d2/msdos.sys" "$T/d2/bios2.bin" "$T/dr/dosrun2.img" "$T/v0/dos/"
 cp "$SIM09/os9/OS9L2.dsk" "$OUT"
 # the boot message says "Tang Nano 9K": the name is in the INIT module of the ROM image of the Level 2 machine (LSN 1100, 112 sectors of the
@@ -48,12 +52,12 @@ dd if="$T/rom/os9v2_tn20k.rom" of="$OUT" bs=256 seek=1100 conv=notrunc status=no
     echo "send \"copy /v0/cmds/$n /d0/cmds/$n\\r\""; echo 'expect "OS9:"'
     echo "send \"attr /d0/cmds/$n e pe r pr\\r\""; echo 'expect "OS9:"'
   done
-  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin; do
+  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin gdemo.com gdemo86.cmd; do
     echo "send \"del /d0/$f\\r\""; echo 'expect "OS9:"'
     echo "send \"copy /v0/$f /d0/$f\\r\""; echo 'expect "OS9:"'
   done
   echo 'send "makdir /d0/dos\r"'; echo 'expect "OS9:"'
-  for f in msdos.sys bios2.bin tbasic.com dosrun2.img; do
+  for f in msdos.sys bios2.bin tbasic.com gdemo.com dosrun2.img; do
     echo "send \"copy /v0/dos/$f /d0/dos/$f\\r\""; echo 'expect "OS9:"'
   done
   echo 'send "free /d0\r"'; echo 'expect "OS9:"'; echo 'quit'

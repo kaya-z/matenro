@@ -51,10 +51,6 @@ atrv     set   ReEnt+rev
 rev      set   $00
 edition  set   1
 
-HCTL     equ   $FFC8
-GCTL     equ   $FFB8
-PIDX     equ   $FFB9
-PDAT     equ   $FFBA
 XIDX     equ   $FFCD
 XDAT     equ   $FFCE
 XE_WA    equ   $0A
@@ -70,28 +66,8 @@ gc       rmb   1
 rb       rmb   1                 the red band, a band is 40 columns
 rc       rmb   1
 yy       rmb   1
-vx       rmb   2                 the drawing: the position, the second point, the colours
-vy       rmb   2
-vx1      rmb   2
-vy1      rmb   2
-vc       rmb   1
-vbg      rmb   1
-acc      rmb   2
-tmp      rmb   2
 dig      rmb   1
-hi       rmb   1
-dx       rmb   2
-dy       rmb   2
-sx       rmb   2
-sy       rmb   2
-errv     rmb   2
-ln       rmb   2
-ox       rmb   2
-oy       rmb   2
-ow       rmb   2
-oh       rmb   2
-nx       rmb   1
-bits     rmb   1
+         use   gfxvars.inc
 buf      rmb   256
          rmb   200               stack
 size     equ   .
@@ -173,24 +149,6 @@ skipw    lda   ,x+
          rts
 
 * the window at the picture (physical $300000): HCTL.1 on, window address $100000
-fbbeg    lda   >HCTL
-         ora   #2
-         sta   >HCTL
-         ldb   #XE_WA+$80
-         stb   >XIDX
-         lda   #$10
-         sta   >XDAT
-         clra
-         sta   >XDAT
-         sta   >XDAT
-         ldb   #XE_WD
-         stb   >XIDX
-         rts
-fbend    lda   >HCTL
-         anda  #$FD
-         sta   >HCTL
-         rts
-
 * fill n
 cmdfill  lbsr  skipw
          clrb                      the number
@@ -203,22 +161,11 @@ fn1      lda   ,x+
          mul                       B * 10 (the number stays below 256)
          addb  ,s+
          bra   fn1
-fn9      pshs  b
-         lbsr  fbbeg
-         puls  b
-         ldx   #300                300 * 256 = 76,800
-fl1      clra
-fl2      stb   >XDAT
-         deca
-         bne   fl2
-         leax  -1,x
-         bne   fl1
-         lbsr  fbend
+fn9      stb   vc,u
+         lbsr  g_fill
          lbra  done
 
-* test: the blocks of 3-3-2 colours: the red band every 40 columns, the green band every 30
-* rows, the blue is (x + y) mod 4
-cmdtest  lbsr  fbbeg
+cmdtest  lbsr  g_beg
          clr   gb,u
          clr   gc,u
          clr   yy,u
@@ -260,7 +207,7 @@ tx2      leax  -1,x
          inc   gb,u
 ty2      dec   rows,u
          bne   ty1
-         lbsr  fbend
+         lbsr  g_end
          lbra  done
 
 * load file
@@ -269,7 +216,7 @@ cmdload  lbsr  skipw
          os9   I$Open
          lbcs  nofile
          sta   path,u
-         lbsr  fbbeg
+         lbsr  g_beg
 ld1      lda   path,u
          leax  buf,u
          ldy   #256
@@ -281,7 +228,7 @@ ld2      lda   ,x+
          leay  -1,y
          bne   ld2
          bra   ld1
-ld9      lbsr  fbend
+ld9      lbsr  g_end
          lda   path,u
          os9   I$Close
          lbra  done
@@ -310,7 +257,8 @@ pl9      lda   path,u
          lbra  done
 
 
-* ---------------------------------------------------------------- the drawing
+* ---------------------------------------------------------------- the drawing: the
+* numbers, then gfxlib.inc
 * the second letter decides: TEST or TEXT, LOAD or LINE, PAL or PIX
 cmdt     lda   1,x
          anda  #$DF
@@ -332,110 +280,29 @@ cmdp     lda   ,x
 getnum   lbsr  skipsp
          clra
          clrb
-         std   acc,u
+         std   gacc,u
 gn1      lda   ,x
          suba  #'0'
          cmpa  #9
          bhi   gn9
          sta   dig,u
          leax  1,x
-         ldd   acc,u
+         ldd   gacc,u
          lslb
          rola                      x2
-         std   tmp,u
+         std   gtmp,u
          lslb
          rola
          lslb
          rola                      x8
-         addd  tmp,u               x10
+         addd  gtmp,u              x10
          addb  dig,u
          adca  #0
-         std   acc,u
+         std   gacc,u
          bra   gn1
-gn9      ldd   acc,u
+gn9      ldd   gacc,u
          rts
 
-* D = - D
-negd     coma
-         comb
-         addd  #1
-         rts
-
-* the window at the pixel (vx, vy): offset = vy * 320 + vx, window address $100000 + offset
-seta     ldb   vy+1,u
-         lda   #64
-         mul
-         std   tmp,u               vy * 64
-         lda   vy+1,u
-         clrb                      vy * 256
-         clr   hi,u
-         addd  tmp,u
-         bcc   sa1
-         inc   hi,u
-sa1      addd  vx,u
-         bcc   sa2
-         inc   hi,u
-sa2      std   tmp,u
-         lda   hi,u
-         ora   #$10
-         ldb   #XE_WA+$80
-         stb   >XIDX
-         sta   >XDAT
-         lda   tmp,u
-         sta   >XDAT
-         lda   tmp+1,u
-         sta   >XDAT
-         ldb   #XE_WD
-         stb   >XIDX
-         rts
-
-* one pixel (vx, vy) in the colour vc; outside of the picture: nothing
-plot     ldd   vx,u
-         cmpd  #320
-         bhs   plx
-         ldd   vy,u
-         cmpd  #240
-         bhs   plx
-         lbsr  seta
-         lda   vc,u
-         sta   >XDAT
-plx      rts
-
-* ln pixels from (vx, vy) to the right, in vc
-hline    ldd   vy,u
-         cmpd  #240
-         bhs   hl9
-         ldd   vx,u
-         cmpd  #320
-         bhs   hl9
-         ldd   #320
-         subd  vx,u                the room until the right edge
-         cmpd  ln,u
-         bhs   hl1
-         std   ln,u
-hl1      ldy   ln,u
-         beq   hl9
-         lbsr  seta
-         lda   vc,u
-hl2      sta   >XDAT
-         leay  -1,y
-         bne   hl2
-hl9      rts
-
-* ln pixels from (vx, vy) downwards, in vc
-vline    ldy   ln,u
-         beq   vl9
-vl1      pshs  y
-         lbsr  plot
-         puls  y
-         ldd   vy,u
-         addd  #1
-         std   vy,u
-         leay  -1,y
-         bne   vl1
-vl9      rts
-
-* the numbers x y c  /  x0 y0 x1 y1 c  /  x y w h c  into the variables
 cmdpix   lbsr  skipw
          lbsr  getnum
          std   vx,u
@@ -443,9 +310,7 @@ cmdpix   lbsr  skipw
          std   vy,u
          lbsr  getnum
          stb   vc,u
-         lbsr  fbbeg
-         lbsr  plot
-         lbsr  fbend
+         lbsr  g_pix
          lbra  done
 
 cmdline  lbsr  skipw
@@ -459,63 +324,7 @@ cmdline  lbsr  skipw
          std   vy1,u
          lbsr  getnum
          stb   vc,u
-         lbsr  fbbeg
-* dx = |x1 - x0|, sx = +1 / -1;  dy = - |y1 - y0|, sy = +1 / -1;  err = dx + dy
-         ldd   vx1,u
-         subd  vx,u
-         bpl   ln1
-         lbsr  negd
-         std   dx,u
-         ldd   #-1
-         bra   ln2
-ln1      std   dx,u
-         ldd   #1
-ln2      std   sx,u
-         ldd   vy1,u
-         subd  vy,u
-         bpl   ln3
-         lbsr  negd
-         std   dy,u
-         ldd   #-1
-         bra   ln4
-ln3      std   dy,u
-         ldd   #1
-ln4      std   sy,u
-         ldd   dy,u
-         lbsr  negd
-         std   dy,u                dy = -|y1 - y0|
-         addd  dx,u
-         std   errv,u
-ln5      lbsr  plot
-         ldd   vx,u
-         cmpd  vx1,u
-         bne   ln6
-         ldd   vy,u
-         cmpd  vy1,u
-         lbeq  ln9
-ln6      ldd   errv,u
-         lslb
-         rola                      e2 = 2 * err
-         std   tmp,u
-         cmpd  dy,u
-         blt   ln7                 e2 < dy: no step in x
-         ldd   errv,u
-         addd  dy,u
-         std   errv,u
-         ldd   vx,u
-         addd  sx,u
-         std   vx,u
-ln7      ldd   tmp,u
-         cmpd  dx,u
-         bgt   ln8                 e2 > dx: no step in y
-         ldd   errv,u
-         addd  dx,u
-         std   errv,u
-         ldd   vy,u
-         addd  sy,u
-         std   vy,u
-ln8      lbra  ln5
-ln9      lbsr  fbend
+         lbsr  g_line
          lbra  done
 
 * x y w h c -> ox oy ow oh vc
@@ -531,63 +340,11 @@ getrect  lbsr  skipw
          lbsr  getnum
          stb   vc,u
          rts
-
 cmdbox   lbsr  getrect
-         lbsr  fbbeg
-         ldd   oy,u
-         std   vy,u
-         ldy   oh,u
-         lbeq  bx9
-bx1      pshs  y
-         ldd   ox,u
-         std   vx,u
-         ldd   ow,u
-         std   ln,u
-         lbsr  hline
-         ldd   vy,u
-         addd  #1
-         std   vy,u
-         puls  y
-         leay  -1,y
-         bne   bx1
-bx9      lbsr  fbend
+         lbsr  g_box
          lbra  done
-
 cmdrect  lbsr  getrect
-         lbsr  fbbeg
-         ldd   ox,u                top: the row oy
-         std   vx,u
-         ldd   oy,u
-         std   vy,u
-         ldd   ow,u
-         std   ln,u
-         lbsr  hline
-         ldd   ox,u                bottom: the row oy + h - 1
-         std   vx,u
-         ldd   oy,u
-         addd  oh,u
-         subd  #1
-         std   vy,u
-         ldd   ow,u
-         std   ln,u
-         lbsr  hline
-         ldd   ox,u                left: the column ox
-         std   vx,u
-         ldd   oy,u
-         std   vy,u
-         ldd   oh,u
-         std   ln,u
-         lbsr  vline
-         ldd   ox,u                right: the column ox + w - 1
-         addd  ow,u
-         subd  #1
-         std   vx,u
-         ldd   oy,u
-         std   vy,u
-         ldd   oh,u
-         std   ln,u
-         lbsr  vline
-         lbsr  fbend
+         lbsr  g_rect
          lbra  done
 
 * text x y fg bg string
@@ -601,60 +358,10 @@ cmdtext  lbsr  skipw
          lbsr  getnum
          stb   vbg,u
          lbsr  skipsp
-         lbsr  fbbeg
-tt1      lda   ,x+                 the next character
-         cmpa  #C$CR
-         lbeq  tt9
-         cmpa  #' '
-         bhs   tt2
-         lda   #' '
-tt2      cmpa  #$7E
-         bls   tt3
-         lda   #' '
-tt3      pshs  x
-         suba  #' '
-         ldb   #16
-         mul                       the glyph: (c - $20) * 16
-         leax  gfont,pcr
-         leax  d,x
-         ldd   ox,u
-         cmpd  #312
-         lbhi  tt8                 not even a cell is left: the end
-         clr   nx,u                the line of the glyph
-tt4      ldd   ox,u
-         std   vx,u
-         ldb   nx,u
-         clra
-         addd  oy,u
-         std   vy,u
-         cmpd  #240
-         bhs   tt7                 below the picture
-         lbsr  seta
-         lda   ,x
-         sta   bits,u
-         ldb   #8
-tt5      lda   vc,u
-         lsl   bits,u
-         bcs   tt6
-         lda   vbg,u
-tt6      sta   >XDAT
-         decb
-         bne   tt5
-tt7      leax  1,x
-         inc   nx,u
-         lda   nx,u
-         cmpa  #16
-         bne   tt4
-         ldd   ox,u                the next cell
-         addd  #8
-         std   ox,u
-         puls  x
-         lbra  tt1
-tt8      puls  x
-tt9      lbsr  fbend
+         lbsr  g_text
          lbra  done
 
-         use   gfxfont.inc
+         use   gfxlib.inc
 
          emod
 eom      equ   *

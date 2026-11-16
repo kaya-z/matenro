@@ -895,6 +895,8 @@ dsp2     cmpa  #37
          lbeq  f_wrrnd                write random with zero fill
          cmpa  #51
          lbeq  f_sdmab
+         cmpa  #112
+         lbeq  f_gfx                  Matenro: the graphics of the HDMI screen (cpmgfx.asm)
          cmpa  #52
          lbeq  f_gdmab
          rts

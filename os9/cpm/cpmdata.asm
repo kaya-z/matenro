@@ -75,5 +75,8 @@ rawf     rmb   1                 the terminal is in the raw mode (see rawon)
 oldopt   rmb   32                the options of the terminal before
 sect     rmb   128
 iobuf    rmb   256
+         ifne  GFXV
+         use   gfxvars.inc
+         endc
          rmb   256               stack
 size     equ   .

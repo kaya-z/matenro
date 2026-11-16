@@ -44,6 +44,8 @@ NDRV     equ   4                 drives B: ... that can be mapped to a directory
 DRVSZ    equ   33
 SHSZ     equ   13
 
+GFXV     set   0                 1 in cpm: the graphics variables are in the data area
+
 RQZ80    equ   $FC80
 RQ88     equ   $0600
 LB88     equ   $0620

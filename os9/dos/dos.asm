@@ -104,6 +104,7 @@ rp       rmb   17                reply: 0 AL, 1 AH, 2 BX, 4 CX, 6 DX, 8 flags, 1
 oldopt   rmb   32
 iobuf    rmb   256
 sbuf     rmb   512
+         use   gfxvars.inc
          rmb   200               stack
 size     equ   .
 
@@ -737,6 +738,8 @@ dp0      clr   ,x+
          lbeq  f_hdone
          cmpa  #26
          lbeq  f_hcmd
+         cmpa  #30
+         lbeq  f_gfx
          rts
 
 * 1: console status, AH = 1 and AL = the key if there is one (the key stays for INP)
@@ -1114,6 +1117,23 @@ dsbx     lbsr  dslin
          sta   lin,u
          rts
 
+* 30: the graphics of the HDMI screen (INT E2h of the BIOS): the block at DS:BX (os9/cpm/cpmgfx.asm),
+* the reply AL: 0 done, $FF no frame buffer
+f_gfx    lbsr  g_probe
+         beq   fgx0
+         lda   #$FF
+         sta   rp,u
+         rts
+fgx0     lbsr  dsbx
+         leax  sbuf,u
+         ldy   #112
+         lbsr  rdsub
+         clr   sbuf+111,u          the end of the text
+         leax  sbuf,u
+         lbsr  g_run
+         sta   rp,u
+         rts
+
 * 26: the command line (up to the CR) to DS:BX
 f_hcmd   clr   quiet,u               from here on the console output of DOS is shown
          ldx   cmdp,u
@@ -1454,6 +1474,8 @@ scrtxt   fcb   13,13
          fcb   13
          fcc   "RUNJOB"
          fcb   13,0
+
+         use   gfxlib.inc
 
          emod
 eom      equ   *

@@ -1,0 +1,8 @@
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send subsel 8088\r
+expect OS9:
+send cpm gdemo86.cmd\r
+expect OS9:
+quit

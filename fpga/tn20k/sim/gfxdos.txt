@@ -1,0 +1,9 @@
+timeout 6000000
+expect OS9:
+send chx /d0/cmds\r
+expect OS9:
+send chd /d0/dos\r
+expect OS9:
+send dos gdemo\r
+expect OS9:
+quit

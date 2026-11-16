@@ -64,6 +64,11 @@ I10A:   CMP     AH,0Eh
         REQ     3
 I10B:   IRET
 
+; INT E2h: the graphics of the HDMI screen of the Tang Nano 20K (the 6809 draws: os9/cpm/cpmgfx.asm, the block of DS:BX), AL = 0 done, FFh no frame buffer
+GFXINT: REQ     30
+        MOV     AL,CS:[RQ+16]
+        IRET
+
 ;-----------------------------------------------------------------------------------------------------------------
 ; the device headers: link, attribute, strategy, interrupt, name
 DEVSTART LABEL  WORD
@@ -522,6 +527,8 @@ HWINIT: CLI
         MOV     ES,AX
         MOV     WORD PTR ES:[40h],OFFSET INT10
         MOV     ES:[42h],CS             ; INT 10h
+        MOV     WORD PTR ES:[388h],OFFSET GFXINT
+        MOV     ES:[38Ah],CS            ; INT E2h
         PUSH    CS
         POP     DS
         MOV     AL,[UNITS]

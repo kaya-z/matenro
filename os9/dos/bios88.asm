@@ -305,6 +305,11 @@ int10:  cmp     ah, 0x0F
         req     3
 .n2:    iret
 
+; INT E2h: the graphics of the HDMI screen of the Tang Nano 20K (the 6809 draws: os9/cpm/cpmgfx.asm, the block of DS:BX), AL = 0 done, FFh no frame buffer
+gfxint: req     30
+        mov     al, [cs:RQ+16]
+        iret
+
 ; ------------------------------------------------------------------ start (the reset vector jumps here)
 init:   cli
         xor     ax, ax
@@ -313,6 +318,8 @@ init:   cli
         mov     es, ax
         mov     word [es:0x40], int10   ; INT 10h
         mov     [es:0x42], cs
+        mov     word [es:0x388], gfxint ; INT E2h
+        mov     [es:0x38a], cs
         push    cs
         pop     ds
         mov     dx, [LB]                ; memory size in paragraphs

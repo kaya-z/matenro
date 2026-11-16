@@ -45,6 +45,7 @@ rev      set   $00
 edition  set   1
 
          use   cpmdefs.asm
+GFXV     set   1
 
          mod   eom,name,tylg,atrv,start,size
 
@@ -795,6 +796,7 @@ rgerr    cmpb  #E$EOF
 
 
          use   cpmengine.asm
+         use   cpmgfx.asm
 
          emod
 eom      equ   *
