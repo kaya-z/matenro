@@ -54,7 +54,7 @@ module sim_top #(
     wire [15:0] ps_din, ps_dout;
 
     matenro_soc #(.PH_DIV(PH_DIV), .ROM_BASE(ROM_BASE), .ROM_AW(ROM_AW), .ROM_FILE(ROM_FILE), .FREERUN(FREERUN), .MEMTEST(MEMTEST), .MT_LAST(MT_LAST)) soc (
-        .clk(clk), .resetn(resetn), .rxd(rxd), .txd(txd),
+        .clk(clk), .resetn(resetn), .hdmi_hpd(1'b0), .rxd(rxd), .txd(txd),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy),

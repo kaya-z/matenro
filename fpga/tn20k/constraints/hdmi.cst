@@ -8,3 +8,6 @@ IO_LOC "tmds_d_p[1]" 37,38;
 IO_PORT "tmds_d_p[1]" IO_TYPE=LVDS25 PULL_MODE=NONE DRIVE=3.5 BANK_VCCIO=3.3;
 IO_LOC "tmds_d_p[2]" 39,40;
 IO_PORT "tmds_d_p[2]" IO_TYPE=LVDS25 PULL_MODE=NONE DRIVE=3.5 BANK_VCCIO=3.3;
+// HPD (hot plug detect) of the HDMI connector: high when a monitor is connected (the 9K does not wire it).  Pulled down: no monitor, or a board without it.
+IO_LOC "hdmi_hpd" 26;
+IO_PORT "hdmi_hpd" IO_TYPE=LVCMOS33 PULL_MODE=DOWN;

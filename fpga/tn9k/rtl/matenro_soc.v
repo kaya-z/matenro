@@ -94,6 +94,7 @@ module matenro_soc #(
     output wire [15:0] x2_rdata,
     output wire        reboot_req,          // the guest wrote $A6 or $A7 to the power register: the top level does what the reset button does
     output wire        kanji_ok,            // `define HCTL: the kanji image is in the memory ($FFC8 bit 0)
+    input  wire        hdmi_hpd,            // the HDMI connector's HPD (hot plug detect: high = a monitor is connected); read at $FFB8 bit 7 (0 on the 9K: not wired)
     output wire        gfx_on,              // `define HCTL: the frame buffer is shown instead of the text ($FFB8 bit 0)
     output wire        gfx_ov,              // the text is shown over the picture ($FFB8 bit 1)
     output wire        pal_we,              // a palette entry is written (one clock): pal_idx, pal_rgb
@@ -155,6 +156,8 @@ module matenro_soc #(
     reg  [7:0]  pidx_r = 8'd0, pal_ix_r = 8'd0, pred_r, pgrn_r;
     reg  [1:0]  pcnt_r = 2'd0;
     reg  [7:0]  pblu_r;
+    reg [1:0]   hpd_q = 2'b00;
+    always @(posedge clk) hpd_q <= {hpd_q[0], hdmi_hpd};
     assign      gfx_on = gfx_r;
     assign      gfx_ov = ov_r;
     assign      pal_we = pal_we_r;
@@ -526,7 +529,7 @@ module matenro_soc #(
         else if (io_xl)    io_rdata = xl_rdata;
         else if (io_hctl)  io_rdata = {6'b000000, win_hi, kj_ok};          // $FFC8
 `ifdef HCTL
-        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {5'd0, sv_r, ov_r, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
+        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {hpd_q[1], 4'd0, sv_r, ov_r, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
 `endif
 `ifdef SUBBOTH
         else if (io_ssel)  io_rdata = {6'b000000, sel8, ~sel8};            // $FFCF: 1 = Z80, 2 = 8088

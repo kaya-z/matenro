@@ -81,7 +81,11 @@ msgnoreg fcc   "gfx: no frame buffer (this machine has no HDMI frame buffer)"
          fcb   C$CR
 msgfile  fcc   "gfx: cannot read the file"
          fcb   C$CR
-msguse   fcc   "usage: gfx on|over|off|fill|test|load|pal|pix|line|rect|box|text (MANUAL 6.8.3)"
+msghpd   fcc   "gfx: warning: no HDMI cable (HPD is low: the monitor is off or not connected)"
+         fcb   C$CR
+msgok    fcc   "HDMI: a monitor is connected (HPD high)"
+         fcb   C$CR
+msguse   fcc   "usage: gfx on|over|off|status|fill|test|load|pal|pix|line|rect|box|text (MANUAL 6.8.3)"
          fcb   C$CR
 
 start    lda   #$FE                is there a register?  after $FE a read of HCTL gives 2 (plain RAM gives $FE)
@@ -95,6 +99,8 @@ start    lda   #$FE                is there a register?  after $FE a read of HCT
          anda  #$DF
          cmpa  #'O'
          beq   cmdo
+         cmpa  #'S'
+         lbeq  cmdstat
          cmpa  #'F'
          lbeq  cmdfill
          cmpa  #'T'
@@ -123,8 +129,29 @@ cmdo     lda   ,x+
 on       lda   #1
          bra   setg
 over     lda   #3                  the picture and the text over it
-setg     sta   >GCTL
+setg     pshs  a
+         lbsr  hpdchk              (a warning if no monitor is connected)
+         puls  a
+         sta   >GCTL
 done     clrb
+         os9   F$Exit
+* the HPD of the HDMI connector: GCTL bit 7.  A = 0 with a warning on stderr if it is low (X is lost)
+hpdchk   lda   >GCTL
+         bmi   hpd9
+         leax  msghpd,pcr
+         lda   #2
+         ldy   #80
+         os9   I$WritLn
+hpd9     rts
+cmdstat  lda   >GCTL
+         bpl   cs1
+         leax  msgok,pcr
+         lda   #1
+         ldy   #80
+         os9   I$WritLn
+         bra   done
+cs1      lbsr  hpdchk
+         ldb   #1
          os9   F$Exit
 noreg    clr   >HCTL
          leax  msgnoreg,pcr
@@ -167,7 +194,8 @@ fn9      stb   vc,u
          lbsr  g_fill
          lbra  done
 
-cmdtest  lbsr  g_beg
+cmdtest  lbsr  hpdchk
+         lbsr  g_beg
          clr   gb,u
          clr   gc,u
          clr   yy,u

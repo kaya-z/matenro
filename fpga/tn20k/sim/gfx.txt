@@ -3,4 +3,6 @@ send chx /d0/cmds\r
 expect OS9:
 send gfx test\r
 expect OS9:
+send gfx status\r
+expect OS9:
 quit

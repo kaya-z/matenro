@@ -151,7 +151,7 @@ build_hdmig/obj/Vhdmi_top: $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp fb32.hex
 # $300000 (fbdump.bin) and check_gfx.py compares them with the picture that the command should draw.   make gfxboot
 GFX_DISK = build_gfx/gd.dsk
 gfxboot: build_gfx/obj/Vsim_top $(GFX_DISK)
-	cd build_gfx && rm -f fbdump.bin && obj/Vsim_top -d gd.dsk -s $(abspath gfx.txt) -c 1500000000 | tr -d '\r' | grep -E "gfx|FBDUMP|OS9:"
+	cd build_gfx && rm -f fbdump.bin && obj/Vsim_top -d gd.dsk -s $(abspath gfx.txt) -c 1500000000 | tr -d '\r' | grep -E "gfx|FBDUMP|OS9:|HDMI"
 	python3 check_gfx.py build_gfx/fbdump.bin
 build_gfx/rom.hex:
 	mkdir -p build_gfx

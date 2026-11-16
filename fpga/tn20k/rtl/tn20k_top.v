@@ -44,9 +44,15 @@ module tn20k_top (
     output wire        tmds_clk_p,
     output wire        tmds_clk_n,
     output wire [2:0]  tmds_d_p,
-    output wire [2:0]  tmds_d_n
+    output wire [2:0]  tmds_d_n,
+    input  wire        hdmi_hpd             // HPD of the connector (pin 26): high = a monitor is connected
 `endif
 );
+`ifdef HDMI
+    wire hpd = hdmi_hpd;
+`else
+    wire hpd = 1'b0;
+`endif
     wire clk, clk_p, locked;
     tn20k_pll #(.IDIV(`PLL_IDIV), .FBDIV(`PLL_FBDIV), .ODIV(`PLL_ODIV)) pll (.clkin(sys_clk), .clkout(clk), .clkoutp(clk_p), .lock(locked));
 
@@ -147,7 +153,7 @@ module tn20k_top (
         .RTC_YEAR(`RTC_YEAR), .RTC_MONTH(`RTC_MONTH), .RTC_DAY(`RTC_DAY),
         .RTC_HOUR(`RTC_HOUR), .RTC_MIN(`RTC_MIN), .RTC_SEC(`RTC_SEC), .MEMTEST(`MEMTEST_EN), .C88_DIV(`C88_DIV), .CZ_DIV(`CZ_DIV)
     ) soc (
-        .clk(clk), .resetn(resetn), .rxd(uart_rx), .txd(uart_tx),
+        .clk(clk), .resetn(resetn), .hdmi_hpd(hpd), .rxd(uart_rx), .txd(uart_tx),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_busy(ps_busy), .ps_issue(ps_issue),
