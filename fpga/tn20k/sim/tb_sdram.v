@@ -18,7 +18,7 @@ module tb_sdram;
     wire [31:0] errors;
     wire init_done;
 
-    sdram_ctl #(.FREQ(67_500_000)) dut (.clk(clk), .clk_sdram(clk_sdram), .resetn(resetn), .read(rd), .write(wr), .addr(addr), .din(din), .byte_write(bw), .wide(wide), .dout32(dout32),
+    sdram_ctl #(.FREQ(67_500_000)) dut (.clk(clk), .clk_sdram(clk_sdram), .resetn(resetn), .read(rd), .write(wr), .addr(addr), .din(din), .byte_write(bw), .wide(wide), .dout32(dout32), .dv(dv),
         .dout(dout), .busy(busy), .O_sdram_clk(sdclk), .O_sdram_cke(cke), .O_sdram_cs_n(cs_n), .O_sdram_cas_n(cas_n), .O_sdram_ras_n(ras_n),
         .O_sdram_wen_n(wen_n), .O_sdram_dqm(dqm), .O_sdram_addr(sa), .O_sdram_ba(sba), .IO_sdram_dq(dq));
     sdram_model mdl (.clk(sdclk), .cke(cke), .cs_n(cs_n), .ras_n(ras_n), .cas_n(cas_n), .we_n(wen_n), .dqm(dqm), .a(sa), .ba(sba), .dq(dq),
@@ -33,6 +33,10 @@ module tb_sdram;
     reg [7:0]  b;
     reg        wide = 1'b0;
     wire [31:0] dout32;
+    wire        dv;
+    reg [31:0]  bw_got [0:127];
+    integer     bw_n = 0;
+    always @(posedge clk) if (dv) begin bw_got[bw_n] = dout32; bw_n = bw_n + 1; end
 
     task do_write_byte(input [21:0] ad, input [7:0] v);
         begin
@@ -68,13 +72,33 @@ module tb_sdram;
         begin
             while (busy) @(posedge clk);
             keep = dout;
-            @(posedge clk); addr <= {ad[21:2], 2'd0}; wide <= 1; rd <= 1; @(posedge clk); rd <= 0; wide <= 0;
+            @(posedge clk); addr <= {ad[21:2], 2'd0}; din <= 16'd1; wide <= 1; rd <= 1; @(posedge clk); rd <= 0; wide <= 0;
             @(posedge clk); @(posedge clk);
             while (busy) @(posedge clk);
             for (k = 0; k < 4; k = k + 1) e[8 * k +: 8] = ref_mem[{ad[15:2], 2'd0} + k];
             checks = checks + 2;
             if (dout32 !== e) begin fails = fails + 1; if (fails < 10) $display("FAIL wide read %06X got %08X want %08X", ad, dout32, e); end
             if (dout !== keep) begin fails = fails + 1; if (fails < 10) $display("FAIL a wide read changed dout %04X -> %04X", keep, dout); end
+        end
+    endtask
+
+    task do_burst_check(input [21:0] ad, input integer cnt);      // cnt words one after the other (the frame buffer): each word with dv
+        reg [31:0] e;
+        integer k, j;
+        begin
+            while (busy) @(posedge clk);
+            bw_n = 0;
+            @(posedge clk); addr <= {ad[21:2], 2'd0}; din <= cnt; wide <= 1; rd <= 1; @(posedge clk); rd <= 0; wide <= 0;
+            @(posedge clk); @(posedge clk);
+            while (busy) @(posedge clk);
+            repeat (3) @(posedge clk);
+            checks = checks + 1;
+            if (bw_n !== cnt) begin fails = fails + 1; if (fails < 10) $display("FAIL burst %06X: %0d words, wanted %0d", ad, bw_n, cnt); end
+            for (k = 0; k < cnt && k < bw_n; k = k + 1) begin
+                for (j = 0; j < 4; j = j + 1) e[8 * j +: 8] = ref_mem[{ad[15:2], 2'd0} + 4 * k + j];
+                checks = checks + 1;
+                if (bw_got[k] !== e) begin fails = fails + 1; if (fails < 10) $display("FAIL burst %06X word %0d got %08X want %08X", ad, k, bw_got[k], e); end
+            end
         end
     endtask
 
@@ -110,6 +134,18 @@ module tb_sdram;
             default: do_read_check(a);
             endcase
             if (i % 211 == 0) repeat ($urandom % 800) @(posedge clk);
+        end
+        // bursts of several words: inside a row, ending at the end of a row, across the end of a row (2 accesses), between writes and reads, with refreshes
+        for (i = 0; i < 1500; i = i + 1) begin
+            case (i % 6)
+            0: do_burst_check({($urandom % 14000), 2'd0}, 1 + $urandom % 80);
+            1: do_burst_check({(i % 2 ? 14'd250 : 14'd256 * (1 + i % 40)) + (i % 5) * 7'd10, 2'd0} - 22'd16, 40);     // near the end of a row
+            2: do_write_byte($urandom % 65536, i[7:0]);
+            3: do_burst_check({($urandom % 14000), 2'd0}, 80);
+            4: do_read_check($urandom % 65536);
+            default: do_burst_check({14'd256 * (1 + i % 50) - 14'd3, 2'd0}, 40);
+            endcase
+            if (i % 97 == 0) repeat ($urandom % 800) @(posedge clk);
         end
         // the upper part of the 4 MB window: the address bits of the bank and the row
         do_write_byte(22'h3fffff, 8'h5a); do_write_byte(22'h200001, 8'ha5); do_write_byte(22'h100000, 8'h11);

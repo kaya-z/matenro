@@ -71,6 +71,8 @@ module tn20k_top (
     wire        ctl_busy, fb_rq, fb_go, ps_issue;
     wire [21:0] fb_addr;
     wire [31:0] fb_dout32;
+    wire [6:0]  fb_n;
+    wire        fb_dv;
 `ifdef KANJI
     assign      fb_go = fb_rq && !ctl_busy && !ps_rd && !ps_wr && !ps_issue;
 `else
@@ -89,7 +91,7 @@ module tn20k_top (
 
     sdram_ctl #(.FREQ(`CLK_HZ), .REFRESH_CLKS(`CLK_HZ / 1000 * 74 / 10000)) sdram (
         .clk(clk), .clk_sdram(clk_p), .resetn(resetn),
-        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(ps_din), .byte_write(ps_bw), .wide(fb_go), .dout(ps_dout), .dout32(fb_dout32), .busy(ctl_busy),
+        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(fb_go ? {9'd0, fb_n} : ps_din), .byte_write(ps_bw), .wide(fb_go), .dout(ps_dout), .dout32(fb_dout32), .dv(fb_dv), .busy(ctl_busy),
         .O_sdram_clk(O_sdram_clk), .O_sdram_cke(O_sdram_cke), .O_sdram_cs_n(O_sdram_cs_n), .O_sdram_cas_n(O_sdram_cas_n),
         .O_sdram_ras_n(O_sdram_ras_n), .O_sdram_wen_n(O_sdram_wen_n), .O_sdram_dqm(O_sdram_dqm), .O_sdram_addr(O_sdram_addr),
         .O_sdram_ba(O_sdram_ba), .IO_sdram_dq(IO_sdram_dq)
@@ -118,7 +120,7 @@ module tn20k_top (
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
         .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
-        .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dout32(fb_dout32)
+        .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_n(fb_n), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dv(fb_dv), .fb_dout32(fb_dout32)
     );
 `else
     hdmi_text20 #(.ROWS(25), .FONT_FILE("font8x16.hex")) screen (
@@ -136,7 +138,7 @@ module tn20k_top (
 `endif
 `ifndef KANJI
     assign x1_req = 1'b0, x1_addr = 22'd0, x2_req = 1'b0, x2_addr = 22'd0;
-    assign fb_rq = 1'b0, fb_addr = 22'd0;
+    assign fb_rq = 1'b0, fb_addr = 22'd0, fb_n = 7'd0;
 `endif
 
     matenro_soc #(

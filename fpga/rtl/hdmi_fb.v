@@ -23,8 +23,10 @@ module hdmi_fb #(
     // the SDRAM, through the top level (the controller's interface)
     output reg         rq,                  // a read is wanted at rq_addr (kept until go)
     output reg  [21:0] rq_addr,
+    output reg  [6:0]  rq_n,                // the number of 32 bit words wanted (they come one in each clock, dv)
     input  wire        go,                  // the read was started in this clock
-    input  wire        busy,                // sdram_ctl busy
+    input  wire        busy,                // sdram_ctl busy (not used: the words come with dv)
+    input  wire        dv,                  // dout32 is the next word of the read
     input  wire [31:0] dout32,
     // the display (pixel clock)
     input  wire        clk_pix,
@@ -92,8 +94,8 @@ module hdmi_fb #(
     reg [8:0]  got;                                      // the lines fetched in this frame
     reg [6:0]  wi;                                       // the word of the line
     reg [1:0]  st;
-    localparam [1:0] F_IDLE = 2'd0, F_REQ = 2'd1, F_WAIT = 2'd2, F_PUT = 2'd3;
-    reg        seen;
+    localparam [1:0] F_IDLE = 2'd0, F_REQ = 2'd1, F_WAIT = 2'd2;
+    localparam [6:0] BURST = 7'd40;                      // words per request: 2 requests (320 bytes) for a line
     wire [21:0] line_base = FB_BASE + {5'd0, got, 8'd0} + {7'd0, got, 6'd0};         // got * 320 (= got * 256 + got * 64)
     always @(posedge clk) begin
         lb_we <= 1'b0;
@@ -101,21 +103,18 @@ module hdmi_fb #(
         else begin
             if (y2 < y3) got <= 9'd0;                    // a new frame (y wrapped to 0)
             case (st)
-            F_IDLE: if (gfx_on && got < need && got < 9'd240) begin wi <= 7'd0; rq <= 1'b1; rq_addr <= line_base; st <= F_REQ; end
-            F_REQ:  if (go) begin rq <= 1'b0; seen <= 1'b0; st <= F_WAIT; end
-            F_WAIT: begin
-                if (busy) seen <= 1'b1;
-                if (seen && !busy) begin lb_we <= 1'b1; lb_wa <= {got[0], wi}; lb_wd <= dout32; st <= F_PUT; end
-            end
-            F_PUT: begin
+            F_IDLE: if (gfx_on && got < need && got < 9'd240) begin wi <= 7'd0; rq <= 1'b1; rq_addr <= line_base; rq_n <= BURST; st <= F_REQ; end
+            F_REQ:  if (go) begin rq <= 1'b0; st <= F_WAIT; end
+            F_WAIT: if (dv) begin                        // a word of the burst: into the line buffer
+                lb_we <= 1'b1; lb_wa <= {got[0], wi}; lb_wd <= dout32; wi <= wi + 1'b1;
                 if (wi == 7'd79) begin got <= got + 1'b1; st <= F_IDLE; end
-                else begin wi <= wi + 1'b1; rq <= 1'b1; rq_addr <= line_base + {13'd0, wi + 7'd1, 2'b00}; st <= F_REQ; end
+                else if (wi == BURST - 1'b1) begin rq <= 1'b1; rq_addr <= line_base + {13'd0, BURST, 2'b00}; st <= F_REQ; end   // the second half of the line
             end
             endcase
         end
     end
 `ifdef FBDBG
     always @(posedge clk_pix) if (!de_q && de_i && y < 6) $display("line start y=%0d half=%0d first word=%h second=%h t=%0t", y, y[1], lbuf[{y[1],7'd0}], lbuf[{y[1],7'd1}], $time);
-    always @(posedge clk) if (st == F_PUT && wi == 7'd79) $display("fetched %0d (need %0d, y2 %0d, y %0d)", got, need, y2, y);
+    always @(posedge clk) if (st == F_WAIT && dv && wi == 7'd79) $display("fetched %0d (need %0d, y2 %0d, y %0d)", got, need, y2, y);
 `endif
 endmodule

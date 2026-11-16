@@ -52,6 +52,8 @@ module sim_top #(
     wire [15:0] x1_rdata, x2_rdata;
     wire        ctl_busy;
     wire [31:0] fb_dout32;
+    wire [6:0]  fb_n;
+    wire        fb_dv;
 `ifdef FBSOC
     // the HDMI screen with the frame buffer on the SoC (as in tn20k_top.v): to try the read of the frame buffer against the requests of the SoC.
     // The pixel clock is the system clock divided by two here (the timing of the picture is of no interest, the traffic on the SDRAM is)
@@ -74,7 +76,7 @@ module sim_top #(
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .clk_pix(clk_pix), .rst_pix(rpx[3]), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
         .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
-        .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dout32(fb_dout32)
+        .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_n(fb_n), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dv(fb_dv), .fb_dout32(fb_dout32)
     );
 `else
     wire        fb_go = 1'b0;
@@ -105,7 +107,7 @@ module sim_top #(
     wire [31:0] sd_dq, mdl_err;
     sdram_ctl #(.FREQ(CLK_HZ), .REFRESH_CLKS(CLK_HZ / 1000 * 74 / 10000)) sdram (
         .clk(clk), .clk_sdram(clk_sdram), .resetn(resetn),
-        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(ps_din), .byte_write(ps_bw), .wide(fb_go), .dout(ps_dout), .dout32(fb_dout32), .busy(ctl_busy),
+        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(fb_go ? {9'd0, fb_n} : ps_din), .byte_write(ps_bw), .wide(fb_go), .dout(ps_dout), .dout32(fb_dout32), .dv(fb_dv), .busy(ctl_busy),
         .O_sdram_clk(sd_ck), .O_sdram_cke(sd_cke), .O_sdram_cs_n(sd_cs_n), .O_sdram_cas_n(sd_cas_n), .O_sdram_ras_n(sd_ras_n),
         .O_sdram_wen_n(sd_we_n), .O_sdram_dqm(sd_dqm), .O_sdram_addr(sd_a), .O_sdram_ba(sd_ba), .IO_sdram_dq(sd_dq)
     );

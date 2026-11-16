@@ -244,7 +244,13 @@ module matenro_soc #(
     // The disk, the ACIA and the power-off are slow sources too (registered the same way: they start at acc2 or later by a few clocks).
     reg       xlst_q = 1'b0;
     always @(posedge clk) xlst_q <= xl_wait | xl_rcap | disk_hold | acia_pend | pwroff;
+    reg       m0_req = 1'b0, m0_wrr = 1'b0;   // master 0 of the PSRAM arbiter (below)
     wire      stall_ph = mem_pend | (|settle) | xlst_q;
+`ifdef POSTW
+    wire      wr_hold = m0_req;                 // a posted write (or the window) is still under way: the next access waits
+`else
+    wire      wr_hold = 1'b0;
+`endif
 
     always @(posedge clk) begin
         ecyc   <= 1'b0;
@@ -254,7 +260,7 @@ module matenro_soc #(
             div <= 0; ph <= 0; e <= 1'b1; q <= 1'b0;
         end else if (div != PH_DIV - 1) begin
             div <= div + 1'b1;
-        end else if (!(ph == 2'd0 && stall_ph)) begin
+        end else if (!(ph == 2'd0 && stall_ph) && !(ph == 2'd2 && wr_hold)) begin
             div <= 0;
             ph  <= ph + 1'b1;
             case (ph)
@@ -646,8 +652,13 @@ module matenro_soc #(
                         c_rd    <= cpu_rnw;
                         c_cwr   <= ~cpu_rnw;
                         c_isrd  <= cpu_rnw;
+`ifdef POSTW
+                        // a write is posted: the CPU does not wait for it (ph 2 of the next cycle waits until master 0 is free again)
+                        if (cpu_rnw) begin mem_pend <= 1'b1; mp_wait <= 1'b1; end
+`else
                         mem_pend <= 1'b1;
                         mp_wait  <= 1'b1;
+`endif
                     end
                 end
             end
@@ -710,7 +721,6 @@ module matenro_soc #(
     wire m_rd_s   = use_clr ? t_rd : xw_act ? xw_rdp : c_rd;
     wire m_wr_s   = use_clr ? c_wr : xw_act ? xw_wrp : c_cwr;
     wire m0_pulse = m_rd_s | m_wr_s;
-    reg         m0_req = 1'b0, m0_wrr = 1'b0;
     reg  [21:0] m0_addr;
     reg  [7:0]  m0_din;
     wire        m0_ack;

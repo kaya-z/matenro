@@ -228,7 +228,7 @@ $(SUB_DISK): gfxz80.txt gfx88.txt gfxdirect.txt gfxdirect88.txt ../../../tests/c
 	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/cpm /d0/cmds/cpm\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/subsel /d0/cmds/subsel\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/cpm e pe r pr\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/subsel e pe r pr\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo.com /d0/gdemo.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo86.cmd /d0/gdemo86.cmd\\r"\nexpect "OS9:"\nsend "copy /v0/gdirect.com /d0/gdirect.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdirect86.cmd /d0/gdirect86.cmd\\r"\nexpect "OS9:"\nquit\n' > build_gfxsub/prep.txt
 	cd build_gfxsub && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 gs.dsk -v v0 -script prep.txt > prep.log 2>&1
 build_gfxsub/obj/Vsim_top: $(SUBSRC) build_gfxsub/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfxsub/obj -DSUBBOTH -DHCTL -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfxsub/obj -DSUBBOTH -DHCTL -DPOSTW -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_gfxsub/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCZ_DIV=$(CZ) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SUBSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null

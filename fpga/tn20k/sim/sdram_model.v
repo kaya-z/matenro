@@ -104,9 +104,9 @@ module sdram_model #(
             C_RD: begin
                 if (!open_row[ba]) err("READ on a closed bank");
                 if (now - act_t[ba] < 2) err("tRCD (read)");
-                if (!a[10]) err("READ without auto precharge");
                 rd_p1 <= mem[{ba, row_q[ba], a[7:0]}]; rv1 <= 1'b1;
-                open_row[ba] = 0; pre_t[ba] = now + 1;
+                // a READ without auto precharge leaves the row open (a read of several words of a row: READ in every clock; the last one has A10 = 1)
+                if (a[10]) begin open_row[ba] = 0; pre_t[ba] = now + 1; end
             end
             C_WR: begin
                 if (!open_row[ba]) err("WRITE on a closed bank");
