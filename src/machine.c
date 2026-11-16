@@ -287,14 +287,41 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
  * PSRAM takes about 10 system clocks (67.5 MHz) longer than the 36 of an E cycle, one that writes it 5; an instruction that
  * is fetched from the PSRAM costs 29 more (the fetch of the opcode stalls twice), its operand bytes nothing; the ROM and the
  * I/O page are not waited for.  The clock counts are those of the RTL; hw_clk_ps is the period of the system clock. */
-#define HW_CLK_PS   14815ull
-#define HW_RD_CLK   10.4
-#define HW_WR_CLK   5.4
+
+/* The boards.  9k: Tang Nano 9K, the PSRAM at 67.5 MHz (measured, docs 17.4, 17.5).  20k: Tang Nano 20K, the SDRAM at 54 MHz
+ * (the RTL of fpga/tn20k measured with the same test ROM, docs 17.9): a read and a write both take 12.5 system clocks over the 28 of an
+ * E cycle; the table of the bus cycles (the one below) is scaled by 0.91 (all kinds), which makes `duo -1` of the RTL (7.689 s)
+ * come out (the sim: 7.685 s).  The sub CPU's waits and the contention are those of the 9K until they are measured on the 20K. */
+typedef struct {
+    const char *name;
+    uint64_t clk_ps;                 /* period of the system clock */
+    double rd, wr;                   /* isolated read / write: system clocks over the E cycle */
+    double fs, rs, ws;               /* scale of the fetch / read / write of the table of bus cycles */
+    uint64_t busy_clk;               /* clocks one access of the other CPU holds the memory */
+    uint64_t z80_rd, z80_wr;         /* clocks the Z80 is held for a read / write */
+    uint32_t e_hz;                   /* the E clock */
+} hw_board_t;
+static const hw_board_t hw_boards[] = {
+    { "9k",  14815ull, 10.4,  5.4, 1.0,  1.0,  1.0, 9ull, 27ull, 18ull, 1875000 },
+    { "20k", 18519ull, 12.5, 12.5, 0.91, 0.91, 0.91, 9ull, 27ull, 18ull, 1928571 },
+};
+static const hw_board_t *hwb = &hw_boards[0];
+int machine_set_board(const char *name)
+{
+    size_t i;
+    for (i = 0; i < sizeof hw_boards / sizeof hw_boards[0]; i++)
+        if (!strcmp(hw_boards[i].name, name)) { hwb = &hw_boards[i]; return 0; }
+    return -1;
+}
+uint32_t machine_board_e_hz(void) { return hwb->e_hz; }
+#define HW_CLK_PS   (hwb->clk_ps)
+#define HW_RD_CLK   (hwb->rd)
+#define HW_WR_CLK   (hwb->wr)
 
 /* The PSRAM does one access at a time (about 19 system clocks): an access that starts while the other CPU is in the middle
  * of one waits for it.  The accesses are remembered (the CPUs run one after the other in slices, so the other CPU's accesses
  * are in the "future" of this one's catch-up). */
-#define HW_PSRAM_CLK 9ull
+#define HW_PSRAM_CLK (hwb->busy_clk)
 uint64_t machine_psram_wait(machine_t *m, int who, uint64_t t)
 {
     const uint64_t busy = HW_PSRAM_CLK * HW_CLK_PS;
@@ -314,8 +341,8 @@ uint64_t machine_psram_wait(machine_t *m, int who, uint64_t t)
 
 /* The Z80 (measured on the RTL, fpga/tn9k/test/timing6809.asm + zbench.asm): the clock of the Z80 is held 27 system clocks
  * (3 Z80 clocks) for each memory read, the fetch of an opcode too, and 18 (2 Z80 clocks) for each write; I/O is not waited for. */
-#define HW_Z80_RD_CLK 27ull
-#define HW_Z80_WR_CLK 18ull
+#define HW_Z80_RD_CLK (hwb->z80_rd)
+#define HW_Z80_WR_CLK (hwb->z80_wr)
 uint64_t machine_hw_sub_extra(machine_t *m, uint64_t t_ps, unsigned reads, unsigned writes)
 {
     uint64_t acc = 0;
@@ -368,9 +395,9 @@ static void hw_settle(machine_t *m)
         double e = 0;
         int ram = 0;
         switch (*p) {
-        case 'F': e = prev ? 15.2 : 12.2; ram = 1; break;
-        case 'r': e = prev ? 17.2 : 11.3; ram = 1; break;
-        case 'w': e = prev ? 6.9 : 6.0; ram = 1; break;
+        case 'F': e = (prev ? 15.2 : 12.2) * hwb->fs; ram = 1; break;
+        case 'r': e = (prev ? 17.2 : 11.3) * hwb->rs; ram = 1; break;
+        case 'w': e = (prev ? 6.9 : 6.0) * hwb->ws; ram = 1; break;
         case 'i': e = 11.5; break;
         case 'j': e = 6.0; break;
         default: break;

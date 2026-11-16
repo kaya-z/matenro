@@ -166,6 +166,8 @@ void machine_update_irq(machine_t *m);
 /* time of the 6809 in picoseconds (sub CPU scheduling) */
 uint64_t machine_time_ps(const machine_t *m);
 uint64_t machine_hw_sub_extra(machine_t *m, uint64_t t_ps, unsigned reads, unsigned writes);   /* ps a Z80 step is held by the PSRAM */
+int machine_set_board(const char *name);          /* "9k" (default) or "20k": the memory waits of the board (-hw) */
+uint32_t machine_board_e_hz(void);                /* the E clock of the board */
 uint64_t machine_psram_wait(machine_t *m, int who, uint64_t t_ps);   /* ps the access at t_ps has to wait for the other CPU */
 
 /* scheduler */
