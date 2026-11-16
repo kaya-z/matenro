@@ -18,7 +18,8 @@ MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしてい�
 * ストレージは SD カード相当のディスクイメージ (6809/OS-9 側だけが持つ。生デバイスも指せる)。
 * 8088 では、CP/M-86 のほかに **MS-DOS 1.25 と 2.0 が動きます** (OS-9 のコマンド `dos`。カーネルと `COMMAND` は Microsoft が公開したものを組むか、そのまま使います。`EDLIN`、`DEBUG`、`DATE`/`TIME`、プリンタ、ディスクイメージ。使い方は [docs/MANUAL.md](docs/MANUAL.md) の 6.8、設計は [docs/DESIGN.md](docs/DESIGN.md) の 18 章)。**`cpm` のように OS-9 のコマンドラインから `dos -v=2 -a=dosrun2.img tbasic` で DOS のプログラムも実行できます** (実行モード、MANUAL 6.9: OS-9 のカレントディレクトリのファイルを DOS のディスクに出し入れします)。
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
-* **FPGA 版 (Tang Nano 9K) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 88%、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、シミュレータだけです (20K のボードが要ります)。
+* **FPGA 版 (Tang Nano 9K) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 88%、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、20K の版です (次の項目)。
+* **FPGA 版 (Tang Nano 20K) も実機で動いています** ([docs/TN20K.md](docs/TN20K.md)): 6809 + Z80 + 8088 (MCL86) と HDMI を載せた SoC (`fpga/tn20k/`) です。メモリはパッケージ内の SDRAM (2MB)、システムクロックは 54 MHz (6809 は E = 約 1.9 MHz) です。Z80 と 8088 は OS-9 から `subsel z80` / `subsel 8088` で切り替えて使います (同時には動かしません)。実機で、OS-9 Level 2 の SD カードからの起動、CP/M-80、CP/M-86、MS-DOS 1.25 / 2.0 (OS-9 の `dos` コマンド。Tiny BASIC など)、HDMI の文字画面、漢字 (`kanjild`)、320×240・256 色のフレームバッファと文字の重ね表示 (`gfx`) を確かめました。CP/M-80、CP/M-86、MS-DOS のプログラムからは、6809 に頼む (BDOS 112、`INT E2h`) か、フレームバッファをメモリとして直接書いて描けます ([docs/MANUAL.md](docs/MANUAL.md) の 6.8)。資源と Fmax は [docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md) の 7 章です。
 
 **使い方は [docs/MANUAL.md](docs/MANUAL.md)** (ユーザーマニュアル)。詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
 
@@ -183,16 +184,15 @@ tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80as
 docs/           DESIGN.md (設計・レジスタ仕様) FPGA.md (FPGA の検討)
 fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト、テストベンチは Verilog: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
 fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットストリーム、mkdisk.sh と mkdisk_d1.sh で SD イメージ、sim/ で RTL シミュレーション)
+fpga/tn20k/     Tang Nano 20K の SoC (rtl/ の HDMI、scripts/build.sh でビットストリーム、mkdisk.sh で SD イメージ、sim/ で RTL シミュレーション)。8088 とその部品は fpga/rtl/ と fpga/vendor/
 ```
 
 ## できていないこと
 
-* **8088 の FPGA 版 (Tang Nano 20K)**: 設計して、合成・配置配線とシミュレーションまで済ませました ([docs/TN20K.md](docs/TN20K.md))。8088 のコアは MCL86 (MicroCore Labs)、メモリはパッケージ内の SDRAM です。OS-9 Level 2 の起動と、OS-9 から CP/M-86 のプログラムを 8088 の RTL で動かすところまで Verilator で確かめました (`make test-tn20k`)。**実機のボードがまだ無いので、ボードには書いていません**。
-* FPGA 版の **RTC** (載せられますが、書いていません)。HDMI の文字画面は Tang Nano 20K の版にあります (docs/TN20K.md の 2.2。漢字はまだ。9K の LUT は残り約 10% で HDMI は載りません)。
-* FPGA のタイミングの余裕は小さいです (67.5 MHz で 0.1〜0.5 ns)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
+* FPGA 版の **RTC** (載せられますが、書いていません)。
+* FPGA のタイミングの余裕は小さいです (9K は 67.5 MHz で 0.1〜0.5 ns、20K は 54 MHz に対して Fmax が 56.1 MHz)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0、DR の標準ツールと MBASIC です (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
-* OS-9 のデバイスドライバ (`os9/xlink`) がドアベルの割り込みで待つには、`new-sbc09` の Clock モジュールが、タイマ以外の IRQ で `D.Poll` を呼ぶ版である必要があります (docs/DESIGN.md の 14 章)。古い OS-9 のイメージでは、ポーリングで待ちます。
-* MS-DOS は 1.25 と 2.0 だけです (2.0 のカーネルは Microsoft が公開した完成品を使います)。IBM PC 用の `BASIC.COM` は動きません。実機の FPGA には 8088 がないので、MS-DOS はシミュレータだけです。
+* MS-DOS は 1.25 と 2.0 だけです (2.0 のカーネルは Microsoft が公開した完成品を使います)。IBM PC 用の `BASIC.COM` は動きません。MS-DOS は 8088 を載せた 20K の実機とシミュレータで動きます (9K にはありません)。
 * 実機の待ちのモデルは**入れてあります** (`-hw`、既定。PSRAM の応答待ちと、6809 と Z80 が PSRAM を取り合うときの待ち。`-nohw` で理想の機械。docs/DESIGN.md の 17 章)。ただし精度は最大 2.7% 差 (`duo` の実機との比較) で、命令の中のバスサイクルの順序や割り込みの入り方などは近似です。8088 は実機がないので、基準は Intel の資料です。
 * 8086 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。
 * FM-11 の実際のマンハッタンシステムとの互換性 (考え方だけを借りています)。

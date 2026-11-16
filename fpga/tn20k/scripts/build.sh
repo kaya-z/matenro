@@ -87,6 +87,8 @@ for k, v in (("@PER@", per), ("@HALF@", per / 2), ("@Q1@", per / 4), ("@Q3@", pe
 open(dst, "w").write(s)
 PYEOF
 if [ "$HDMI" != 0 ]; then cat "$HERE/constraints/hdmi.sdc" >> "$B/timing.sdc"; fi
+# the Z80 core changes only at its clock enable (DZ clocks): multicycle paths (constraints/z80.sdc, the instance soc/subz of SUBS=both)
+if [ "${SUBS:-both}" = both ] && [ "${ZMC:-1}" != 0 ]; then sed "s/@CZ@/$DZ/g;s/@CZ1@/$((DZ - 1))/g" "$HERE/constraints/z80.sdc" >> "$B/timing.sdc"; fi
 cat > "$B/build.tcl" <<EOT
 set_device -name GW2AR-18C GW2AR-LV18QN88C8/I7
 add_file -type verilog $HERE/rtl/tn20k_top.v

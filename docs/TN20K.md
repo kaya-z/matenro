@@ -1,8 +1,8 @@
 # Tang Nano 20K 版 (6809 + 8088) の設計
 
-**状態 (2026-11-15): 実機で動きました** (54 MHz。OS-9 Level 2 が SD カードから起動し、CP/M-86 と MS-DOS 2.0 のプログラムが 8088 で動く。結果は 8 章)。それまでは合成・配置配線を通して `.fs` を作り、Verilator で確かめていました。
+**状態 (2026-11-17): 実機で動いています** (54 MHz。OS-9 Level 2 が SD カードから起動し、CP/M-86 と MS-DOS 2.0 のプログラムが 8088 で、CP/M-80 のプログラムが Z80 で動く。Z80 と 8088 は OS-9 から `subsel` で切り替える。HDMI は文字、漢字、320×240 のフレームバッファ。サブ CPU からの描画と直接書き込みも動く。結果は 8 章と 2 章)。資源とタイミングは [FPGA_RESOURCES.md](FPGA_RESOURCES.md) の 7 章です。
 
-Tang Nano 9K 版 ([FPGA.md](FPGA.md)) は 6809 + Z80 です。20K 版は同じ SoC (`matenro_soc.v`) の**サブ CPU を 8088 (MCL86) に替え**、9K の PSRAM のかわりにパッケージ内の **SDRAM** を使います。HDMI はまだありません。
+Tang Nano 9K 版 ([FPGA.md](FPGA.md)) は 6809 + Z80 です。20K 版は同じ SoC (`matenro_soc.v`) の**サブ CPU を 8088 (MCL86) に替え**、9K の PSRAM のかわりにパッケージ内の **SDRAM** を使います。HDMI の画面 (2 章) も載っています。
 
 ## 1. ボードとチップ
 
@@ -86,6 +86,7 @@ subsel 8088       8088 に切り替える (cpm hello86.cmd、CP/M-86、dos ...)
 * **回路**: `fpga/rtl/hdmi_fb.v` (ラインバッファ 2 面 × 80 語、パレット、文字画面との切り替え) と `fpga/rtl/hdmi_screen20.v` (sim09 の `hdmi_text.v` と同じ部品で、表示と TMDS のエンコーダの間にフレームバッファを入れたもの)。
 * **SDRAM の読み出し**: コントローラ (`sdram_ctl.v`) に 32 ビット幅の読み出しデータ `dout32` を足し、フレームバッファが**自分で**読みます (1 回で 4 画素、1 行 80 回)。トップ (`tn20k_top.v`) が、SoC の要求より先に通します (`fb_go = fb_rq && !busy && SoC の要求なし`。SoC には同じクロックで busy を見せるので、始めることはありません)。1 行 (画面の 2 行分) の読み出しは 17.8 µs で、画面の 2 行 (63.5 µs) の間に済むので、SoC の SDRAM の時間の約 28% を使います。
 * **ラインバッファ**: 表示している行の次の行を、もう一方の半面に先読みします。フレームの始めに行 0 と 1、そのあと画面の 2 行ごとに 1 行。
+* **CPU の速さへの影響** (実機で測定。詳しくは [FPGA_RESOURCES.md](FPGA_RESOURCES.md) の 7.7): 絵を表示している間 (`gfx on` / `gfx over`、`gfx` を使うプログラムのあと) は、表示のための SDRAM の読み出しが CPU より先に取られるので、**6809 の速さが約 10% 下がります** (`dhry` が 1550 回から 1390 回/10 秒、155 から 139 回/秒)。`gfx off` で元に戻ります。文字の画面と漢字の画面は SDRAM をほとんど使わないので、影響しません (HDMI なしの版と同じ 155 回/秒)。Z80 / 8088 の速さは、同じメモリを使うので同様に下がると考えられますが、測っていません。
 * **レジスタの場所**: SAM の領域 (`$FFC0-$FFDF` の `$FFD0` 付近) や `$FFE0` 付近は、OS-9 が起動中に RAM として使うので、I/O にすると**起動が止まります**。`$FFB8-$FFBA` は大丈夫でした。
 * **資源** (`boot`、Z80 + 8088 + 漢字 + フレームバッファ、54 MHz): Logic 12,070 / 20,736 (**59%**)、CLS 73%、BSRAM 33 / 46、`clk81` の Fmax は 55.178 MHz (制約 54 MHz)、`clk_pix` は 74.7 MHz。負のスラックなし。
 * **検証**: `make -C fpga/tn20k/sim hdmig` (SDRAM のモデルに置いた 320 × 240 の絵を、`sdram_ctl` を通して表示し、640 × 480 の全画素を期待値と比べる: **誤り 0**)、`make -C fpga/tn20k/sim gfxboot` (SoC 全体の RTL で OS-9 が起動し、`gfx test` が SDRAM の `$300000` に描いた 76,800 バイトを、期待の絵と比べる: 誤り 0)、実機のモニタ。
@@ -159,7 +160,7 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 
 | 項目 | 結果 |
 |---|---|
-| ピン、PLL、リセット | 動く。UART の向き (69 = FPGA の TX) も合っていた。S1 / S2 の極性は、リセットが外れて動いたので S1 は合っている。S2 は未確認 |
+| ピン、PLL、リセット | 動く。UART の向き (69 = FPGA の TX) も合っていた。S1 / S2 の極性は、リセットが外れて動いたので S1 は合っている。S2 (ピン 87) は、押すたびに LED の表示を切り替える (2 つ目の表示: LED0 = Z80 が有効、LED1 = 8088 が有効 (`subsel`)。実機で確認) |
 | SDRAM (54 MHz) | `Matenro Memory >>>… OK 2048K` が通った。読み取りのタイミング (READ から 3 クロック) はそのままで合った |
 | 8088 の自己判定 (`xltest88`) | 書き込んだだけで `SLR A5 00 132D` (期待値どおり。XE は 4,909 kHz) |
 | SD カード (`boot`) | **9K と同じ形式のカード** (先頭の 1MB が `/d0`、128MB の位置に `/d1`) から OS-9 Level 2 が起動した。ピン (81-84) は合っていた |
@@ -169,7 +170,7 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 * **ブートのメッセージ**: `Tang Nano 9K` は、カードの ROM イメージ (LSN 1100 から 112 セクタ) の INIT モジュールの中の名前です。`mkdisk.sh` が sim09 の `init.asm` の写し (名前だけ `Tang Nano 20K` にしたもの。sim09 は変えない) からモジュールを作り直し、`make9rom` でイメージを作り直して差し替えます。
 * **カード**: `fpga/tn20k/scripts/mkdisk.sh` が `/d0` を作る (9K の `/d0` に `dos`、CP/M-86 の試験、`/d0/dos` の MS-DOS 2.0 の一式を足したもの)。9K のカード全体のイメージの先頭 1MB を差し替える: `sudo dd if=fpga/tn20k/build/matenro20k_l2.dsk of=/dev/sdX bs=1M count=1 conv=fsync`。**MS-DOS の作業用イメージは 360KB で `/d0` に置けないので、`dos -t=/d1/dostmp.img` で `/d1` (64MB) に置く。**
 * **SKK 辞書** (`jwp` の既定 `/d1/skk.dic`、UTF-8、約 5.6MB): `mkdisk.sh` が `SKK-JISYO.L` (`apt install skkdic`、場所は `SKKJISYO=`) から sim09 の `tools/mkskkdic.py -e utf8` で作り、`kanji.bin` と一緒に `/d1` に入れます。`/d1` だけを書き直すなら `sudo dd if=fpga/tn20k/build/matenro20k_d1.dsk of=/dev/sdX bs=1M seek=128 conv=fsync` (`/d0` は変わりません)。
-* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、S2 ボタン、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
+* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
 * **わかったこと**: 書き込み直後の UART に数文字の文字化けが出ることがある (`OOOKKHHHjymmm>`)。ツール (`openFPGALoader`) が JTAG を動かすときの雑音と見ている。UART を読む `cat` を 2 本同時に走らせると文字が欠ける (基板の不具合ではない)。
 
 ## 9. ファイル
