@@ -39,7 +39,7 @@ module hdmi_top #(
         .m0_req(1'b0), .m0_wr(1'b0), .m0_wide(1'b0), .m0_addr(22'd0), .m0_din(8'd0), .m0_ack(), .m0_rdata(),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),
-        .m3_req(1'b0), .m3_wr(1'b0), .m3_addr(22'd0), .m3_din(8'd0), .m3_ack(), .m3_rdata(),
+        .m3_req(1'b0), .m3_wr(1'b0), .m3_wide(1'b0), .m3_addr(22'd0), .m3_din(8'd0), .m3_ack(), .m3_rdata(),
         .m4_req(1'b0), .m4_wr(1'b0), .m4_addr(22'd0), .m4_din(8'd0), .m4_ack(), .m4_rdata()
     );
     wire        clk_sdram = ~clk;

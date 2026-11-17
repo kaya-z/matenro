@@ -50,6 +50,7 @@ module psram_arb4 (
     // master 3 (the Z80 of Matenro): byte reads / writes
     input  wire        m3_req,
     input  wire        m3_wr,
+    input  wire        m3_wide,             // with a read: a wide read (see c_wide)
     input  wire [21:0] m3_addr,
     input  wire [7:0]  m3_din,
     output reg         m3_ack,
@@ -85,7 +86,7 @@ module psram_arb4 (
             c_wide <= 1'b0;
             if (m2_req)      begin sel <= 3'd2; c_addr <= m2_addr; c_din <= 16'd0; st <= S_ISSUE; end
             else if (m1_req) begin sel <= 3'd1; c_addr <= m1_addr; c_din <= 16'd0; st <= S_ISSUE; end
-            else if (m3_req) begin sel <= 3'd3; c_addr <= m3_addr; c_din <= {m3_din, m3_din}; st <= S_ISSUE; end
+            else if (m3_req) begin sel <= 3'd3; c_addr <= m3_addr; c_din <= (m3_wide && !m3_wr) ? 16'd1 : {m3_din, m3_din}; c_wide <= m3_wide && !m3_wr; st <= S_ISSUE; end
             else if (m0_req) begin sel <= 3'd0; c_addr <= m0_addr; c_din <= (m0_wide && !m0_wr) ? 16'd1 : {m0_din, m0_din}; c_wide <= m0_wide && !m0_wr; st <= S_ISSUE; end
             else if (m4_req) begin sel <= 3'd4; c_addr <= m4_addr; c_din <= {m4_din, m4_din}; st <= S_ISSUE; end
         end

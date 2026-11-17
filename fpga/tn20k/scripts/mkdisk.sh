@@ -28,6 +28,7 @@ done
 nasm -f bin "$ROOT/os9/sub/sum8088.asm" -o "$T/v0/sum8088.bin"
 python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/gdemo.asm" -o "$T/v0/gdemo.com" > /dev/null
 python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/gdirect.asm" -o "$T/v0/gdirect.com" > /dev/null
+python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/zloop.asm" -o "$T/v0/zloop.com" > /dev/null
 nasm -f bin "$ROOT/tests/cpm/gdirect86.asm" -o "$T/gdirect86.bin"
 python3 "$ROOT/tools/mkcmd.py" 8080 "$T/gdirect86.bin" "$T/v0/gdirect86.cmd"
 nasm -f bin "$ROOT/tests/cpm/gdemo86.asm" -o "$T/gdemo86.bin"
@@ -56,7 +57,7 @@ dd if="$T/rom/os9v2_tn20k.rom" of="$OUT" bs=256 seek=1100 conv=notrunc status=no
     echo "send \"copy /v0/cmds/$n /d0/cmds/$n\\r\""; echo 'expect "OS9:"'
     echo "send \"attr /d0/cmds/$n e pe r pr\\r\""; echo 'expect "OS9:"'
   done
-  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin gdemo.com gdemo86.cmd gdirect.com gdirect86.cmd; do
+  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin gdemo.com gdemo86.cmd gdirect.com gdirect86.cmd zloop.com; do
     echo "send \"del /d0/$f\\r\""; echo 'expect "OS9:"'
     echo "send \"copy /v0/$f /d0/$f\\r\""; echo 'expect "OS9:"'
   done

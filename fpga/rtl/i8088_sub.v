@@ -45,6 +45,7 @@ module i8088_sub #(
     output reg         mem_req,              // held until mem_ack
     output reg         mem_wr,
     output reg  [20:0] mem_addr,
+    output wire [20:0] mem_lk,               // the physical address of the latched bus address, in every clock (valid well before mem_req: for a cache look-up)
     output reg  [7:0]  mem_wdata,
     input  wire        mem_ack,              // one clock
     input  wire [7:0]  mem_rdata,
@@ -129,6 +130,7 @@ module i8088_sub #(
     // ---- XLINK and its port bus
     wire [7:0]  s_rdata, s_vec;
     wire [20:0] sub_phys;
+    assign mem_lk = sub_phys;
     wire [7:0]  xl_rdata;
     always @(posedge clk) m_rdata <= xl_rdata;
 

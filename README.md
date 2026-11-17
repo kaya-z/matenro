@@ -190,7 +190,7 @@ fpga/tn20k/     Tang Nano 20K の SoC (rtl/ の HDMI、scripts/build.sh でビ�
 ## できていないこと
 
 * FPGA 版の **RTC** (載せられますが、書いていません)。
-* FPGA のタイミングの余裕は小さいです (9K は 67.5 MHz で 0.1〜0.5 ns、20K は 54 MHz に対して Fmax が 56.1 MHz)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
+* FPGA のタイミングの余裕は小さいです (9K は 67.5 MHz で 0.1〜0.5 ns、20K は 54 MHz に対して Fmax が 58.4 MHz)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0、DR の標準ツールと MBASIC です (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。MS-DOS は対象外にしました (8088 は CP/M-86 を選びました)。
 * MS-DOS は 1.25 と 2.0 だけです (2.0 のカーネルは Microsoft が公開した完成品を使います)。IBM PC 用の `BASIC.COM` は動きません。MS-DOS は 8088 を載せた 20K の実機とシミュレータで動きます (9K にはありません)。
 * 実機の待ちのモデルは**入れてあります** (`-hw`、既定。PSRAM の応答待ちと、6809 と Z80 が PSRAM を取り合うときの待ち。`-nohw` で理想の機械。docs/DESIGN.md の 17 章)。ただし精度は最大 2.7% 差 (`duo` の実機との比較) で、命令の中のバスサイクルの順序や割り込みの入り方などは近似です。8088 は実機がないので、基準は Intel の資料です。

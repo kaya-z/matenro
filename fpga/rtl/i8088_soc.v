@@ -31,7 +31,7 @@ module i8088_soc #(
     wire [7:0]  win_wdata;
     reg  [7:0]  win_rdata;
     wire        mem_req, mem_wr;
-    wire [20:0] mem_addr;
+    wire [20:0] mem_addr, mem_lk;
     wire [7:0]  mem_wdata;
     wire        mem_ack;
     wire [7:0]  mem_rdata;

@@ -125,7 +125,13 @@ module sim_top #(
 
 `ifdef CSTAT
     integer cs_clk = 0;
-    always @(posedge clk) begin cs_clk = cs_clk + 1; if (cs_clk % 1000000 == 0) $display("CACHE@%0d: read hits %0d, read misses %0d, writes %0d, E cycles %0d, hold ph0 %0d, hold ph2 %0d", cs_clk, soc.cs_hit, soc.cs_miss, soc.cs_wr, soc.cs_ecyc, soc.cs_hold, soc.cs_hold2); end
+    integer cz_stall = 0, cz_cen = 0, cz_hold = 0;       // the Z80: clocks of the memory wait (zstall), clock enables that went through, enables that were held by the wait
+    always @(posedge clk) begin
+        if (soc.subz.zstall) cz_stall = cz_stall + 1;
+        if (soc.subz.cen) cz_cen = cz_cen + 1;
+        if (soc.subz.cen_raw && soc.subz.zstall) cz_hold = cz_hold + 1;
+    end
+    always @(posedge clk) begin cs_clk = cs_clk + 1; if (cs_clk % 1000000 == 0) $display("CACHE@%0d: read hits %0d, read misses %0d, writes %0d, E cycles %0d, hold ph0 %0d, hold ph2 %0d, Z80 stall clocks %0d cen %0d held %0d", cs_clk, soc.cs_hit, soc.cs_miss, soc.cs_wr, soc.cs_ecyc, soc.cs_hold, soc.cs_hold2, cz_stall, cz_cen, cz_hold); end
 `endif
 `ifdef TRACE88
     always @(posedge clk) if (soc.zm_ack) $display("%s %h %h", soc.zm_wr ? "W" : "R", soc.zm_addr, soc.zm_wr ? soc.zm_wdata : soc.zm_rdata);

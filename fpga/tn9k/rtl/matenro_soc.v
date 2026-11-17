@@ -183,10 +183,11 @@ module matenro_soc #(
     wire        zm_req, zm_wr, zm_ack, zm_ack_ps;
     wire        zb_hit, zb_ack, win_hit, wb_ack;      // the shared RAM in the BSRAM (shr_ap.v)
     wire [7:0]  zb_rdata, wb_rdata;
-    wire [20:0] zm_addr;
+    wire [20:0] zm_addr, zm_lk;                         // zm_lk: the address of the bus of the sub CPU in every clock (the look-up of the read cache)
     wire        zm_vram;                                // the sub CPU access is to the picture (SDRAM $300000): the blocks $70-$7F, if GCTL bit 2 is set
     assign      zm_vram = sv_r && (zm_addr[20:17] == 4'b0111);
     wire [7:0]  zm_wdata;
+    wire        m3_go, m3_wide;                         // the request of the sub CPU that goes to the arbiter (master 3), and whether it is a wide read
     wire [15:0] zm_rdata_w;
 
     mc6809i #(.ILLEGAL_INSTRUCTIONS("GHOST")) cpu (
@@ -795,7 +796,7 @@ module matenro_soc #(
         .m0_req(m0_req), .m0_wr(m0_wrr), .m0_wide(m0_wide), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),
-        .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr(zm_vram ? {2'b11, 3'b000, zm_addr[16:0]} : {1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w),
+        .m3_req(m3_go), .m3_wr(zm_wr), .m3_wide(m3_wide), .m3_addr(zm_vram ? {2'b11, 3'b000, zm_addr[16:0]} : {1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w),
         .m4_req(m4_req), .m4_wr(m4_wrr), .m4_addr(m4_addr), .m4_din(m4_din), .m4_ack(m4_ack), .m4_rdata(m4_rdata)
     );
 
@@ -819,7 +820,7 @@ module matenro_soc #(
         if (m0_ack) begin cf_a <= m0_addr[21:2]; cf_d <= ps_dout32; end
 `else
         cf_we <= 1'b0;
-        if (ps_rd && ps_wide_i) cf_arm <= 1'b1;
+        if (ps_rd && ps_wide_i && ps_sel == 3'd0) cf_arm <= 1'b1;
         if (cf_arm && ps_dv) begin cf_arm <= 1'b0; cf_we <= 1'b1; cf_a <= m0_addr[21:2]; cf_d <= ps_dout32; end
 `endif
         cu_we <= c_cwr;
@@ -883,8 +884,55 @@ module matenro_soc #(
     always @(posedge clk) wb_ack_q <= wb_ack;
 
     // the Z80 and its memory port (master 3 of the arbiter)
+`ifdef CACHE
+    // the read cache of the sub CPU (a second rcache.v, 4 KB, the same 4 byte lines): a read that is in it is acknowledged from it at once and does not
+    // go to the arbiter; a read that is not (and is not in the shared RAM or the picture) is a wide read, whose word goes into the cache and gives the byte.
+    wire [20:0] sc_a     = zm_req ? zm_addr : zm_lk;                    // the look-up: the address of the bus, then (a write has its own) of the request
+    wire        sc_nc    = sv_r && (sc_a[20:17] == 4'b0111);            // the picture (the blocks $70-$7F): not cached
+    wire        sc_hit;
+    wire [7:0]  sc_hbyte;
+    reg         sc_done = 1'b0, sc_ack = 1'b0;                          // this request has been acknowledged by the cache
+    reg         sc_sent = 1'b0;                                         // this request has been offered to the arbiter: no hit any more (an acknowledge of the arbiter would follow)
+    reg  [7:0]  sc_byte;
+    wire        sc_use   = zm_req && !zm_wr && !zb_hit && !sc_nc && sc_hit && !sc_done && !sc_sent;
+    always @(posedge clk) begin
+        sc_ack <= 1'b0;
+        if (!zm_req) begin sc_done <= 1'b0; sc_sent <= 1'b0; end
+        else begin
+            if (sc_use) begin sc_done <= 1'b1; sc_ack <= 1'b1; sc_byte <= sc_hbyte; end
+            if (m3_go) sc_sent <= 1'b1;
+        end
+    end
+    assign      m3_go    = zm_req && !zb_hit && !sc_use && !sc_done;
+    assign      m3_wide  = !zm_wr && !sc_nc;
+    // fills: the word of a wide read of master 3 is taken with dv (like the 6809's: the acknowledge of the arbiter may come after a burst of the frame buffer)
+    reg         sf_arm = 1'b0, sf_we = 1'b0, su_we = 1'b0;
+    reg  [19:0] sf_a;
+    reg  [31:0] sf_d;
+    reg  [2:0]  su_cnt = 3'd0;
+    always @(posedge clk) begin
+        sf_we <= 1'b0; su_we <= 1'b0;
+        if (ps_rd && ps_wide_i && ps_sel == 3'd3) sf_arm <= 1'b1;
+        if (sf_arm && ps_dv) begin sf_arm <= 1'b0; sf_we <= 1'b1; sf_a <= ps_addr[21:2]; sf_d <= ps_dout32; end
+        // an own write updates the line, once, some clocks after the request (the look-up address of a write is wr_phys: it needs to settle)
+        if (!zm_req || !zm_wr) su_cnt <= 3'd0;
+        else if (su_cnt != 3'd7) begin su_cnt <= su_cnt + 3'd1; if (su_cnt == 3'd3 && !zb_hit && !sc_nc) su_we <= 1'b1; end
+    end
+    wire [7:0]  sf_byte = zm_addr[1:0] == 2'd0 ? sf_d[7:0] : zm_addr[1:0] == 2'd1 ? sf_d[15:8] : zm_addr[1:0] == 2'd2 ? sf_d[23:16] : sf_d[31:24];
+    rcache #(.IDX(10)) scache (
+        .clk(clk), .rst(rst), .a(sc_a), .hit(sc_hit), .hbyte(sc_hbyte),
+        .fill_we(sf_we), .fill_a(sf_a), .fill_d(sf_d),
+        .upd_we(su_we), .upd_d(zm_wdata),
+        .inv_we(ps_wr && ps_sel != 3'd3), .inv_a(ps_addr[21:2])
+    );
+    wire [7:0]  zm_rdata = zb_ack ? zb_rdata : sc_ack ? sc_byte : sc_nc ? (zm_addr[0] ? zm_rdata_w[15:8] : zm_rdata_w[7:0]) : sf_byte;
+    assign zm_ack = zm_ack_ps | zb_ack | sc_ack;
+`else
+    assign      m3_go    = zm_req && !zb_hit;
+    assign      m3_wide  = 1'b0;
     wire [7:0]  zm_rdata = zb_ack ? zb_rdata : zm_addr[0] ? zm_rdata_w[15:8] : zm_rdata_w[7:0];
     assign zm_ack = zm_ack_ps | zb_ack;
+`endif
     shr_ap #(.BLK(SHR_BLK)) shr (
         .clk(clk), .rst(rst),
         .a_req(zm_req), .a_wr(zm_wr), .a_addr(zm_addr), .a_wdata(zm_wdata), .a_hit(zb_hit), .a_ack(zb_ack), .a_rdata(zb_rdata),
@@ -896,7 +944,7 @@ module matenro_soc #(
     wire        z_irq, z_firq, z_wait, z_win, z_on, e_irq, e_firq, e_wait, e_win, e_on;
     wire [7:0]  z_rdata, e_rdata;
     wire        z_wreq, z_wwr, e_wreq, e_wwr, z_mreq, z_mwr, e_mreq, e_mwr;
-    wire [20:0] z_wadr, e_wadr, z_madr, e_madr;
+    wire [20:0] z_wadr, e_wadr, z_madr, e_madr, z_lk, e_lk;
     wire [7:0]  z_wdat, e_wdat, z_mdat, e_mdat;
     wire [39:0] z_dbg, e_dbg;
     z80_sub #(.CLKDIV(CZ_DIV), .CLK_KHZ(CLK_HZ / 1000)) subz (
@@ -904,7 +952,7 @@ module matenro_soc #(
         .m_addr(xl_a), .m_re(xl_re && !sel8), .m_we(xl_we && !sel8), .m_wdata(cpu_d_out), .m_rdata(z_rdata), .m_wait(z_wait), .m_win(z_win), .sub_on(z_on),
         .irq_o(z_irq), .firq_o(z_firq),
         .win_req(z_wreq), .win_wr(z_wwr), .win_addr(z_wadr), .win_wdata(z_wdat), .win_ack(win_ack), .win_rdata(win_rdata),
-        .mem_req(z_mreq), .mem_wr(z_mwr), .mem_addr(z_madr), .mem_wdata(z_mdat), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .mem_req(z_mreq), .mem_wr(z_mwr), .mem_addr(z_madr), .mem_lk(z_lk), .mem_wdata(z_mdat), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
         .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(z_dbg)
     );
     i8088_sub #(.CLKDIV(C88_DIV), .CLK_KHZ(CLK_HZ / 1000)) sube (
@@ -912,7 +960,7 @@ module matenro_soc #(
         .m_addr(xl_a), .m_re(xl_re && sel8), .m_we(xl_we && sel8), .m_wdata(cpu_d_out), .m_rdata(e_rdata), .m_wait(e_wait), .m_win(e_win), .sub_on(e_on),
         .irq_o(e_irq), .firq_o(e_firq),
         .win_req(e_wreq), .win_wr(e_wwr), .win_addr(e_wadr), .win_wdata(e_wdat), .win_ack(win_ack), .win_rdata(win_rdata),
-        .mem_req(e_mreq), .mem_wr(e_mwr), .mem_addr(e_madr), .mem_wdata(e_mdat), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .mem_req(e_mreq), .mem_wr(e_mwr), .mem_addr(e_madr), .mem_lk(e_lk), .mem_wdata(e_mdat), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
         .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(e_dbg)
     );
     assign xl_rdata  = sel8 ? e_rdata : z_rdata;
@@ -928,6 +976,7 @@ module matenro_soc #(
     assign zm_req    = sel8 ? e_mreq  : z_mreq;
     assign zm_wr     = sel8 ? e_mwr   : z_mwr;
     assign zm_addr   = sel8 ? e_madr  : z_madr;
+    assign zm_lk     = sel8 ? e_lk    : z_lk;
     assign zm_wdata  = sel8 ? e_mdat  : z_mdat;
     assign dbg_z80   = sel8 ? e_dbg   : z_dbg;
 `elsif SUB8088
@@ -937,7 +986,7 @@ module matenro_soc #(
         .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win), .sub_on(xl_on),
         .irq_o(xl_irq), .firq_o(xl_firq),
         .win_req(win_req), .win_wr(win_wr), .win_addr(win_addr), .win_wdata(win_wdata), .win_ack(win_ack), .win_rdata(win_rdata),
-        .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_lk(zm_lk), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
         .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(dbg_z80)
     );
 `else
@@ -946,7 +995,7 @@ module matenro_soc #(
         .m_addr(xl_a), .m_re(xl_re), .m_we(xl_we), .m_wdata(cpu_d_out), .m_rdata(xl_rdata), .m_wait(xl_wait), .m_win(xl_win), .sub_on(xl_on),
         .irq_o(xl_irq), .firq_o(xl_firq),
         .win_req(win_req), .win_wr(win_wr), .win_addr(win_addr), .win_wdata(win_wdata), .win_ack(win_ack), .win_rdata(win_rdata),
-        .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
+        .mem_req(zm_req), .mem_wr(zm_wr), .mem_addr(zm_addr), .mem_lk(zm_lk), .mem_wdata(zm_wdata), .mem_ack(zm_ack), .mem_rdata(zm_rdata),
         .con_we(), .con_data(), .pwr_we(), .pwr_data(), .z80_halted(), .dbg_z(dbg_z80)
     );
 `endif

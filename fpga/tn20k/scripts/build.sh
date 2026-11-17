@@ -90,6 +90,9 @@ for k, v in (("@PER@", per), ("@HALF@", per / 2), ("@Q1@", per / 4), ("@Q3@", pe
     s = s.replace(k, "%.2f" % v)
 open(dst, "w").write(s)
 PYEOF
+# OVER=1 (default, 54 MHz only; OVER=0 leaves it out): the tool is told that the system clock is 27 * 15 / 7 = 57.9 MHz (STA only, the PLL stays at 54 MHz), so that the placer works harder
+# and the real margin grows; the slacks it prints are then against 57.9 MHz: the margin at 54 MHz is the Fmax of the report minus 54
+if [ "${OVER:-1}" != 0 ] && [ "${CLKMHZ:-54}" = 54 ]; then sed -i "s/-multiply_by $MUL -divide_by $DIV/-multiply_by 15 -divide_by 7/g" "$B/timing.sdc"; fi
 if [ "$HDMI" != 0 ]; then cat "$HERE/constraints/hdmi.sdc" >> "$B/timing.sdc"; fi
 # the Z80 core changes only at its clock enable (DZ clocks): multicycle paths (constraints/z80.sdc, the instance soc/subz of SUBS=both)
 if [ "${SUBS:-both}" = both ] && [ "${ZMC:-1}" != 0 ]; then sed "s/@CZ@/$DZ/g;s/@CZ1@/$((DZ - 1))/g" "$HERE/constraints/z80.sdc" >> "$B/timing.sdc"; fi
