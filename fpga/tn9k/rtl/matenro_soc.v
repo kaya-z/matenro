@@ -40,8 +40,16 @@
 // stable and the access is made.  The CPU's clock is held (before E falls) while a memory access or the
 // disk is still busy, so the access time of the PSRAM or of the card never matters for the result.
 
+`ifndef CIDX_DEF
+`define CIDX_DEF 10
+`endif
+`ifndef SIDX_DEF
+`define SIDX_DEF 10
+`endif
 module matenro_soc #(
     parameter CLK_HZ     = 67500000,
+    parameter CIDX       = `CIDX_DEF,                      // the read cache of the 6809: 2 ** CIDX lines of 4 bytes (10: 4 KB)
+    parameter SIDX       = `SIDX_DEF,                      // the read cache of the sub CPU (10: 4 KB)
     parameter PH_DIV     = 9,                       // clks per phase; E = CLK_HZ / (4 * PH_DIV) = 1.875 MHz
     parameter BAUD_DIV   = 586,                     // 115200 baud
     parameter [15:0] ROM_BASE = 16'hC000,
@@ -839,7 +847,7 @@ module matenro_soc #(
         cu_we <= c_cwr;
     end
     assign      cf_byte = c_addr[1:0] == 2'd0 ? cf_d[7:0] : c_addr[1:0] == 2'd1 ? cf_d[15:8] : c_addr[1:0] == 2'd2 ? cf_d[23:16] : cf_d[31:24];
-    rcache cache (
+    rcache #(.IDX(CIDX)) cache (
         .clk(clk), .rst(rst), .a(c_addr), .hit(cc_hit), .hbyte(cc_hbyte),
         .fill_we(cf_we), .fill_a(cf_a), .fill_d(cf_d),
         .upd_we(cu_we), .upd_d(c_wdata),
@@ -932,7 +940,7 @@ module matenro_soc #(
         else if (su_cnt != 3'd7) begin su_cnt <= su_cnt + 3'd1; if (su_cnt == 3'd3 && !zb_hit && !sc_nc) su_we <= 1'b1; end
     end
     wire [7:0]  sf_byte = zm_addr[1:0] == 2'd0 ? sf_d[7:0] : zm_addr[1:0] == 2'd1 ? sf_d[15:8] : zm_addr[1:0] == 2'd2 ? sf_d[23:16] : sf_d[31:24];
-    rcache #(.IDX(10)) scache (
+    rcache #(.IDX(SIDX)) scache (
         .clk(clk), .rst(rst), .a(sc_a), .hit(sc_hit), .hbyte(sc_hbyte),
         .fill_we(sf_we), .fill_a(sf_a), .fill_d(sf_d),
         .upd_we(su_we), .upd_d(zm_wdata),

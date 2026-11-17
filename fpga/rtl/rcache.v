@@ -32,29 +32,32 @@ module rcache #(
     wire [IDX-1:0]  ridx = a[IDX+1:2];
     wire [TAGW-1:0] rtag = a[21:IDX+2];
 
-    reg [7:0]      d0 [0:(1<<IDX)-1];
-    reg [7:0]      d1 [0:(1<<IDX)-1];
-    reg [7:0]      d2 [0:(1<<IDX)-1];
-    reg [7:0]      d3 [0:(1<<IDX)-1];
-    reg [TAGW:0]   tg [0:(1<<IDX)-1];           // {tag, valid}
-    // (the RAMs of the FPGA start with 0: all lines invalid; the synthesis tool takes at most 2000 passes of a loop)
+    // the data: one memory of 32 bit words (a byte update reads the word, replaces the byte and writes the word back: the word of the look-up is the one of
+    // the address, a is stable), the tags: the tag bits only, in a memory of their own; the valid bits are in a distributed RAM (LUTs), read at once: they would
+    // take a block RAM of their own (the tag memory could not be 9 bits wide in a single block with them)
+    reg [31:0]     dm [0:(1<<IDX)-1];
+    reg [TAGW-1:0] tg [0:(1<<IDX)-1];
+    reg            vv [0:(1<<IDX)-1];
 `ifdef VERILATOR
     integer ii;
-    initial for (ii = 0; ii < (1<<IDX); ii = ii + 1) begin d0[ii] = 8'd0; d1[ii] = 8'd0; d2[ii] = 8'd0; d3[ii] = 8'd0; tg[ii] = {(TAGW+1){1'b0}}; end
+    initial for (ii = 0; ii < (1<<IDX); ii = ii + 1) begin dm[ii] = 32'd0; tg[ii] = {TAGW{1'b0}}; vv[ii] = 1'b0; end
 `endif
 
     // the read side: every clock, the result a clock later
     reg [31:0]     qd;
-    reg [TAGW:0]   qt;
+    reg [TAGW-1:0] qt;
+    reg            qv;
     reg [1:0]      qlane;
-    always @(posedge clk) begin
-        qd    <= {d3[ridx], d2[ridx], d1[ridx], d0[ridx]};
-        qt    <= tg[ridx];
-        qlane <= a[1:0];
-    end
-    assign hit   = qt[0] && (qt[TAGW:1] == rtag_q);
     reg [TAGW-1:0] rtag_q;
-    always @(posedge clk) rtag_q <= rtag;
+    wire           vnow = vv[ridx];
+    always @(posedge clk) begin
+        qd     <= dm[ridx];
+        qt     <= tg[ridx];
+        qv     <= vnow;
+        qlane  <= a[1:0];
+        rtag_q <= rtag;
+    end
+    assign hit   = qv && (qt == rtag_q);
     assign hbyte = qlane == 2'd0 ? qd[7:0] : qlane == 2'd1 ? qd[15:8] : qlane == 2'd2 ? qd[23:16] : qd[31:24];
 
     // the tags: a fill (valid), or an invalidation (valid = 0); a fill goes first, an invalidation waits one clock
@@ -65,25 +68,27 @@ module rcache #(
         if (rst) inv_pend <= 1'b0;
         else begin
             if (inv_we) begin inv_pend <= 1'b1; inv_idx <= inv_a[IDX-1:0]; end
-            if (fill_we) tg[fidx] <= {fill_a[19:IDX], 1'b1};
-            else if (inv_pend) begin tg[inv_idx] <= {(TAGW+1){1'b0}}; if (!inv_we) inv_pend <= 1'b0; end
+            if (fill_we) vv[fidx] <= 1'b1;
+            else if (inv_pend) begin vv[inv_idx] <= 1'b0; if (!inv_we) inv_pend <= 1'b0; end
         end
     end
+    always @(posedge clk) if (fill_we) tg[fidx] <= fill_a[19:IDX];
 
-    // the data: a fill writes the four bytes, an update one byte (they do not meet: the fill comes while the 6809 waits for the read)
+    // the data: a fill writes the word, an update one byte of it (they do not meet: the fill comes while the 6809 waits for the read)
     wire [IDX-1:0] uidx = ridx;
     wire           do_upd = upd_we && hit;
+    reg  [31:0]    um;
+    always @* begin
+        um = qd;
+        case (a[1:0])
+        2'd0: um[7:0]   = upd_d;
+        2'd1: um[15:8]  = upd_d;
+        2'd2: um[23:16] = upd_d;
+        default: um[31:24] = upd_d;
+        endcase
+    end
     always @(posedge clk) begin
-        if (fill_we) begin
-            d0[fidx] <= fill_d[7:0];  d1[fidx] <= fill_d[15:8];
-            d2[fidx] <= fill_d[23:16]; d3[fidx] <= fill_d[31:24];
-        end else if (do_upd) begin
-            case (a[1:0])
-            2'd0: d0[uidx] <= upd_d;
-            2'd1: d1[uidx] <= upd_d;
-            2'd2: d2[uidx] <= upd_d;
-            default: d3[uidx] <= upd_d;
-            endcase
-        end
+        if (fill_we) dm[fidx] <= fill_d;
+        else if (do_upd) dm[uidx] <= um;
     end
 endmodule
