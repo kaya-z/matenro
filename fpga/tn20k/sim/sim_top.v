@@ -59,8 +59,16 @@ module sim_top #(
     // The pixel clock is the system clock divided by two here (the timing of the picture is of no interest, the traffic on the SDRAM is)
     wire        fb_rq, fb_go;
     wire [21:0] fb_addr;
+    // The pixel clock is not synchronous with the system clock on the board (126 MHz / 5 = 25.2 MHz against 54 MHz): its edges move against the
+    // accesses of the 6809 and the requests of the frame buffer meet them in every possible phase.  Here too: 7 pixel clocks in 15 system clocks
+    // (25.2 / 54).  (With a pixel clock of exactly half the system clock the simulation never showed a failure of the read cache that the board had:
+    // docs/TN20K.md 2.4 A.)
     reg         clk_pix = 1'b0;
-    always @(posedge clk) clk_pix <= ~clk_pix;
+    reg [3:0]   pacc = 4'd0;
+    always @(posedge clk) begin
+        if (pacc >= 4'd1) begin pacc <= pacc - 4'd1; clk_pix <= ~clk_pix; end      // 14 of 15 clocks toggle: 7 rising edges in 15 clocks
+        else pacc <= 4'd14;
+    end
     reg [3:0]   rpx = 4'hf;
     always @(posedge clk_pix) rpx <= {rpx[2:0], ~resetn};
     wire [9:0]  tmds_b, tmds_g, tmds_r;

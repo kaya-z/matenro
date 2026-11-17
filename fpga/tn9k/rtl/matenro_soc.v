@@ -813,9 +813,15 @@ module matenro_soc #(
     // dout32 holds a pixel word by then).  cf_arm: the wide read of the CPU has been issued and its word has not come yet.
     reg         cf_arm = 1'b0;
     always @(posedge clk) begin
+`ifdef CFACK
+        // the first version (only for the experiment of docs/TN20K.md 2.4 A: the simulator does not show the failure of the board)
+        cf_we <= m0_ack && m0_wide && !m0_wrr;
+        if (m0_ack) begin cf_a <= m0_addr[21:2]; cf_d <= ps_dout32; end
+`else
         cf_we <= 1'b0;
         if (ps_rd && ps_wide_i) cf_arm <= 1'b1;
         if (cf_arm && ps_dv) begin cf_arm <= 1'b0; cf_we <= 1'b1; cf_a <= m0_addr[21:2]; cf_d <= ps_dout32; end
+`endif
         cu_we <= c_cwr;
     end
     assign      cf_byte = c_addr[1:0] == 2'd0 ? cf_d[7:0] : c_addr[1:0] == 2'd1 ? cf_d[15:8] : c_addr[1:0] == 2'd2 ? cf_d[23:16] : cf_d[31:24];
