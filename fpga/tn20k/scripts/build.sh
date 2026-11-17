@@ -74,6 +74,10 @@ KANJI=${KANJI:-1}
 [ "$HDMI" = 0 ] && KANJI=0
 if [ "$HDMI" != 0 ]; then echo '`define HDMI 1' >> "$B/tn20k_cfg.vh"; cp "$SIM09/rtl/font8x16.hex" "$B/font8x16.hex"; fi
 # KANJI=1 (default with HDMI): the screen of sim09 with the decoder and the kanji glyphs (the image: the OS-9 command kanjild); the register HCTL ($FFC8)
+# CACHE=1 (default): the read cache of the 6809 (rcache.v), POSTW=1 (default): the posted writes (docs/TN20K.md 2.4 A); CACHE=0 / POSTW=0 leave them out
+if [ "${CACHE:-1}" != 0 ]; then echo '`define CACHE 1' >> "$B/tn20k_cfg.vh"; fi
+if [ "${CCHIT0:-0}" != 0 ]; then echo '`define CCHIT0 1' >> "$B/tn20k_cfg.vh"; fi
+if [ "${POSTW:-1}" != 0 ]; then echo '`define POSTW 1' >> "$B/tn20k_cfg.vh"; fi
 if [ "$KANJI" != 0 ]; then printf '`define KANJI 1\n`define HCTL 1\n`define HDMI_CHARSET %s\n' "${HDMI_CHARSET:-1}" >> "$B/tn20k_cfg.vh"; fi
 cp "$HERE/constraints/tn20k.cst" "$B/pins.cst"
 if [ "$HDMI" != 0 ]; then cat "$HERE/constraints/hdmi.cst" >> "$B/pins.cst"; fi
@@ -100,6 +104,7 @@ add_file -type verilog $HERE/../tn9k/rtl/matenro_soc.v
 add_file -type verilog $HERE/../tn9k/rtl/psram_arb4.v
 add_file -type verilog $HERE/../tn9k/rtl/btn_toggle.v
 add_file -type verilog $HERE/../rtl/shr_ap.v
+add_file -type verilog $HERE/../rtl/rcache.v
 add_file -type verilog $HERE/../rtl/i8088_sub.v
 add_file -type verilog $HERE/../rtl/z80_sub.v
 add_file -type verilog $B/tv80s_cen.v

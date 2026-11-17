@@ -27,9 +27,12 @@ module psram_arb4 (
     input  wire [15:0] c_dout,
     input  wire        c_busy,
     output wire        c_issue,             // a request is decided and goes to the controller in the next clock: nobody else may start one now
+    output reg         c_wide,              // the request is a wide read (a line of the read cache of the 6809: c_din = 1 word); c_dout is not used
+    output wire [2:0]  c_sel,               // the master of the request that is under way
     // master 0
     input  wire        m0_req,
     input  wire        m0_wr,               // 1: write the byte m0_din
+    input  wire        m0_wide,             // with a read: a wide read (see c_wide)
     input  wire [21:0] m0_addr,
     input  wire [7:0]  m0_din,
     output reg         m0_ack,
@@ -65,6 +68,7 @@ module psram_arb4 (
 
     assign c_bw = 1'b1;
     assign c_issue = (st == S_ISSUE);
+    assign c_sel   = sel;
 
     always @(posedge clk) begin
         c_rd   <= 1'b0;
@@ -78,10 +82,11 @@ module psram_arb4 (
             st <= S_IDLE;
         end else case (st)
         S_IDLE: if (!c_busy) begin
+            c_wide <= 1'b0;
             if (m2_req)      begin sel <= 3'd2; c_addr <= m2_addr; c_din <= 16'd0; st <= S_ISSUE; end
             else if (m1_req) begin sel <= 3'd1; c_addr <= m1_addr; c_din <= 16'd0; st <= S_ISSUE; end
             else if (m3_req) begin sel <= 3'd3; c_addr <= m3_addr; c_din <= {m3_din, m3_din}; st <= S_ISSUE; end
-            else if (m0_req) begin sel <= 3'd0; c_addr <= m0_addr; c_din <= {m0_din, m0_din}; st <= S_ISSUE; end
+            else if (m0_req) begin sel <= 3'd0; c_addr <= m0_addr; c_din <= (m0_wide && !m0_wr) ? 16'd1 : {m0_din, m0_din}; c_wide <= m0_wide && !m0_wr; st <= S_ISSUE; end
             else if (m4_req) begin sel <= 3'd4; c_addr <= m4_addr; c_din <= {m4_din, m4_din}; st <= S_ISSUE; end
         end
         S_ISSUE: begin

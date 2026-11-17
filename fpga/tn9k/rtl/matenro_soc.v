@@ -78,6 +78,9 @@ module matenro_soc #(
     output wire [15:0] ps_din,
     output wire        ps_bw,
     input  wire [15:0] ps_dout,
+    input  wire [31:0] ps_dout32,       // `define CACHE: the 32 bit word of the last wide read (sdram_ctl.v dout32)
+    input  wire        ps_dv,           // `define CACHE: dout32 has a new word in this clock (sdram_ctl.v dv)
+    output wire        ps_wide,         // `define CACHE: the read that the arbiter issues is a wide one (a line of the read cache)
     input  wire        ps_busy,
     // LEDs (active low), and the CPU for the test bench
     output wire [5:0]  led,
@@ -227,6 +230,8 @@ module matenro_soc #(
     wire [15:0] m4_rdata;
     wire      acia_tx_full;         // the transmitter cannot take a character now
     wire      ps_busy_m;
+    wire      ps_wide_i;
+    wire [2:0] ps_sel;
     wire [15:0] ps_dout_m;           // the word the arbiter read for master 0 (the CPU, the disk)
     reg       pwroff;
     reg       reboot_r;             // $A6 (the reboot command of new-sbc09) or $A7 in the power register (cleared by the reset it causes)
@@ -395,6 +400,23 @@ module matenro_soc #(
     reg        c_rsel;
     reg        c_isrd;              // the access under way is a read
     reg        mp_wait;             // one clk for the busy flag of the controller to show up
+`ifdef CACHE
+`ifdef CSTAT
+    integer cs_hit = 0, cs_miss = 0, cs_wr = 0, cs_ecyc = 0, cs_hold = 0, cs_hold2 = 0;     // statistics of the simulation
+    always @(posedge clk) begin
+        if (ecyc) cs_ecyc = cs_ecyc + 1;
+        if (ph == 2'd0 && div == PH_DIV - 1 && stall_ph) cs_hold = cs_hold + 1;
+        if (ph == 2'd2 && div == PH_DIV - 1 && wr_hold) cs_hold2 = cs_hold2 + 1;
+    end
+`endif
+    wire        cc_hit;             // the read cache: the access of c_addr is in it
+`ifdef CCHIT0
+    wire        cc_hit_use = 1'b0;  // diagnosis: the cache works but its hits are not used
+`else
+    wire        cc_hit_use = cc_hit;
+`endif
+    wire [7:0]  cc_hbyte, cf_byte;  // its byte; the byte of the line that a wide read has brought
+`endif
 
     // I/O page decode
     wire [15:0] a      = cpu_a;
@@ -652,6 +674,13 @@ module matenro_soc #(
                     end else if (!cpu_rnw && (rom_sel || io_quiet)) begin
                         // read-only memory, or an unused register: the write is lost
                     end else begin                                    // RAM
+`ifdef CACHE
+`ifdef CSTAT
+                        if (cpu_rnw) begin if (cc_hit) cs_hit = cs_hit + 1; else cs_miss = cs_miss + 1; end else cs_wr = cs_wr + 1;
+`endif
+                        if (cpu_rnw && cc_hit_use) rd_reg <= cc_hbyte;       // a hit of the read cache: no access of the SDRAM, the CPU does not wait
+                        else begin
+`endif
                         c_rd    <= cpu_rnw;
                         c_cwr   <= ~cpu_rnw;
                         c_isrd  <= cpu_rnw;
@@ -661,6 +690,9 @@ module matenro_soc #(
 `else
                         mem_pend <= 1'b1;
                         mp_wait  <= 1'b1;
+`endif
+`ifdef CACHE
+                        end
 `endif
                     end
                 end
@@ -707,7 +739,11 @@ module matenro_soc #(
                 if (mp_wait) mp_wait <= 1'b0;                          // the request is on its way
                 else if (!ps_busy_m) begin
                     mem_pend <= 1'b0;
+`ifdef CACHE
+                    if (c_isrd) rd_reg <= cf_byte;                       // the byte of the line that the wide read brought
+`else
                     if (c_isrd) rd_reg <= c_rsel ? ps_dout_m[15:8] : ps_dout_m[7:0];
+`endif
                 end
             end
         end
@@ -727,11 +763,14 @@ module matenro_soc #(
     reg  [21:0] m0_addr;
     reg  [7:0]  m0_din;
     wire        m0_ack;
+    reg         m0_wide = 1'b0, m0_cpuw = 1'b0;
     always @(posedge clk) begin
         if (m0_ack) m0_req <= 1'b0;
         if (m0_pulse) begin
             m0_req  <= 1'b1;
             m0_wrr  <= m_wr_s;
+            m0_wide <= !use_clr && !xw_act && c_rd;                 // a read of the CPU: a whole line for the read cache (CACHE)
+            m0_cpuw <= !use_clr && !xw_act && c_cwr;                // a write of the CPU: the cache is updated, not invalidated
             m0_addr <= use_clr ? cw : xw_act ? {win_hi, win_addr} : c_addr;
             m0_din  <= use_clr ? td_r : xw_act ? win_wdata : c_wdata;
         end
@@ -752,13 +791,43 @@ module matenro_soc #(
 
     psram_arb4 arb (
         .clk(clk), .rst(rst),
-        .c_rd(ps_rd), .c_wr(ps_wr), .c_addr(ps_addr), .c_din(ps_din), .c_bw(ps_bw), .c_dout(ps_dout), .c_busy(ps_busy), .c_issue(ps_issue),
-        .m0_req(m0_req), .m0_wr(m0_wrr), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
+        .c_rd(ps_rd), .c_wr(ps_wr), .c_addr(ps_addr), .c_din(ps_din), .c_bw(ps_bw), .c_dout(ps_dout), .c_busy(ps_busy), .c_issue(ps_issue), .c_wide(ps_wide_i), .c_sel(ps_sel),
+        .m0_req(m0_req), .m0_wr(m0_wrr), .m0_wide(m0_wide), .m0_addr(m0_addr), .m0_din(m0_din), .m0_ack(m0_ack), .m0_rdata(ps_dout_m),
         .m1_req(x1_req), .m1_addr(x1_addr), .m1_ack(x1_ack), .m1_rdata(x1_rdata),
         .m2_req(x2_req), .m2_addr(x2_addr), .m2_ack(x2_ack), .m2_rdata(x2_rdata),
         .m3_req(zm_req && !zb_hit), .m3_wr(zm_wr), .m3_addr(zm_vram ? {2'b11, 3'b000, zm_addr[16:0]} : {1'b0, zm_addr}), .m3_din(zm_wdata), .m3_ack(zm_ack_ps), .m3_rdata(zm_rdata_w),
         .m4_req(m4_req), .m4_wr(m4_wrr), .m4_addr(m4_addr), .m4_din(m4_din), .m4_ack(m4_ack), .m4_rdata(m4_rdata)
     );
+
+`ifdef CACHE
+    assign ps_wide = ps_wide_i;
+    // ---------------------------------------------------------------- the read cache of the 6809 (rcache.v, docs/TN20K.md 2.4 A)
+    // lookup with c_addr (stable long before acc2); a miss reads the whole 32 bit word (wide) and fills the line with the acknowledge; writes of the CPU
+    // update the line (write-through), writes of every other master of the SDRAM (and the window, the start-up clear) invalidate it.
+    reg         cf_we = 1'b0, cu_we = 1'b0;
+    reg  [19:0] cf_a;
+    reg  [31:0] cf_d;
+    wire        ci_we = ps_wr && !(ps_sel == 3'd0 && m0_cpuw);
+    // The word is taken with dv, the clock in which the controller has it (not with the acknowledge of the arbiter: the arbiter sees ps_busy = ctl_busy
+    // || fb_go, so when the frame buffer starts its burst in the clock that the controller is free, the acknowledge comes after the whole burst and
+    // dout32 holds a pixel word by then).  cf_arm: the wide read of the CPU has been issued and its word has not come yet.
+    reg         cf_arm = 1'b0;
+    always @(posedge clk) begin
+        cf_we <= 1'b0;
+        if (ps_rd && ps_wide_i) cf_arm <= 1'b1;
+        if (cf_arm && ps_dv) begin cf_arm <= 1'b0; cf_we <= 1'b1; cf_a <= m0_addr[21:2]; cf_d <= ps_dout32; end
+        cu_we <= c_cwr;
+    end
+    assign      cf_byte = c_addr[1:0] == 2'd0 ? cf_d[7:0] : c_addr[1:0] == 2'd1 ? cf_d[15:8] : c_addr[1:0] == 2'd2 ? cf_d[23:16] : cf_d[31:24];
+    rcache cache (
+        .clk(clk), .rst(rst), .a(c_addr), .hit(cc_hit), .hbyte(cc_hbyte),
+        .fill_we(cf_we), .fill_a(cf_a), .fill_d(cf_d),
+        .upd_we(cu_we), .upd_d(c_wdata),
+        .inv_we(ci_we), .inv_a(ps_addr[21:2])
+    );
+`else
+    assign ps_wide = 1'b0;
+`endif
 
     // ---------------------------------------------------------------- MATENRO: the cross link and the Z80
     // 6809 side: a read or a write of $4A-$4E is one clock pulse at the access (acc2); after a read the data are taken

@@ -143,7 +143,7 @@ module tn9k_top (
         .clk(clk), .resetn(resetn), .hdmi_hpd(1'b0), .rxd(uart_rx), .txd(uart_tx_soc),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
-        .ps_dout(ps_dout), .ps_busy(ps_busy),
+        .ps_dout(ps_dout), .ps_dout32(32'd0), .ps_dv(1'b0), .ps_wide(), .ps_busy(ps_busy),
         .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),

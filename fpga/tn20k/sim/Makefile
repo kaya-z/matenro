@@ -7,7 +7,13 @@ build_sdram/Vtb_sdram: $(RTL)/sdram_ctl.v sdram_model.v tb_sdram.v
 	mkdir -p build_sdram
 	verilator -Wno-fatal -Wno-lint -Wno-style -Wno-DECLFILENAME -Wno-WIDTH -Wno-TIMESCALEMOD -Wno-INITIALDLY -Wno-BLKSEQ -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE \
 	  --binary --timing -Mdir build_sdram --top-module tb_sdram $(RTL)/sdram_ctl.v sdram_model.v tb_sdram.v -o Vtb_sdram
-.PHONY: sdram
+rcache: build_rcache/Vtb_rcache
+	@ulimit -c 0; build_rcache/Vtb_rcache
+build_rcache/Vtb_rcache: $(RTL)/rcache.v tb_rcache.v
+	mkdir -p build_rcache
+	verilator -Wno-fatal -Wno-lint -Wno-style -Wno-DECLFILENAME -Wno-WIDTH -Wno-TIMESCALEMOD -Wno-INITIALDLY -Wno-BLKSEQ -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE \
+	  --binary --timing -Mdir build_rcache --top-module tb_rcache $(RTL)/rcache.v tb_rcache.v -o Vtb_rcache
+.PHONY: sdram rcache
 
 # The whole SoC (6809 + 8088 + SDRAM controller + SDRAM model) with the 6809 test ROM test/xltest88.asm (the 8088 self test of the C simulator):
 #   make soc TV80=unused   needs a09 (SIM09/tools/a09) and nasm.  Expected output: S L R A5 00 12D5 (67.5 MHz / 14 = 4821 kHz); make soc PH=8 D88=12 HZ=60000000 (5000 kHz = 1388), PH=7 D88=11 HZ=54000000 (4909 kHz = 132D)
@@ -17,7 +23,9 @@ D88 ?= 14
 HZ ?= 67500000
 SIM09 ?= /export/nas/archives/MC6809/new-sbc09/fpga/tn9k
 A09   ?= $(SIM09)/../../tools/a09
-SOCSRC = ../../tn9k/rtl/matenro_soc.v ../../tn9k/rtl/psram_arb4.v ../../rtl/i8088_sub.v ../../rtl/eu4kx32.v ../../vendor/mcl86/eu.v ../../vendor/mcl86/biu_min.v \
+# the read cache of the 6809 (docs/TN20K.md 2.4 A) and the posted writes: make CACHEFLAGS= for the machine without them
+CACHEFLAGS ?= -DCACHE -DPOSTW
+SOCSRC = ../../rtl/rcache.v ../../tn9k/rtl/matenro_soc.v ../../tn9k/rtl/psram_arb4.v ../../rtl/i8088_sub.v ../../rtl/eu4kx32.v ../../vendor/mcl86/eu.v ../../vendor/mcl86/biu_min.v \
          ../../rtl/xlink.v ../../rtl/shr_ap.v ../../rtl/sdram_ctl.v sdram_model.v sim_top.v \
          $(SIM09)/rtl/acia_uart.v $(SIM09)/rtl/timer_rtc.v $(SIM09)/rtl/sd_disk.v $(SIM09)/vendor/mc6809/mc6809i.v
 soc: build_soc/obj/Vsim_top
@@ -31,7 +39,7 @@ build_soc/rom.hex: ../test/xltest88.asm ../../../tests/i8088/core.asm
 	grep -q '^0 Pass 2 errors' ../sim/build_soc/a09.txt
 	python3 $(SIM09)/scripts/bin2hex.py ../test/xltest88.bin > $@
 build_soc/obj/Vsim_top: $(SOCSRC) build_soc/rom.hex $(SIM09)/sim/tb.cpp
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_soc/obj -DSUB8088 $(EXTRA_V) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_soc/obj -DSUB8088 $(CACHEFLAGS) $(EXTRA_V) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=61440 -GROM_AW=12 -GROM_FILE='"$(abspath build_soc/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
@@ -46,7 +54,7 @@ build_boot/rom.hex:
 	mkdir -p build_boot
 	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
 build_boot/obj/Vsim_top: $(SOCSRC) build_boot/rom.hex $(SIM09)/sim/tb.cpp
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_boot/obj -DSUB8088 '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_boot/obj -DSUB8088 $(CACHEFLAGS) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_boot/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
@@ -124,7 +132,7 @@ $(KJ_DISK): kj.txt ../../../tools/build_cpm.sh ../../../os9/kanjild/kanjild.asm
 	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/kanji.bin /d0/kanji.bin\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/kanjild /d0/cmds/kanjild\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/kanjild e pe r pr\\r"\nexpect "OS9:"\nquit\n' > build_kj/prep.txt
 	cd build_kj && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 kd.dsk -v v0 -script prep.txt > prep.log 2>&1
 build_kj/obj/Vsim_top: $(SOCSRC) build_kj/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_kj/obj -DSUB8088 -DHCTL -DDUMPKJ $(KJDEF) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_kj/obj -DSUB8088 $(CACHEFLAGS) -DHCTL -DDUMPKJ $(KJDEF) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_kj/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
@@ -165,7 +173,7 @@ $(GFX_DISK): gfx.txt ../../../tools/build_cpm.sh ../../../os9/gfx/gfx.asm
 	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/gfx /d0/cmds/gfx\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/gfx e pe r pr\\r"\nexpect "OS9:"\nquit\n' > build_gfx/prep.txt
 	cd build_gfx && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 gd.dsk -v v0 -script prep.txt > prep.log 2>&1
 build_gfx/obj/Vsim_top: $(SOCSRC) build_gfx/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfx/obj -DSUB8088 -DHCTL -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfx/obj -DSUB8088 $(CACHEFLAGS) -DHCTL -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_gfx/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SOCSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
@@ -182,7 +190,7 @@ $(FBDIR)/rom.hex:
 	mkdir -p $(FBDIR)
 	python3 $(SIM09)/scripts/bin2hex.py $(SIM09)/../../fuzix/images/bootrom.bin > $@
 $(FBDIR)/obj/Vsim_top: $(FBSRC) $(FBDIR)/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir $(FBDIR)/obj -DSUB8088 -DHCTL -DFBSOC $(if $(FBFIX),-DFBFIX) $(KJDEF) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir $(FBDIR)/obj -DSUB8088 $(CACHEFLAGS) -DHCTL -DFBSOC $(if $(FBFIX),-DFBFIX) $(KJDEF) '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath $(FBDIR)/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(FBSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null
@@ -228,7 +236,7 @@ $(SUB_DISK): gfxz80.txt gfx88.txt gfxdirect.txt gfxdirect88.txt ../../../tests/c
 	printf 'timeout 3000000\nexpect "OS9:"\nsend "chx /v0/cmds\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/cpm /d0/cmds/cpm\\r"\nexpect "OS9:"\nsend "copy /v0/cmds/subsel /d0/cmds/subsel\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/cpm e pe r pr\\r"\nexpect "OS9:"\nsend "attr /d0/cmds/subsel e pe r pr\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo.com /d0/gdemo.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdemo86.cmd /d0/gdemo86.cmd\\r"\nexpect "OS9:"\nsend "copy /v0/gdirect.com /d0/gdirect.com\\r"\nexpect "OS9:"\nsend "copy /v0/gdirect86.cmd /d0/gdirect86.cmd\\r"\nexpect "OS9:"\nquit\n' > build_gfxsub/prep.txt
 	cd build_gfxsub && ../../../../matenro -max -rom $(SIM09)/../../os9/os9v2.rom -0 gs.dsk -v v0 -script prep.txt > prep.log 2>&1
 build_gfxsub/obj/Vsim_top: $(SUBSRC) build_gfxsub/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
-	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfxsub/obj -DSUBBOTH -DHCTL -DPOSTW -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl --top-module sim_top -Mdir build_gfxsub/obj -DSUBBOTH $(CACHEFLAGS) -DHCTL -DDUMPFB '-DUCODE_FILE="$(abspath ../../vendor/mcl86/mcl86_ucode.hex)"' \
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-CASEX -Wno-VARHIDDEN -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -GROM_BASE=65280 -GROM_AW=8 -GROM_FILE='"$(abspath build_gfxsub/rom.hex)"' -GFREERUN=0 -GPH_DIV=$(PH) -GC88_DIV=$(D88) -GCZ_DIV=$(CZ) -GCLK_HZ=$(HZ) -GMEMTEST=0 \
 	  -CFLAGS "-O2" $(SUBSRC) $(SIM09)/sim/tb.cpp -o Vsim_top >/dev/null

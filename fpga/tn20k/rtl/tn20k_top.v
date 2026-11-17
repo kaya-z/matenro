@@ -71,7 +71,7 @@ module tn20k_top (
 
     btn_toggle #(.DEB_BITS(20)) s2_toggle (.clk(clk), .rst_n(resetn), .btn_n(~s2), .state(led_mode));       // 15 ms debounce
 
-    wire        ps_rd, ps_wr, ps_bw, ps_busy;
+    wire        ps_rd, ps_wr, ps_bw, ps_busy, ps_wide;
     // the frame buffer of the HDMI screen reads the SDRAM itself (32 bits at a time), before the requests of the SoC: it takes the clock in
     // which the controller is free and the SoC has no pulse; the SoC sees "busy" in that clock (the combinational fb_go), so it does not start
     wire        ctl_busy, fb_rq, fb_go, ps_issue;
@@ -97,7 +97,7 @@ module tn20k_top (
 
     sdram_ctl #(.FREQ(`CLK_HZ), .REFRESH_CLKS(`CLK_HZ / 1000 * 74 / 10000)) sdram (
         .clk(clk), .clk_sdram(clk_p), .resetn(resetn),
-        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(fb_go ? {9'd0, fb_n} : ps_din), .byte_write(ps_bw), .wide(fb_go), .dout(ps_dout), .dout32(fb_dout32), .dv(fb_dv), .busy(ctl_busy),
+        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(fb_go ? {9'd0, fb_n} : ps_din), .byte_write(ps_bw), .wide(fb_go || ps_wide), .dout(ps_dout), .dout32(fb_dout32), .dv(fb_dv), .busy(ctl_busy),
         .O_sdram_clk(O_sdram_clk), .O_sdram_cke(O_sdram_cke), .O_sdram_cs_n(O_sdram_cs_n), .O_sdram_cas_n(O_sdram_cas_n),
         .O_sdram_ras_n(O_sdram_ras_n), .O_sdram_wen_n(O_sdram_wen_n), .O_sdram_dqm(O_sdram_dqm), .O_sdram_addr(O_sdram_addr),
         .O_sdram_ba(O_sdram_ba), .IO_sdram_dq(IO_sdram_dq)
@@ -156,7 +156,7 @@ module tn20k_top (
         .clk(clk), .resetn(resetn), .hdmi_hpd(hpd), .rxd(uart_rx), .txd(uart_tx),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
-        .ps_dout(ps_dout), .ps_busy(ps_busy), .ps_issue(ps_issue),
+        .ps_dout(ps_dout), .ps_dout32(fb_dout32), .ps_dv(fb_dv), .ps_wide(ps_wide), .ps_busy(ps_busy), .ps_issue(ps_issue),
         .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),

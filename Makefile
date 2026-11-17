@@ -52,6 +52,7 @@ clean:
 test-tn20k:
 	make -C fpga/sim i8088
 	make -C fpga/tn20k/sim sdram
+	make -C fpga/tn20k/sim rcache
 	make -C fpga/tn20k/sim soc PH=7 D88=11 HZ=54000000
 	make -C fpga/tn20k/sim hdmi
 	make -C fpga/tn20k/sim hdmik

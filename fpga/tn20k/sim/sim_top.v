@@ -40,7 +40,7 @@ module sim_top #(
     output wire [21:0] dbg_ps_addr
 );
     assign fl_cs = 1'b1, fl_clk = 1'b0, fl_mosi = 1'b0, kanji_ok = 1'b0;
-    wire        ps_rd, ps_wr, ps_bw, ps_busy;
+    wire        ps_rd, ps_wr, ps_bw, ps_busy, ps_wide;
     wire [21:0] ps_addr;
     wire [15:0] ps_din, ps_dout;
     wire        clk_sdram = ~clk;
@@ -89,7 +89,7 @@ module sim_top #(
         .clk(clk), .resetn(resetn), .hdmi_hpd(1'b1), .rxd(rxd), .txd(txd),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs(sd_cs),
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
-        .ps_dout(ps_dout), .ps_busy(ps_busy),
+        .ps_dout(ps_dout), .ps_dout32(fb_dout32), .ps_dv(fb_dv), .ps_wide(ps_wide), .ps_busy(ps_busy),
         .led(led), .led_mode(1'b0), .reboot_req(), .dbg_status(), .dbg_disk(), .term_busy(term_busy), .ps_issue(ps_issue),
         .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
@@ -107,7 +107,7 @@ module sim_top #(
     wire [31:0] sd_dq, mdl_err;
     sdram_ctl #(.FREQ(CLK_HZ), .REFRESH_CLKS(CLK_HZ / 1000 * 74 / 10000)) sdram (
         .clk(clk), .clk_sdram(clk_sdram), .resetn(resetn),
-        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(fb_go ? {9'd0, fb_n} : ps_din), .byte_write(ps_bw), .wide(fb_go), .dout(ps_dout), .dout32(fb_dout32), .dv(fb_dv), .busy(ctl_busy),
+        .read(ps_rd || fb_go), .write(ps_wr), .addr(fb_go ? fb_addr : ps_addr), .din(fb_go ? {9'd0, fb_n} : ps_din), .byte_write(ps_bw), .wide(fb_go || ps_wide), .dout(ps_dout), .dout32(fb_dout32), .dv(fb_dv), .busy(ctl_busy),
         .O_sdram_clk(sd_ck), .O_sdram_cke(sd_cke), .O_sdram_cs_n(sd_cs_n), .O_sdram_cas_n(sd_cas_n), .O_sdram_ras_n(sd_ras_n),
         .O_sdram_wen_n(sd_we_n), .O_sdram_dqm(sd_dqm), .O_sdram_addr(sd_a), .O_sdram_ba(sd_ba), .IO_sdram_dq(sd_dq)
     );
@@ -115,6 +115,10 @@ module sim_top #(
         .dq(sd_dq), .errors(mdl_err), .init_done(mdl_init));
     always @(posedge clk) if (mdl_err != 32'd0 && mdl_err[3:0] == 4'd1) $display("SDRAM model: rule violations = %0d", mdl_err);
 
+`ifdef CSTAT
+    integer cs_clk = 0;
+    always @(posedge clk) begin cs_clk = cs_clk + 1; if (cs_clk % 1000000 == 0) $display("CACHE@%0d: read hits %0d, read misses %0d, writes %0d, E cycles %0d, hold ph0 %0d, hold ph2 %0d", cs_clk, soc.cs_hit, soc.cs_miss, soc.cs_wr, soc.cs_ecyc, soc.cs_hold, soc.cs_hold2); end
+`endif
 `ifdef TRACE88
     always @(posedge clk) if (soc.zm_ack) $display("%s %h %h", soc.zm_wr ? "W" : "R", soc.zm_addr, soc.zm_wr ? soc.zm_wdata : soc.zm_rdata);
 `endif
