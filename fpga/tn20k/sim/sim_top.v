@@ -44,7 +44,9 @@ module sim_top #(
     wire [21:0] ps_addr;
     wire [15:0] ps_din, ps_dout;
     wire        clk_sdram = ~clk;
-    wire        ps_issue, gfx_on, gfx_ov, pal_we, term_busy;
+    wire        ps_issue, gfx_on, gfx_ov, pal_we, term_busy, pc_on;
+    wire [6:0]  pc_col;
+    wire [4:0]  pc_row;
     wire [7:0]  pal_idx;
     wire [23:0] pal_rgb;
     wire        x1_req, x1_ack, x2_req, x2_ack;
@@ -83,7 +85,7 @@ module sim_top #(
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .clk_pix(clk_pix), .rst_pix(rpx[3]), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
-        .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
+        .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pc_on(pc_on), .pc_col(pc_col), .pc_row(pc_row), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
         .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_n(fb_n), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dv(fb_dv), .fb_dout32(fb_dout32)
     );
 `else
@@ -99,7 +101,7 @@ module sim_top #(
         .ps_rd(ps_rd), .ps_wr(ps_wr), .ps_addr(ps_addr), .ps_din(ps_din), .ps_bw(ps_bw),
         .ps_dout(ps_dout), .ps_dout32(fb_dout32), .ps_dv(fb_dv), .ps_wide(ps_wide), .ps_busy(ps_busy),
         .led(led), .led_mode(1'b0), .reboot_req(), .dbg_status(), .dbg_disk(), .term_busy(term_busy), .ps_issue(ps_issue),
-        .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
+        .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pc_on(pc_on), .pc_col(pc_col), .pc_row(pc_row), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_lic(dbg_lic), .dbg_addr(dbg_addr), .dbg_acc(dbg_acc), .dbg_din(dbg_din),

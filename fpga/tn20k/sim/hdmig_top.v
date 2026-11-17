@@ -7,7 +7,9 @@ module hdmi_top #(
     parameter KANJI_FILE = "kanji32.hex",
     parameter FB_FILE = "fb32.hex",
     parameter CHARSET = 1,
-    parameter ROWS = 25
+    parameter ROWS = 25,
+    parameter PCTEXT = 0,                     // 1: the text memory of the PC (hdmi_pctext.v) instead of the frame buffer: the cells are in the model at $1B8000
+    parameter [19:0] INIT_W = 20'hC0000
 ) (
     input  wire        clk,
     input  wire        clk_pix,
@@ -54,7 +56,7 @@ module hdmi_top #(
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .clk_pix(clk_pix), .rst_pix(rp[3]), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
-        .gfx_on(1'b1), .gfx_ov(1'b1), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
+        .gfx_on(PCTEXT == 0), .gfx_ov(PCTEXT == 0), .pc_on(PCTEXT != 0), .pc_col(7'd5), .pc_row(5'd3), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
         .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_n(fb_n), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dv(fb_dv), .fb_dout32(fb_dout32)
     );
     psram_arb4 arb (
@@ -81,7 +83,7 @@ module hdmi_top #(
     );
     wire [31:0] errors;
     wire        init_done;
-    sdram_model #(.INIT_FILE(FB_FILE), .INIT_WORD(20'hC0000)) mem (
+    sdram_model #(.INIT_FILE(FB_FILE), .INIT_WORD(INIT_W)) mem (
         .clk(sd_clk), .cke(sd_cke), .cs_n(sd_cs_n), .ras_n(sd_ras_n), .cas_n(sd_cas_n), .we_n(sd_wen_n),
         .dqm(sd_dqm), .a(sd_a), .ba(sd_ba), .dq(sd_dq), .errors(errors), .init_done(init_done)
     );

@@ -141,7 +141,7 @@ build_kj/obj/Vsim_top: $(SOCSRC) build_kj/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
 # The frame buffer of the HDMI screen: 320 x 240 x 8 bit in the SDRAM model at $300000 (fb32.hex: a test pattern), the screen (hdmi_screen20 + hdmi_fb)
 # shows it doubled with the default palette and the entry 7; check_fb.py compares the whole picture.   make hdmig
 HDMIG_SRC = $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v $(SIM09)/rtl/hdmi_video.v \
-            $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_fb.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmig_top.v
+            $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_pctext.v ../../rtl/hdmi_fb.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmig_top.v
 hdmig: build_hdmig/obj/Vhdmi_top
 	cd build_hdmig && obj/Vhdmi_top -i $(abspath hdmig_in.txt) -o screen.ppm -f 3
 	python3 check_fb.py build_hdmig/screen.ppm $(SIM09)/rtl/font8x16.hex
@@ -154,6 +154,23 @@ build_hdmig/obj/Vhdmi_top: $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp fb32.hex
 	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
 	  -CFLAGS "-O2" $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp -o Vhdmi_top >/dev/null
 .PHONY: hdmig
+
+# The text memory of the PC (docs/TN20K.md 2.5): 2,000 cells {character, attribute} in the SDRAM model at $1B8000, read by hdmi_pctext.v and shown by the text
+# screen with the colours of the PC turned into the terminal's; check_pctext.py compares the whole picture (the cursor of the PC is at row 3, column 5).   make hdmip
+hdmip: build_hdmip/obj/Vhdmi_top
+	cd build_hdmip && obj/Vhdmi_top -i $(abspath hdmig_in.txt) -o screen.ppm -f 3
+	python3 check_pctext.py build_hdmip/screen.ppm $(SIM09)/rtl/font8x16.hex
+build_hdmip/pc32.hex: check_pctext.py
+	mkdir -p build_hdmip
+	python3 check_pctext.py --make $@
+build_hdmip/obj/Vhdmi_top: $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp build_hdmip/pc32.hex
+	cp $(SIM09)/rtl/font8x16.hex build_hdmip/
+	python3 -c "import struct; b=open('$(KANJI_BIN)','rb').read(); b+=bytes(-len(b)%4); open('build_hdmip/kanji32.hex','w').write(chr(10).join('%08x'%struct.unpack('<I',b[k:k+4])[0] for k in range(0,len(b),4))+chr(10))"
+	verilator --cc --exe --build -O2 -j 8 -I$(SIM09)/rtl $(HDMIG_DEF) --top-module hdmi_top -Mdir build_hdmip/obj \
+	  -GFB_FILE='"$(abspath build_hdmip/pc32.hex)"' -GKANJI_FILE='"$(abspath build_hdmip/kanji32.hex)"' -GPCTEXT=1 -GINIT_W=450560 \
+	  -Wno-fatal -Wno-lint -Wno-style -Wno-TIMESCALEMOD -Wno-UNOPTFLAT -Wno-WIDTH -Wno-INITIALDLY -Wno-BLKSEQ \
+	  -CFLAGS "-O2" $(HDMIG_SRC) $(SIM09)/sim/tb_hdmi.cpp -o Vhdmi_top >/dev/null
+.PHONY: hdmip
 
 # The OS-9 command gfx: `gfx test` writes the test picture through the window (HCTL.1) into the SDRAM; at the end the testbench dumps the 76,800 bytes at
 # $300000 (fbdump.bin) and check_gfx.py compares them with the picture that the command should draw.   make gfxboot
@@ -182,7 +199,7 @@ build_gfx/obj/Vsim_top: $(SOCSRC) build_gfx/rom.hex $(SIM09)/sim/tb.cpp sim_top.
 # The whole SoC with the HDMI screen and the frame buffer (FBSOC): `gfx test` and `gfx on`, then the console must go on (the read of the frame buffer
 # goes between the requests of the SoC; FBFIX=1: the arbiter's c_issue keeps it from slipping in between the decision and the pulse).   make fbsoc FBFIX=1
 FBSRC = $(SOCSRC) $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v $(SIM09)/rtl/hdmi_video.v \
-        $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_fb.v
+        $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_pctext.v ../../rtl/hdmi_fb.v
 FBDIR = build_fbsoc$(if $(FBFIX),,_nofix)
 fbsoc: $(FBDIR)/obj/Vsim_top $(GFX_DISK)
 	cd $(FBDIR) && cp $(SIM09)/rtl/font8x16.hex . && obj/Vsim_top -d ../build_gfx/gd.dsk -s $(abspath fbsoc.txt) -c 1500000000 | tr -d '\r' | grep -E "FBALIVE|OS9:|time out"

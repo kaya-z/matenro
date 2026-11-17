@@ -100,6 +100,9 @@ module matenro_soc #(
     input  wire        hdmi_hpd,            // the HDMI connector's HPD (hot plug detect: high = a monitor is connected); read at $FFB8 bit 7 (0 on the 9K: not wired)
     output wire        gfx_on,              // `define HCTL: the frame buffer is shown instead of the text ($FFB8 bit 0)
     output wire        gfx_ov,              // the text is shown over the picture ($FFB8 bit 1)
+    output wire        pc_on,               // `define HCTL: the text screen shows the text memory of the PC ($FFBB bit 0); its cursor: pc_col, pc_row ($FFBC, $FFBD)
+    output wire [6:0]  pc_col,
+    output wire [4:0]  pc_row,
     output wire        pal_we,              // a palette entry is written (one clock): pal_idx, pal_rgb
     output wire [7:0]  pal_idx,
     output wire [23:0] pal_rgb,
@@ -155,6 +158,9 @@ module matenro_soc #(
     // the frame buffer of the HDMI screen: GCTL $FFB8 (bit 0: show it), PIDX $FFB9 (the palette entry), PDAT $FFBA (the red, green, blue bytes of
     // the entry, one after the other; the third write sets it, the index goes on)
 `ifdef HCTL
+    reg         pc_r = 1'b0;                        // PTXT $FFBB bit 0: the HDMI text screen shows the text memory of the PC (B800h of the sub CPU)
+    reg  [6:0]  pcol_r = 7'd0;
+    reg  [4:0]  prow_r = 5'd0;
     reg         gfx_r = 1'b0, ov_r = 1'b0, sv_r = 1'b0, pal_we_r = 1'b0;   // sv_r: GCTL bit 2, the blocks $70-$7F of the sub CPU memory are the picture
     reg  [7:0]  pidx_r = 8'd0, pal_ix_r = 8'd0, pred_r, pgrn_r;
     reg  [1:0]  pcnt_r = 2'd0;
@@ -163,11 +169,15 @@ module matenro_soc #(
     always @(posedge clk) hpd_q <= {hpd_q[0], hdmi_hpd};
     assign      gfx_on = gfx_r;
     assign      gfx_ov = ov_r;
+    assign      pc_on  = pc_r;
+    assign      pc_col = pcol_r;
+    assign      pc_row = prow_r;
     assign      pal_we = pal_we_r;
     assign      pal_idx = pal_ix_r;
     assign      pal_rgb = {pred_r, pgrn_r, pblu_r};
 `else
     wire        sv_r = 1'b0;
+    assign      pc_on = 1'b0, pc_col = 7'd0, pc_row = 5'd0;
     assign      gfx_on = 1'b0, gfx_ov = 1'b0, pal_we = 1'b0, pal_idx = 8'd0, pal_rgb = 24'd0;
 `endif
 `ifdef SUBBOTH
@@ -459,13 +469,13 @@ module matenro_soc #(
         io_xl    <= in_io_q && off_q >= 9'h04a && off_q <= 9'h04e;                 // the cross link
         io_ssel  <= in_io_q && off_q == 9'h04f;                            // SUBSEL (SUBBOTH only)
         io_hctl  <= HAS_H && in_io_q && off_q == 9'h048;                    // HCTL (`define HCTL)
-        io_gfx   <= HAS_H && in_io_q && off_q >= 9'h038 && off_q <= 9'h03a;  // GCTL PIDX PDAT
+        io_gfx   <= HAS_H && in_io_q && off_q >= 9'h038 && off_q <= 9'h03d;  // GCTL PIDX PDAT PTXT PCOL PROW
         io_mmu   <= l2 && in_io_q && off_q == 9'h011;            // the task register
         io_map   <= l2 && in_io_q && off_q >= 9'h020 && off_q <= 9'h02f;   // the system map, the user map
         io_hit   <= (in_io_q && ((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049
-                              || (off_q >= 9'h04a && off_q <= XL_LAST) || (HAS_H && (off_q == 9'h048 || (off_q >= 9'h038 && off_q <= 9'h03a)))
+                              || (off_q >= 9'h04a && off_q <= XL_LAST) || (HAS_H && (off_q == 9'h048 || (off_q >= 9'h038 && off_q <= 9'h03d)))
                               || (l2 && (off_q == 9'h011 || (off_q >= 9'h020 && off_q <= 9'h02f))))) || ta;
-        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= XL_LAST) || (HAS_H && (off_q == 9'h048 || (off_q >= 9'h038 && off_q <= 9'h03a))));
+        io_quiet <= !l2 && in_io_q && off_q < 9'h080 && !((off_q[8:1] == 8'd0) || off_q == 9'h00f || off_q == 9'h00e || (off_q >= 9'h030 && off_q <= 9'h036) || (off_q >= 9'h040 && off_q <= 9'h047) || off_q == 9'h049 || (off_q >= 9'h04a && off_q <= XL_LAST) || (HAS_H && (off_q == 9'h048 || (off_q >= 9'h038 && off_q <= 9'h03d))));
         rom_sel  <= !l2 && (a >= ROM_BASE);
     end
 
@@ -552,7 +562,7 @@ module matenro_soc #(
         else if (io_xl)    io_rdata = xl_rdata;
         else if (io_hctl)  io_rdata = {6'b000000, win_hi, kj_ok};          // $FFC8
 `ifdef HCTL
-        else if (io_gfx)   io_rdata = (off[1:0] == 2'd0) ? {hpd_q[1], 4'd0, sv_r, ov_r, gfx_r} : (off[1:0] == 2'd1) ? pidx_r : 8'd0;
+        else if (io_gfx)   io_rdata = (off[2:0] == 3'd0) ? {hpd_q[1], 4'd0, sv_r, ov_r, gfx_r} : (off[2:0] == 3'd1) ? pidx_r : (off[2:0] == 3'd3) ? {7'd0, pc_r} : (off[2:0] == 3'd4) ? {1'b0, pcol_r} : (off[2:0] == 3'd5) ? {3'd0, prow_r} : 8'd0;
 `endif
 `ifdef SUBBOTH
         else if (io_ssel)  io_rdata = {6'b000000, sel8, ~sel8};            // $FFCF: 1 = Z80, 2 = 8088
@@ -623,7 +633,7 @@ module matenro_soc #(
         if (rst) begin
             mem_pend <= 1'b0; mp_wait <= 1'b0; vma_pend <= 1'b1; pwroff <= 1'b0; reboot_r <= 1'b0; osrun <= 1'b0; acia_pend <= 1'b0;
 `ifdef HCTL
-            kj_ok <= 1'b0; win_hi <= 1'b0; gfx_r <= 1'b0; ov_r <= 1'b0; sv_r <= 1'b0; pcnt_r <= 2'd0; pidx_r <= 8'd0;
+            kj_ok <= 1'b0; win_hi <= 1'b0; gfx_r <= 1'b0; ov_r <= 1'b0; sv_r <= 1'b0; pc_r <= 1'b0; pcol_r <= 7'd0; prow_r <= 5'd0; pcnt_r <= 2'd0; pidx_r <= 8'd0;
 `endif
 `ifdef SUBBOTH
             sel8 <= SUB_DEF8;
@@ -648,9 +658,12 @@ module matenro_soc #(
                             if (io_dctl) begin d_async <= cpu_d_out[0]; d_ien <= cpu_d_out[7]; end      // $E049
 `ifdef HCTL
                             if (io_hctl) begin kj_ok <= cpu_d_out[0]; win_hi <= cpu_d_out[1]; end      // $FFC8
-                            if (io_gfx && off[1:0] == 2'd0) begin gfx_r <= cpu_d_out[0]; ov_r <= cpu_d_out[1]; sv_r <= cpu_d_out[2]; end                       // $FFB8
-                            if (io_gfx && off[1:0] == 2'd1) begin pidx_r <= cpu_d_out; pcnt_r <= 2'd0; end      // $FFB9
-                            if (io_gfx && off[1:0] == 2'd2) begin                                            // $FFBA
+                            if (io_gfx && off[2:0] == 3'd0) begin gfx_r <= cpu_d_out[0]; ov_r <= cpu_d_out[1]; sv_r <= cpu_d_out[2]; end                       // $FFB8
+                            if (io_gfx && off[2:0] == 3'd1) begin pidx_r <= cpu_d_out; pcnt_r <= 2'd0; end      // $FFB9
+                            if (io_gfx && off[2:0] == 3'd3) pc_r <= cpu_d_out[0];                                                          // $FFBB: the text screen of the PC (B800h)
+                            if (io_gfx && off[2:0] == 3'd4) pcol_r <= cpu_d_out[6:0];                                                    // $FFBC: its cursor column
+                            if (io_gfx && off[2:0] == 3'd5) prow_r <= cpu_d_out[4:0];                                                    // $FFBD: its cursor row
+                            if (io_gfx && off[2:0] == 3'd2) begin                                            // $FFBA
                                 if (pcnt_r == 2'd0) begin pred_r <= cpu_d_out; pcnt_r <= 2'd1; end
                                 else if (pcnt_r == 2'd1) begin pgrn_r <= cpu_d_out; pcnt_r <= 2'd2; end
                                 else begin pblu_r <= cpu_d_out; pcnt_r <= 2'd0; pal_we_r <= 1'b1; pal_ix_r <= pidx_r; pidx_r <= pidx_r + 8'd1; end

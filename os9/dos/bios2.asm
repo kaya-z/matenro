@@ -29,6 +29,8 @@ RQ      DB      48 DUP (0)
 MEMSIZ  DW      0
 UNITS   DB      0,0
 BPBTAB  DB      4*13 DUP (0)
+        ORG     78h
+PCFLAG  DB      0                       ; set by the 6809 (dos -w=): the console and INT 10h are the text screen of the PC at B800h
         ORG     80h
 
 ; register block -> request, ring the bell, wait.  The registers are kept.
@@ -52,17 +54,431 @@ SNDWT:  CMP     BYTE PTR CS:[RQ+32],0
         POP     AX
         RET
 
-; INT 10h, the video BIOS of the IBM PC that the programs of PC DOS (DEBUG) ask for: get the mode (80 columns, mode 3,
-; page 0) and teletype output; everything else is ignored
+; INT 10h, the video BIOS of the IBM PC that the programs of PC DOS (DEBUG) ask for: get the mode (80 columns, mode 3, page 0)
+; and teletype output; everything else is ignored.  With PCFLAG (dos -w=): the text screen of the PC, 80 x 25 cells {character, attribute} at
+; B800:0000 (the HDMI screen of the Tang Nano 20K shows that memory: docs/TN20K.md 2.5), and the functions that Turbo Pascal and the programs
+; that write the screen themselves need: 00 set mode (clears), 01 cursor shape, 02 set cursor, 03 get cursor, 06 / 07 scroll, 08 read, 09 / 0Ah
+; write, 0Eh teletype; the cursor goes to the 6809 (request 31) after each change.
 INT10:  CMP     AH,0Fh
         JNE     I10A
         MOV     AX,5003h
         XOR     BH,BH
         IRET
-I10A:   CMP     AH,0Eh
+I10A:   CMP     BYTE PTR CS:[PCFLAG],0
+        JNE     I10P
+        CMP     AH,0Eh
         JNE     I10B
         REQ     3
 I10B:   IRET
+I10P:   STI
+        CMP     AH,0Eh
+        JE      I10TTY
+        CMP     AH,2
+        JE      I10SC
+        CMP     AH,3
+        JE      I10GC
+        CMP     AH,9
+        JE      I10WA
+        CMP     AH,0Ah
+        JE      I10WC
+        CMP     AH,6
+        JE      I10SU
+        CMP     AH,7
+        JE      I10SD
+        CMP     AH,8
+        JE      I10RD
+        CMP     AH,0
+        JE      I10MD
+        CMP     AH,1
+        JNE     I10X
+        MOV     CS:[CURSHP],CX
+I10X:   IRET
+I10TTY: PUSH    AX
+        PUSH    DX
+        CALL    TTYCH
+        CALL    SETCUR
+        POP     DX
+        POP     AX
+        IRET
+I10SC:  MOV     CS:[CURPOS],DX
+        PUSH    AX
+        CALL    SETCUR
+        POP     AX
+        IRET
+I10GC:  MOV     DX,CS:[CURPOS]
+        MOV     CX,CS:[CURSHP]
+        XOR     AX,AX
+        IRET
+I10MD:  CALL    CLRSCR
+        IRET
+; 09 / 0Ah: the character AL (attribute BL for 09) CX times from the cursor, the cursor stays
+I10WA:  PUSH    AX
+        PUSH    BX
+        MOV     BH,BL
+        MOV     AH,1
+        JMP     SHORT I10W
+I10WC:  PUSH    AX
+        PUSH    BX
+        XOR     AH,AH
+I10W:   PUSH    CX
+        PUSH    DX
+        PUSH    DI
+        PUSH    ES
+        PUSH    AX
+        MOV     DX,CS:[CURPOS]
+        CALL    CELLDI
+        MOV     AX,0B800h
+        MOV     ES,AX
+        POP     AX
+        JCXZ    I10WE
+I10WL:  CMP     DI,4000
+        JAE     I10WE
+        MOV     ES:[DI],AL
+        OR      AH,AH
+        JZ      I10WN
+        MOV     ES:[DI+1],BH
+I10WN:  ADD     DI,2
+        LOOP    I10WL
+I10WE:  POP     ES
+        POP     DI
+        POP     DX
+        POP     CX
+        POP     BX
+        POP     AX
+        IRET
+; 08: AL the character and AH the attribute at the cursor
+I10RD:  PUSH    BX
+        PUSH    DX
+        PUSH    DI
+        PUSH    ES
+        MOV     DX,CS:[CURPOS]
+        CALL    CELLDI
+        MOV     AX,0B800h
+        MOV     ES,AX
+        MOV     AX,ES:[DI]
+        POP     ES
+        POP     DI
+        POP     DX
+        POP     BX
+        IRET
+; 06 / 07: scroll the window CH,CL - DH,DL up / down by AL lines (0: clear it), the new lines get the attribute BH
+I10SU:  CALL    SCRLWIN
+        IRET
+I10SD:  CALL    SCRLWIN
+        IRET
+
+; DI = the offset of the cell (DH row, DL column) in the text memory; the registers are kept
+CELLDI: PUSH    AX
+        PUSH    CX
+        MOV     AL,DH
+        MOV     AH,80
+        MUL     AH
+        XOR     CX,CX
+        MOV     CL,DL
+        ADD     AX,CX
+        SHL     AX,1
+        MOV     DI,AX
+        POP     CX
+        POP     AX
+        RET
+
+; the cursor to the 6809: request 31, AL = 2, DX = row / column
+SETCUR: PUSH    AX
+        PUSH    DX
+        MOV     DX,CS:[CURPOS]
+        MOV     AX,2
+        REQ     31
+        POP     DX
+        POP     AX
+        RET
+
+; clear the text screen (blank cells, attribute 07h) and home the cursor
+CLRSCR: PUSH    AX
+        PUSH    CX
+        PUSH    DX
+        PUSH    DI
+        PUSH    ES
+        MOV     AX,0B800h
+        MOV     ES,AX
+        XOR     DI,DI
+        MOV     AX,0720h
+        MOV     CX,2000
+        CLD
+        REP     STOSW
+        XOR     DX,DX
+        MOV     CS:[CURPOS],DX
+        CALL    SETCUR
+        POP     ES
+        POP     DI
+        POP     DX
+        POP     CX
+        POP     AX
+        RET
+
+; teletype: the character AL at the cursor (CR, LF, BS, BEL are control characters), the attribute of the cell stays; the cursor is advanced,
+; the screen scrolls up at the bottom.  The 6809 is not told (SETCUR does it).
+TTYCH:  PUSH    BX
+        PUSH    DI
+        PUSH    DX
+        PUSH    ES
+        MOV     DX,CS:[CURPOS]
+        CMP     AL,0Dh
+        JE      TTCR
+        CMP     AL,0Ah
+        JE      TTLF
+        CMP     AL,8
+        JE      TTBS
+        CMP     AL,7
+        JE      TTEND
+        CALL    CELLDI
+        MOV     BX,0B800h
+        MOV     ES,BX
+        MOV     ES:[DI],AL
+        INC     DL
+        CMP     DL,80
+        JB      TTEND
+        XOR     DL,DL
+        JMP     SHORT TTLF
+TTCR:   XOR     DL,DL
+        JMP     SHORT TTEND
+TTBS:   OR      DL,DL
+        JZ      TTEND
+        DEC     DL
+        JMP     SHORT TTEND
+TTLF:   INC     DH
+        CMP     DH,25
+        JB      TTEND
+        MOV     DH,24
+        PUSH    AX
+        PUSH    CX
+        PUSH    DX
+        MOV     AX,0601h                ; scroll the whole screen up by one line
+        MOV     BH,07h
+        XOR     CX,CX
+        MOV     DX,184Fh
+        CALL    SCRLWIN
+        POP     DX
+        POP     CX
+        POP     AX
+TTEND:  MOV     CS:[CURPOS],DX
+        POP     ES
+        POP     DX
+        POP     DI
+        POP     BX
+        RET
+
+; the scroll of INT 10h 06 / 07 (AH = 6 up, 7 down; AL lines, 0 = all; BH attribute; CH,CL top left; DH,DL bottom right)
+SCRLWIN:
+        PUSH    AX
+        PUSH    BX
+        PUSH    CX
+        PUSH    DX
+        PUSH    SI
+        PUSH    DI
+        PUSH    BP
+        PUSH    DS
+        PUSH    ES
+        MOV     BP,AX                   ; BP: AH = the direction, AL = the lines
+        MOV     AX,0B800h
+        MOV     DS,AX
+        MOV     ES,AX
+        CLD
+        ; CH = top row, DH = bottom row, CL = left, DL = right; BL = the number of lines
+        MOV     AX,BP
+        MOV     BL,AL
+        MOV     AL,DH
+        SUB     AL,CH
+        INC     AL                      ; the height
+        OR      BL,BL
+        JZ      SCALL
+        CMP     BL,AL
+        JB      SCNOT
+SCALL:  MOV     BL,AL                   ; all of it: clear the window
+SCNOT:  ; the loop over the rows to move: (height - lines) rows
+        MOV     BYTE PTR CS:[SCRLN],BL
+        MOV     CS:[SCRBH],BH
+        MOV     CS:[SCRDIR],BP
+        SUB     AL,BL                   ; AL = the rows to move
+        MOV     AH,AL
+        ; the width of a row in words: DL - CL + 1
+        XOR     BX,BX
+        MOV     BL,DL
+        SUB     BL,CL
+        INC     BL
+        MOV     CS:[SCRW],BX
+        MOV     CS:[SCRL],CL
+        MOV     CS:[SCRT],CH
+        MOV     CS:[SCRB],DH
+        ; AH = the rows to move
+        CMP     BYTE PTR CS:[SCRDIR+1],6
+        JNE     SCDOWN
+        ; up: for r = top .. top + rows - 1: row r <- row r + lines
+        MOV     DH,CH
+SCUPL:  OR      AH,AH
+        JZ      SCFILLU
+        MOV     DL,CS:[SCRL]
+        CALL    CELLDI
+        MOV     BX,DI                   ; the destination
+        PUSH    DX
+        MOV     AL,CS:[SCRLN]
+        ADD     DH,AL
+        CALL    CELLDI
+        MOV     SI,DI
+        POP     DX
+        MOV     DI,BX
+        MOV     CX,CS:[SCRW]
+        REP     MOVSW
+        INC     DH
+        DEC     AH
+        JMP     SHORT SCUPL
+SCFILLU:                                ; DH = the first row to clear
+        MOV     BL,CS:[SCRLN]
+SCFLU:  OR      BL,BL
+        JZ      SCEND
+        MOV     DL,CS:[SCRL]
+        CALL    CELLDI
+        CALL    SCRFILL
+        INC     DH
+        DEC     BL
+        JMP     SHORT SCFLU
+SCDOWN: ; down: for r = bottom .. bottom - rows + 1: row r <- row r - lines
+        MOV     DH,CS:[SCRB]
+SCDNL:  OR      AH,AH
+        JZ      SCFILLD
+        MOV     DL,CS:[SCRL]
+        CALL    CELLDI
+        MOV     BX,DI
+        PUSH    DX
+        MOV     AL,CS:[SCRLN]
+        SUB     DH,AL
+        CALL    CELLDI
+        MOV     SI,DI
+        POP     DX
+        MOV     DI,BX
+        MOV     CX,CS:[SCRW]
+        REP     MOVSW
+        DEC     DH
+        DEC     AH
+        JMP     SHORT SCDNL
+SCFILLD:
+        MOV     BL,CS:[SCRLN]
+SCFLD:  OR      BL,BL
+        JZ      SCEND
+        MOV     DL,CS:[SCRL]
+        CALL    CELLDI
+        CALL    SCRFILL
+        DEC     DH
+        DEC     BL
+        JMP     SHORT SCFLD
+SCEND:  POP     ES
+        POP     DS
+        POP     BP
+        POP     DI
+        POP     SI
+        POP     DX
+        POP     CX
+        POP     BX
+        POP     AX
+        RET
+; fill SCRW cells from ES:DI with a blank and the attribute SCRBH
+SCRFILL:
+        PUSH    AX
+        PUSH    CX
+        PUSH    DI
+        MOV     AH,CS:[SCRBH]
+        MOV     AL,20h
+        MOV     CX,CS:[SCRW]
+        REP     STOSW
+        POP     DI
+        POP     CX
+        POP     AX
+        RET
+
+CURPOS  DW      0                       ; the cursor: DH row, DL column
+CURSHP  DW      0607h                   ; its shape
+SCRLN   DB      0                       ; the scroll in progress
+SCRBH   DB      0
+SCRDIR  DW      0
+SCRW    DW      0
+SCRL    DB      0
+SCRT    DB      0
+SCRB    DB      0
+
+; INT 16h, the keyboard of the IBM PC (Turbo Pascal reads its keys with it): AH = 0 waits for a key (AL the character, AH 0), 1 asks whether there is
+; one (ZF = 0 and AX the key if so; the key stays), 2 the shift flags (0).  The keys come from the 6809 like those of the console (requests 1 and 2).
+INT16:  STI
+        OR      AH,AH
+        JZ      I16RD
+        CMP     AH,1
+        JE      I16ST
+        CMP     AH,2
+        JNE     I16X
+        XOR     AL,AL
+I16X:   IRET
+I16RD:  REQ     2
+        MOV     AL,CS:[RQ+16]
+        XOR     AH,AH
+        IRET
+I16ST:  PUSH    BP
+        MOV     BP,SP
+        REQ     1
+        CMP     BYTE PTR CS:[RQ+17],0
+        JE      I16NO
+        MOV     AL,CS:[RQ+16]
+        XOR     AH,AH
+        AND     WORD PTR [BP+6],0FFBFh  ; ZF = 0: a key
+        POP     BP
+        IRET
+I16NO:  OR      WORD PTR [BP+6],40h     ; ZF = 1: no key
+        POP     BP
+        IRET
+
+; INT 1Ah, the clock of the IBM PC: AH = 0 gives the ticks since midnight (18.2 per second: here seconds * 18 + seconds / 5, from the time of the
+; 6809, which is in whole seconds) in CX:DX and AL = 0 (no midnight); Turbo Pascal times its delay loop with it.  The other functions do nothing.
+INT1A:  STI
+        OR      AH,AH
+        JZ      I1A0
+        IRET
+I1A0:   PUSH    BX
+        PUSH    SI
+        PUSH    DI
+        REQ     12                      ; RQ+26: year-1900 month day hour minute second
+        MOV     AL,CS:[RQ+29]           ; the hour * 3600
+        XOR     AH,AH
+        MOV     BX,3600
+        MUL     BX
+        MOV     SI,AX
+        MOV     DI,DX
+        MOV     AL,CS:[RQ+30]           ; + minutes * 60 + seconds
+        XOR     AH,AH
+        MOV     BL,60
+        MUL     BL
+        MOV     BL,CS:[RQ+31]
+        XOR     BH,BH
+        ADD     AX,BX
+        ADD     SI,AX
+        ADC     DI,0                    ; DI:SI = the seconds
+        MOV     AX,SI
+        MOV     BX,18
+        MUL     BX                      ; DX:AX = low word * 18
+        MOV     CX,DX
+        PUSH    AX
+        MOV     AX,DI
+        MUL     BX                      ; AX = high word * 18
+        ADD     CX,AX                   ; CX:(saved AX) = seconds * 18
+        MOV     AX,SI
+        MOV     DX,DI
+        MOV     BX,5
+        DIV     BX                      ; AX = seconds / 5
+        MOV     BX,AX
+        POP     DX                      ; the low word of seconds * 18
+        ADD     DX,BX
+        ADC     CX,0
+        XOR     AL,AL
+        POP     DI
+        POP     SI
+        POP     BX
+        IRET
 
 ; INT E2h: the graphics of the HDMI screen of the Tang Nano 20K (the 6809 draws: os9/cpm/cpmgfx.asm, the block of DS:BX), AL = 0 done, FFh no frame buffer
 GFXINT: REQ     30
@@ -218,11 +634,19 @@ CON_FLSH:
 
 CON_WRIT:
         JCXZ    CWDONE
+        CMP     BYTE PTR CS:[PCFLAG],0
+        JNE     CWPC
 CWLOOP: MOV     AL,ES:[DI]
         INC     DI
         REQ     3
         LOOP    CWLOOP
 CWDONE: JMP     DEXIT
+CWPC:   MOV     AL,ES:[DI]              ; the text screen of the PC: the characters go to the memory, the cursor to the 6809 once at the end
+        INC     DI
+        CALL    TTYCH
+        LOOP    CWPC
+        CALL    SETCUR
+        JMP     DEXIT
 
 ; the aux port and the printer
 AUX_READ:
@@ -527,11 +951,24 @@ HWINIT: CLI
         MOV     ES,AX
         MOV     WORD PTR ES:[40h],OFFSET INT10
         MOV     ES:[42h],CS             ; INT 10h
+        MOV     WORD PTR ES:[58h],OFFSET INT16
+        MOV     ES:[5Ah],CS             ; INT 16h
+        MOV     WORD PTR ES:[68h],OFFSET INT1A
+        MOV     ES:[6Ah],CS             ; INT 1Ah
         MOV     WORD PTR ES:[388h],OFFSET GFXINT
         MOV     ES:[38Ah],CS            ; INT E2h
         PUSH    CS
         POP     DS
-        MOV     AL,[UNITS]
+        CMP     BYTE PTR [PCFLAG],0     ; the text screen of the PC (dos -w=): blank cells, attribute 07h
+        JE      HWNOPC
+        MOV     AX,0B800h
+        MOV     ES,AX
+        XOR     DI,DI
+        MOV     AX,0720h
+        MOV     CX,2000
+        CLD
+        REP     STOSW
+HWNOPC: MOV     AL,[UNITS]
         MOV     [DRVMAX],AL
         MOV     AX,CS                   ; the segments in the device headers
         MOV     [BCON+2],AX

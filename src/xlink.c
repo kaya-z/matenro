@@ -107,6 +107,11 @@ static uint8_t sub_stat(const xlink_t *x)
 static uint8_t sub_io_read(void *ctx, uint16_t port)
 {
     xlink_t *x = ctx;
+    if (port == 0x3DA) {                    /* the status of the CGA: bit 0 = the display is off (retrace), bit 3 = vertical retrace: they change from read to read, */
+        static unsigned st;                 /* so that the waits of the programs that avoid the snow (Turbo Pascal) end (the board: i8088_sub.v) */
+        st++;
+        return (uint8_t)((st & 1) | (((st >> 5) & 1) << 3));
+    }
     int p = port & 0xff;
     if (p & 0xf0) return 0xff;
     if (p == XP_ID) return (uint8_t)x->ops->id;

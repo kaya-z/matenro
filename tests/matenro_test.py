@@ -549,6 +549,23 @@ def os9_dos2(tmp):
           not os.path.exists(os.path.join(v0, 'dostmp.img')) and not any(os.path.exists(os.path.join(v0, n)) for n in ('command.com', 'runjob.bat', 'COMMAND.COM')), '')
     check('MS-DOS 2.0 run mode: DOS leaves by itself (the OS-9 prompt is back each time)', out.count('OS9:dos') == 2 and out.rstrip().endswith('OS9:'), out[-600:])
 
+    # the text screen of the PC (dos -w=2: the BIOS's INT 10h and the console on the text memory B800h, without the HDMI registers): tests/dos/pctest.asm
+    # checks the memory and the functions 00, 02, 03, 06, 07, 08, 09, 0Eh and the console of DOS, and writes PASS into PCRES.TXT
+    pct = os.path.join(tmp, 'pctest.com')
+    r = run(['nasm', '-f', 'bin', os.path.join(ROOT, 'tests', 'dos', 'pctest.asm'), '-o', pct])
+    check('MS-DOS 2.0 text screen of the PC: pctest.com assembles', r.returncode == 0, r.stdout.decode(errors='replace')[-300:])
+    if r.returncode == 0:
+        fl2 = dict(fl)
+        fl2['pctest.com'] = open(pct, 'rb').read()
+        sc = ['send "dos -v=2 -a=dosrun2.img -w=2 pctest\\r"', 'expect "OS9:"', 'send "dos -v=2 -a=dosrun2.img -w=1 pctest\\r"', 'expect "OS9:"']
+        out, d = os9_session(tmp, 'dos2pc', '8088', fl2, sc, timeout=600)
+        out = out.replace('\r', '')
+        res = os.path.join(d, 'v0', 'PCRES.TXT')
+        res = res if os.path.isfile(res) else os.path.join(d, 'v0', 'pcres.txt')
+        got = open(res, 'rb').read() if os.path.isfile(res) else b''
+        check('MS-DOS 2.0 text screen of the PC: the memory at B800h, INT 10h 00 02 03 06 07 08 09 0E and the console of DOS (dos -w=2): PASS', got == b'PASS\r\n', repr(got) + out[-500:])
+        check('MS-DOS 2.0 text screen of the PC: -w=1 without the HDMI registers says so and does not start', 'no text screen of the PC' in out, out[-500:])
+
 
 def os9_subsel(tmp):
     """the OS-9 command subsel (register $FFCF): Z80 and 8088 chosen while OS-9 runs"""

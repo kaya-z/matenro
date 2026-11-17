@@ -85,7 +85,9 @@ module tn20k_top (
     assign      fb_go = 1'b0;
 `endif
     assign      ps_busy = ctl_busy || fb_go;
-    wire        gfx_on, gfx_ov, pal_we;
+    wire        gfx_on, gfx_ov, pal_we, pc_on;
+    wire [6:0]  pc_col;
+    wire [4:0]  pc_row;
     wire [7:0]  pal_idx;
     wire [23:0] pal_rgb;
     wire [21:0] ps_addr;
@@ -125,7 +127,7 @@ module tn20k_top (
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
         .clk_pix(clk_pix), .rst_pix(rst_pix), .tmds_b(tmds_b), .tmds_g(tmds_g), .tmds_r(tmds_r),
-        .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
+        .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pc_on(pc_on), .pc_col(pc_col), .pc_row(pc_row), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb),
         .fb_rq(fb_rq), .fb_addr(fb_addr), .fb_n(fb_n), .fb_go(fb_go), .fb_busy(ctl_busy), .fb_dv(fb_dv), .fb_dout32(fb_dout32)
     );
 `else
@@ -160,7 +162,7 @@ module tn20k_top (
         .led(led), .led_mode(led_mode), .term_busy(term_busy), .reboot_req(reboot_req),
         .x1_req(x1_req), .x1_addr(x1_addr), .x1_ack(x1_ack), .x1_rdata(x1_rdata),
         .x2_req(x2_req), .x2_addr(x2_addr), .x2_ack(x2_ack), .x2_rdata(x2_rdata),
-        .kanji_ok(kanji_ok), .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb), .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
+        .kanji_ok(kanji_ok), .gfx_on(gfx_on), .gfx_ov(gfx_ov), .pc_on(pc_on), .pc_col(pc_col), .pc_row(pc_row), .pal_we(pal_we), .pal_idx(pal_idx), .pal_rgb(pal_rgb), .term_stb(term_stb), .term_byte(term_byte), .dbg_regs(dbg_regs), .dbg_status(dbg_status), .dbg_disk(dbg_disk), .dbg_lic(), .dbg_stall(dbg_stall),
         .dbg_z80(dbg_z80), .dbg_addr(), .dbg_acc(), .dbg_din(), .dbg_rnw(), .dbg_vma(), .dbg_dbus()
     );
 endmodule

@@ -92,6 +92,7 @@ tnm      rmb   2                 -t=: the work image of the run mode (default do
 cmdp     rmb   2                 run mode: the command line (a program and its arguments), 0 = none
 scrp     rmb   2                 run mode: the keys typed ahead for DOS (0 = none)
 quiet    rmb   1                 run mode: the console output of DOS is dropped until HOSTIN has started
+pcs      rmb   1                 -w=: PC text screen: 1 HDMI, 2 memory only, 0 no
 hdir     rmb   1                 run mode: the OS-9 directory that HOSTIN is reading
 hfile    rmb   1                 run mode: the OS-9 file that HOSTIN / HOSTOUT transfer
 hp       rmb   1
@@ -165,6 +166,7 @@ st1      clr   >XCTL                 hold the 8088 in reset
          os9   F$Icpt
          clr   kname,u               the options: -k=kernel -a=image -b= -c= -d=
          clr   kname+1,u
+         clr   pcs,u
          lda   #1
          sta   ver,u
          ldd   #RQLIN
@@ -229,7 +231,17 @@ op2e     cmpa  #'T'
          bne   op2f
          stx   tnm,u
          bra   op4
-op2f     suba  #'A'
+op2f     cmpa  #'W'
+         bne   op2g
+         lda   ,x                    -w=1 (the HDMI screen) or -w=2 (the memory only)
+         suba  #'0'
+         cmpa  #1
+         lblo  usage
+         cmpa  #2
+         lbhi  usage
+         sta   pcs,u
+         bra   op4
+op2g     suba  #'A'
          lbmi  usage
          cmpa  #3
          lbhi  usage
@@ -459,6 +471,7 @@ ld8      cmpb  #E$EOF
          leax  rp+16,u
          ldy   #1
          lbsr  wrsub
+         lbsr  pcstart
          ldd   cmdp,u                run mode: DOS gets its first keys from here (the dates, HOSTIN, RUNJOB)
          beq   nr1
          leax  scrtxt,pcr
@@ -479,6 +492,7 @@ serve    lbsr  waitrq
          beq   serve
          clr   >XCTL                 stop the 8088
          lbsr  rawoff
+         lbsr  pcstop
          ldd   cmdp,u
          beq   sv9
          lbsr  hclose                run mode: the work image goes away
@@ -510,6 +524,7 @@ say      lbsr  rawoff
 icpt     cmpb  #S$Wake
          beq   ic9
          lbsr  rawoff
+         lbsr  pcstop
          clr   >XCTL
          clrb
          os9   F$Exit
@@ -705,9 +720,9 @@ dp0      clr   ,x+
          sta   rp+5,u
          lda   rq,u
          cmpa  #1
-         beq   f_stat
+         lbeq  f_stat
          cmpa  #2
-         beq   f_inp
+         lbeq  f_inp
          cmpa  #3
          lbeq  f_outp
          cmpa  #4
@@ -740,6 +755,8 @@ dp0      clr   ,x+
          lbeq  f_hcmd
          cmpa  #30
          lbeq  f_gfx
+         cmpa  #31
+         lbeq  f_pcs
          rts
 
 * 1: console status, AH = 1 and AL = the key if there is one (the key stays for INP)
@@ -1133,6 +1150,66 @@ fgx0     lbsr  dsbx
          lbsr  g_run
          sta   rp,u
          rts
+
+* the text screen of the PC (dos -w=): the BIOS (bios2.asm) draws the console and INT 10h into the text memory B800h (PCFLAG at $0478 of the
+* BIOS), the HDMI screen reads that memory (PTXT $FFBB, the cursor PCOL $FFBC, PROW $FFBD).  -w=2: the memory only (no register: the test).
+PTXT     equ   $FFBB
+PCOLR    equ   $FFBC
+PROWR    equ   $FFBD
+msgnopc  fcc   "dos: no text screen of the PC on this machine (-w=1 needs the HDMI screen of the Tang Nano 20K; -w=2: memory only)"
+         fcb   C$CR
+msgpcv1  fcc   "dos: -w= needs MS-DOS 2.0 (-v=2)"
+         fcb   C$CR
+pcflag   fcb   1
+clrscr   fcb   $1B
+         fcc   "[2J"
+         fcb   $1B
+         fcc   "[H"
+pcstart  tst   pcs,u
+         beq   pcs9
+         lda   ver,u
+         cmpa  #2
+         beq   pcs1
+         leax  msgpcv1,pcr
+         lbra  say
+pcs1     lda   pcs,u
+         cmpa  #1
+         bne   pcs2
+         lbsr  g_probe               the HDMI registers are there?
+         beq   pcs2
+         leax  msgnopc,pcr
+         lbra  say
+pcs2     ldd   #$0478                PCFLAG of the BIOS
+         lbsr  setlin16
+         leax  pcflag,pcr
+         ldy   #1
+         lbsr  wrsub
+         lda   pcs,u
+         cmpa  #1
+         bne   pcs9
+         clr   >PCOLR
+         clr   >PROWR
+         lda   #1
+         sta   >PTXT                 the HDMI screen shows the text memory
+pcs9     rts
+pcstop   lda   pcs,u                 back to the terminal's text screen: cleared
+         cmpa  #1
+         bne   pcs8
+         clr   >PTXT
+         leax  clrscr,pcr
+         lda   #1
+         ldy   #7
+         os9   I$Write
+pcs8     rts
+* 31: the cursor of the text screen of the PC (the BIOS tells it after each change): DH row, DL column
+f_pcs    lda   pcs,u
+         cmpa  #1
+         bne   fpc9
+         lda   rq+8,u
+         sta   >PCOLR
+         lda   rq+9,u
+         sta   >PROWR
+fpc9     rts
 
 * 26: the command line (up to the CR) to DS:BX
 f_hcmd   clr   quiet,u               from here on the console output of DOS is shown

@@ -158,6 +158,8 @@ module i8088_sub #(
     reg [7:0]  rd_data;
     reg [2:0]  dly;                          // clocks until the answer of a port or of the interrupt ack
     reg        pend_io_rd, pend_int, pend_io_wr;
+    reg [5:0]  crt = 6'd0;                   // the status of the CGA: counts the port reads
+    always @(posedge clk) if (pend_io_rd && dly == 3'd1) crt <= crt + 6'd1;
 
     always @(posedge clk) begin
         s_we <= 1'b0;
@@ -184,7 +186,9 @@ module i8088_sub #(
                 dly <= dly - 3'd1;
                 if (dly == 3'd1) begin
                     if (pend_int)  rd_data <= s_vec;
-                    if (pend_io_rd) rd_data <= port_ok ? s_rdata : 8'hff;
+                    // the status port of the CGA (3DAh) changes from read to read (bit 0: the display is off, bit 3: vertical retrace), so that the waits of the
+                    // programs that avoid the snow (Turbo Pascal) end; the other ports above 0Fh read as FFh
+                    if (pend_io_rd) rd_data <= port_ok ? s_rdata : (a_lat[15:0] == 16'h03DA) ? {4'b0000, crt[5], 2'b00, crt[0]} : 8'hff;
                     if (pend_io_wr) s_we <= 1'b1;
                     pend_int <= 1'b0; pend_io_rd <= 1'b0; pend_io_wr <= 1'b0;
                     data_ok <= 1'b1;
