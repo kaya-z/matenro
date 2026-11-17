@@ -39,7 +39,7 @@ static void usage(const char *prog)
 "  -xbase blk         first physical 8KB block of the sub CPU memory (default 0x80 = 1MB)\n"
 "  -hw / -nohw        time of the board (default): wait states for the PSRAM, E clock 1.875 MHz; -nohw: the ideal machine,\n"
 "                     6809 at -clock (default 2 MHz) without waits, one instruction per Z80 step (docs/DESIGN.md, chapter 17)\n"
-"  -board 9k|20k      the board of -hw: Tang Nano 9K (PSRAM, default) or 20K (SDRAM)\n"
+"  -board 9k|20k|20k-nocache  the board of -hw: Tang Nano 9K (PSRAM, default), 20K (SDRAM with the read cache), 20K without the cache\n"
 "  -xload file@addr   load a binary into the sub CPU address space (hex addr, repeatable)\n"
 "  -xrun              release the sub CPU from reset at power on\n"
 "  -xt file           sub CPU instruction trace    -xcon file  sub CPU debug console (default stderr)\n"
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "-L1")) level2 = 0;
         else if (!strcmp(a, "-hw")) hw_waits = 1;
         else if (!strcmp(a, "-nohw")) hw_waits = 0;
-        else if (!strcmp(a, "-board")) { if (machine_set_board(NEXT())) { fprintf(stderr, "-board: 9k or 20k\n"); return 2; } }
+        else if (!strcmp(a, "-board")) { if (machine_set_board(NEXT())) { fprintf(stderr, "-board: 9k, 20k or 20k-nocache\n"); return 2; } }
         else if (!strcmp(a, "-sub")) subname = NEXT();
         else if (!strcmp(a, "-subclock")) subclock = parse_size(NEXT());
         else if (!strcmp(a, "-xbase")) xbase = (int)strtol(NEXT(), 0, 0);

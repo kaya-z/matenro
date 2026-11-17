@@ -288,10 +288,11 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
  * is fetched from the PSRAM costs 29 more (the fetch of the opcode stalls twice), its operand bytes nothing; the ROM and the
  * I/O page are not waited for.  The clock counts are those of the RTL; hw_clk_ps is the period of the system clock. */
 
-/* The boards.  9k: Tang Nano 9K, the PSRAM at 67.5 MHz (measured, docs 17.4, 17.5).  20k: Tang Nano 20K, the SDRAM at 54 MHz
- * (the RTL of fpga/tn20k measured with the same test ROM, docs 17.9): a read and a write both take 12.5 system clocks over the 28 of an
- * E cycle; the table of the bus cycles (the one below) is scaled by 0.91 (all kinds), which makes `duo -1` of the RTL (7.689 s)
- * come out (the sim: 7.685 s).  The sub CPU's waits and the contention are those of the 9K until they are measured on the 20K. */
+/* The boards.  9k: Tang Nano 9K, the PSRAM at 67.5 MHz (measured, docs 17.4, 17.5).  20k: Tang Nano 20K as built (the read cache rcache.v
+ * and the posted writes, 54 MHz): 99.5% of the reads hit, so the 6809 is almost never held (duo -1 on the RTL: 5.856 s, the machine without
+ * waits: 5.852 s); the table of the bus cycles x0.002.  20k-nocache: the 20K without the cache (CACHE=0): an isolated read or write takes 12.5
+ * system clocks over the 28 of an E cycle, the table x0.91 (duo -1: RTL 7.689 s, sim 7.688 s; docs 17.9).  The sub CPU's waits and the
+ * contention are those of the 9K until they are measured on the 20K. */
 typedef struct {
     const char *name;
     uint64_t clk_ps;                 /* period of the system clock */
@@ -303,7 +304,8 @@ typedef struct {
 } hw_board_t;
 static const hw_board_t hw_boards[] = {
     { "9k",  14815ull, 10.4,  5.4, 1.0,  1.0,  1.0, 9ull, 27ull, 18ull, 1875000 },
-    { "20k", 18519ull, 12.5, 12.5, 0.91, 0.91, 0.91, 9ull, 27ull, 18ull, 1928571 },
+    { "20k", 18519ull, 0.1, 0.1, 0.002, 0.002, 0.002, 9ull, 27ull, 18ull, 1928571 },
+    { "20k-nocache", 18519ull, 12.5, 12.5, 0.91, 0.91, 0.91, 9ull, 27ull, 18ull, 1928571 },
 };
 static const hw_board_t *hwb = &hw_boards[0];
 int machine_set_board(const char *name)
