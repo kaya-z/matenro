@@ -18,7 +18,7 @@ MSDOS2_SRC=${MSDOS2_SRC:?} UASM=${UASM:?} sh "$ROOT/tools/build_dosbin2.sh" "$T/
 sh "$ROOT/tools/build_dosrun.sh" "$T/dr" "" "$T/d2" > /dev/null
 mkdir -p "$T/v0/dos"
 cp -r "$SIM09/os9/level2/cmds" "$T/v0/cmds"
-CMDS="cpm xrun reboot etime duo bdos bdostest xlink x0 cpp80 cc80 dos subsel kanjild gfx mand09 ball09"
+CMDS="cpm xrun reboot etime duo bdos bdostest xlink x0 cpp80 cc80 dos subsel kanjild gfx mand09 ball09 cube09"
 for n in $CMDS; do cp "$T/b/$n" "$T/v0/cmds/$n"; done
 python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/hello.asm" -o "$T/v0/hello.com" > /dev/null
 for n in hello86 fileio86 line86; do
@@ -40,6 +40,8 @@ nasm -f bin "$ROOT/tests/dos/pctest.asm" -o "$T/v0/dos/pctest.com"
 nasm -f bin "$ROOT/tests/dos/keytest.asm" -o "$T/v0/dos/keytest.com"
 nasm -f bin "$ROOT/demo/mand88.asm" -o "$T/v0/mand88.bin"
 nasm -f bin "$ROOT/demo/stars88.asm" -o "$T/v0/stars88.bin"
+nasm -f bin "$ROOT/demo/cube88.asm" -o "$T/v0/cube88.bin"
+printf 'kanjild\rsubsel 8088\rcube09 s\rxrun -l=400 cube88.bin\rcube09 r\r' > "$T/v0/demo3"
 printf 'kanjild\rsubsel 8088\rball09 s\rxrun -l=400 stars88.bin\rball09 r\r' > "$T/v0/demo2"
 printf 'subsel 8088\rmand09 s\rxrun -l=400 mand88.bin\rmand09 r\r' > "$T/v0/race"
 cp "$T/d2/msdos.sys" "$T/d2/bios2.bin" "$T/dr/dosrun2.img" "$T/v0/dos/"
@@ -63,13 +65,14 @@ dd if="$T/rom/os9v2_tn20k.rom" of="$OUT" bs=256 seek=1100 conv=notrunc status=no
     echo "send \"copy /v0/cmds/$n /d0/cmds/$n\\r\""; echo 'expect "OS9:"'
     echo "send \"attr /d0/cmds/$n e pe r pr\\r\""; echo 'expect "OS9:"'
   done
-  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin mand88.bin stars88.bin gdemo.com gdemo86.cmd gdirect.com gdirect86.cmd zloop.com; do
+  for f in hello.com hello86.cmd fileio86.cmd line86.cmd sum8088.bin mand88.bin stars88.bin cube88.bin gdemo.com gdemo86.cmd gdirect.com gdirect86.cmd zloop.com; do
     echo "send \"del /d0/$f\\r\""; echo 'expect "OS9:"'
     echo "send \"copy /v0/$f /d0/$f\\r\""; echo 'expect "OS9:"'
   done
   echo 'send "makdir /d0/dos\r"'; echo 'expect "OS9:"'
   echo 'send "copy /v0/race /d0/race\r"'; echo 'expect "OS9:"'
   echo 'send "copy /v0/demo2 /d0/demo2\r"'; echo 'expect "OS9:"'
+  echo 'send "copy /v0/demo3 /d0/demo3\r"'; echo 'expect "OS9:"'
   # (the files of /d0/dos are readable by every user: dos opens the kernel as a user; gdemo.com and gdirect.com of DOS stay out of /d0, which is full
   # with the work image of the run mode on /d1: dos -t=/d1/dostmp.img)
   for f in msdos.sys bios2.bin tbasic.com pctest.com keytest.com dosrun2.img; do

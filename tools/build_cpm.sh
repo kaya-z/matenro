@@ -31,6 +31,7 @@ python3 "$ROOT/os9/duo/mkduoz80.py" "$OUT/duoz80.inc"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -l "$OUT/duo.lst" -o "$OUT/duo" duo/duo.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/gfx/" -l "$OUT/mand09.lst" -o "$OUT/mand09" demo/mand09.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/gfx/" -l "$OUT/ball09.lst" -o "$OUT/ball09" demo/ball09.asm
+echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -I "$OUT/" -I "$ROOT/os9/gfx/" -l "$OUT/cube09.lst" -o "$OUT/cube09" demo/cube09.asm
 cd "$ROOT/os9"
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cpp80.lst" -o "$OUT/cpp80" cpp/cpp.asm
 echo n | "$A09" -I "$OS9DIR/nitros9-code/defs/" -l "$OUT/cc80.lst" -o "$OUT/cc80" cc80/cc80.asm
