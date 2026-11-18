@@ -76,8 +76,16 @@ msgnoreg fcc   "mand09: no frame buffer (Tang Nano 20K only)"
          fcb   C$CR
 msgwait  fcc   "mand09: waiting for the 8088"
          fcb   C$CR
-msgrun   fcc   "mand09: go"
-         fcb   C$CR
+title
+         fcb   $1b,$25,$47,$1b,$5b,$32,$4a,$1b,$5b,$48,$0d,$0a
+         fcb   $1b,$5b,$31,$3b,$33,$37,$6d,$20,$20,$e6,$91,$a9
+         fcb   $e5,$a4,$a9,$e6,$a5,$bc,$20,$20,$4d,$41,$54,$45
+         fcb   $4e,$52,$4f,$0d,$0a,$1b,$5b,$30,$3b,$33,$36,$6d
+         fcb   $20,$20,$e3,$83,$9e,$e3,$83,$b3,$e3,$83,$87,$e3
+         fcb   $83,$ab,$e3,$83,$96,$e3,$83,$ad,$e7,$ab,$b6,$e6
+         fcb   $bc,$94,$3a,$20,$38,$30,$38,$38,$20,$e5,$af,$be
+         fcb   $20,$36,$38,$30,$39,$1b,$5b,$30,$6d
+titlee   equ   *
 s8       fcc   "8088 "
          fcb   0
 s6       fcc   "6809 "
@@ -108,7 +116,7 @@ setup    lbsr  setpal
          lda   #255
          sta   vc,u
          lbsr  g_fill
-         lda   #1
+         lda   #3
          lbsr  g_mode
          leax  mapblk,pcr
          ldb   #5
@@ -140,10 +148,10 @@ wr2      ldd   #0
          lbsr  wrpix
          lbsr  rdus0
          clr   done8,u
-         leax  msgrun,pcr
          lda   #1
-         ldy   #80
-         os9   I$WritLn
+         leax  title,pcr
+         ldy   #titlee-title
+         os9   I$Write
          clr   k,u
 rowlp    lbsr  row
          ldx   #1                  one tick for the others: the console must answer while the picture is drawn
@@ -163,10 +171,15 @@ wt1      tst   done8,u
          os9   F$Sleep
          bra   wt1
 wt3      lbsr  texts
-         leax  t8,u
-         lbsr  pdiff
+         lbsr  rdus0               keep the result on the screen for 8 seconds
+hold     ldx   #10
+         os9   F$Sleep
+         lbsr  rdus1
          leax  t1,u
-         lbsr  pdiff
+         lbsr  elapsed
+         ldd   tenth,u
+         cmpd  #80
+         blo   hold
          clrb
          os9   F$Exit
 noreg    leax  msgnoreg,pcr
@@ -457,7 +470,7 @@ texts    leax  t8,u
          lbsr  fmt
          ldd   #8
          std   ox,u
-         ldd   #4
+         ldd   #0
          std   oy,u
          leax  s8,pcr
          lbsr  puts

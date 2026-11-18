@@ -40,6 +40,8 @@ XE_US    equ   $14
          org   0
          use   gfxvars.inc
 kpath    rmb   1
+lim      rmb   2                 the seconds of the run in tenths (0: until a key)
+secs     rmb   1
 t0       rmb   4
 t1       rmb   4
 tenth    rmb   2
@@ -95,7 +97,10 @@ skp      lda   ,x+
          cmpa  #'S'
          beq   setup
          cmpa  #'R'
-         lbeq  run
+         bne   bad
+         lbsr  getsec
+         lbra  run
+bad
          leax  msguse,pcr
          lbra  err
 noreg    leax  msgnoreg,pcr
@@ -124,6 +129,7 @@ run      lda   #READ.
          os9   I$Open
          lbcs  noreg
          sta   kpath,u
+         clr   secs,u
          lda   #1
          leax  title,pcr
          ldy   #titlee-title
@@ -142,7 +148,7 @@ lp       ldx   #20
          leax  out,u
          ldy   #1
          os9   I$Read
-         ldd   #0                  stop the 8088: pixel 0 = 254
+stop8    ldd   #0                  stop the 8088: pixel 0 = 254
          std   vx,u
          std   vy,u
          lbsr  g_beg
@@ -242,7 +248,35 @@ d6       pshs  d
          leax  out,u
          ldy   #13
          os9   I$Write
-         lbra  lp
+         inc   secs,u              the time up?
+         ldd   lim,u
+         lbeq  lp
+         lda   secs,u
+         ldb   #10
+         mul
+         cmpd  lim,u
+         lblo  lp
+         lbra  stop8
+
+* the seconds after the R (a decimal number, 0 or none: until a key is pressed) -> lim = tenths of a second
+getsec   lda   ,x+
+         cmpa  #' '
+         beq   getsec
+         leax  -1,x
+         clrb
+gs1      lda   ,x+
+         suba  #'0'
+         cmpa  #9
+         bhi   gs9
+         pshs  a
+         lda   #10
+         mul
+         addb  ,s+
+         bra   gs1
+gs9      lda   #10
+         mul
+         std   lim,u
+         rts
 
 * the number of frames of the 8088 (pixels 1 and 2 of the picture) into frcur
 getfr    ldd   #1

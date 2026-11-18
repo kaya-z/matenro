@@ -262,3 +262,11 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 | `fpga/tn20k/sim/` | SDRAM のモデルと試験、SoC 全体の Verilator (`sim_top.v`、Makefile) |
 | `fpga/sim/i8088_soc.v` `tb_i8088_soc.v` | MCL86 + XLINK + 試験用 RAM の Verilator 試験 |
 | `tests/i8088/core.asm` | 8088 の自己判定 (`-DHWPORTS` で FPGA 用: ポート RAM の 2 項目を飛ばし、結果をメールボックスに書く) |
+
+## 20K で追加したこと (拡張キー、INT 1Ah の時計、デモ)
+
+* **拡張キー**: `dos.asm` が、`ESC` のあと 20 ms 以内に続く `[ A`、`[ n ~`、`O P` などの端末の列を、PC のスキャンコードにする (上 48h、下 50h、右 4Dh、左 4Bh、Home 47h、End 4Fh、PgUp 49h、PgDn 51h、Ins 52h、Del 53h、F1〜F4 3Bh〜3Eh)。返事の BX の低い方 (`rp+2`) がスキャンコード。BIOS の `INT 16h` AH=0 / 1 は AL=0、AH=スキャンコード、DOS のコンソール入力 (`CON_READ`) は 0 のあとにスキャンコード (`XPEND`)。実機の確認は `tests/dos/keytest.asm` (`ESC [ A` → 4800、`ESC O P` → 3B00、`ESC [ 3 ~` → 5300、`x` → 0078、単独の `ESC` → 001B)。
+* **`INT 1Ah`**: 55 ms ごとにティックが進む。1 回目は `REQ 12` (時刻) と `REQ 32` (マイクロ秒カウンタ `XE_US`) で基準を作り、あとはマイクロ秒の経過 / 54925 (2 段の割り算) を足す (Turbo Pascal の `Delay` の較正が使う)。`pctest` の最後が確認 (2 回の忙しいループのあと、1〜40 ティック進む)。
+* **`g_probe` と HCTL.0**: レジスタがあるかの確認 (`$FE` を書いて 2 が読めるか) が HCTL 全体を 0 に戻し、`kanjild` が立てた「漢字が読み込み済み」のビットを消していた。確認の前の値のビット 0 を戻すようにした (`gfx` コマンドも同じ関数を使う)。
+* **デモ**: 使い方は [MANUAL.md](MANUAL.md) の 6.10。8088 の素のプログラムと 6809 が、XLINK の窓と、8088 から直接書ける VRAM (`g_run` の操作 9) で、同じ絵に描く。実測 (実機): マンデルブロ競演 (320 × 120 画素ずつ、反復 24) は、8088 が約 40 秒、6809 が約 70 秒。立方体は約 21 フレーム/秒 (線の描画をレジスタだけにして、約 2.7 から)。
+* **カードの /d0 が一杯になる**: `/d0` は 1 MB (4096 セクタ)。DOS の `dostmp.img` (360 KB) を `/d0` に作ると足りなくなり、`dos: cannot open the kernel or an image file` になる (`-t=/d1/dostmp.img` を使う)。`msdos.sys` などに公開読み出し (`attr ... e pe r pr`) がないと、ユーザーとして開けない (`mkdisk.sh` が付ける)。

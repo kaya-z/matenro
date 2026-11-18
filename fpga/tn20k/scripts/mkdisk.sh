@@ -42,6 +42,7 @@ nasm -f bin "$ROOT/demo/mand88.asm" -o "$T/v0/mand88.bin"
 nasm -f bin "$ROOT/demo/stars88.asm" -o "$T/v0/stars88.bin"
 nasm -f bin "$ROOT/demo/cube88.asm" -o "$T/v0/cube88.bin"
 printf 'kanjild\rsubsel 8088\rcube09 s\rxrun -l=400 cube88.bin\rcube09 r\r' > "$T/v0/demo3"
+printf 'kanjild\rsubsel 8088\rmand09 s\rxrun -l=400 mand88.bin\rmand09 r\rball09 s\rxrun -l=400 stars88.bin\rball09 r 25\rcube09 s\rxrun -l=400 cube88.bin\rcube09 r 25\rgfx off\r' > "$T/v0/show"
 printf 'kanjild\rsubsel 8088\rball09 s\rxrun -l=400 stars88.bin\rball09 r\r' > "$T/v0/demo2"
 printf 'subsel 8088\rmand09 s\rxrun -l=400 mand88.bin\rmand09 r\r' > "$T/v0/race"
 cp "$T/d2/msdos.sys" "$T/d2/bios2.bin" "$T/dr/dosrun2.img" "$T/v0/dos/"
@@ -73,6 +74,7 @@ dd if="$T/rom/os9v2_tn20k.rom" of="$OUT" bs=256 seek=1100 conv=notrunc status=no
   echo 'send "copy /v0/race /d0/race\r"'; echo 'expect "OS9:"'
   echo 'send "copy /v0/demo2 /d0/demo2\r"'; echo 'expect "OS9:"'
   echo 'send "copy /v0/demo3 /d0/demo3\r"'; echo 'expect "OS9:"'
+  echo 'send "copy /v0/show /d0/show\r"'; echo 'expect "OS9:"'
   # (the files of /d0/dos are readable by every user: dos opens the kernel as a user; gdemo.com and gdirect.com of DOS stay out of /d0, which is full
   # with the work image of the run mode on /d1: dos -t=/d1/dostmp.img)
   for f in msdos.sys bios2.bin tbasic.com pctest.com keytest.com dosrun2.img; do

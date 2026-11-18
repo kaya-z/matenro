@@ -33,6 +33,7 @@ XE_MI    equ   $08
 XE_MD    equ   $09
 XE_WA    equ   $0A
 XE_WD    equ   $0D
+XE_US    equ   $14
 
          mod   eom,name,tylg,atrv,start,size
 
@@ -53,7 +54,12 @@ seg2     rmb   2
 tyy      rmb   2
 dyy      rmb   1
 ady      rmb   1
-kpath    rmb   1                 the keyboard (/term: the standard input may be a file)
+kpath    rmb   1
+lim      rmb   2                 the seconds of the run in tenths (0: until a key)
+cnt      rmb   1
+t0       rmb   4
+t1       rmb   4
+tenth    rmb   2                 the keyboard (/term: the standard input may be a file)
 hw16     rmb   2
          rmb   200               stack
 size     equ   .
@@ -103,7 +109,10 @@ skp      lda   ,x+
          cmpa  #'S'
          beq   setup
          cmpa  #'R'
-         lbeq  run
+         bne   bad
+         lbsr  getsec
+         lbra  run
+bad
          leax  msguse,pcr
          lbra  err
 noreg    leax  msgnoreg,pcr
@@ -132,6 +141,8 @@ run      lda   #READ.
          os9   I$Open
          lbcs  noreg
          sta   kpath,u
+         clr   cnt,u
+         lbsr  rdus0
          lda   #1
          leax  title,pcr
          ldy   #titlee-title
@@ -178,7 +189,19 @@ r4       lbsr  ball                draw the new ball first, then erase what is l
          std   pyp,u
          ldx   #1
          os9   F$Sleep
-         lda   kpath,u             a key?
+         inc   cnt,u               every 32 frames: is the time up?
+         lda   cnt,u
+         anda  #$1F
+         bne   key1
+         ldd   lim,u
+         beq   key1
+         lbsr  rdus1
+         leax  t1,u
+         lbsr  elapsed
+         ldd   tenth,u
+         cmpd  lim,u
+         bhs   stop8
+key1     lda   kpath,u             a key?
          ldb   #SS.Ready
          os9   I$GetStt
          lbcs  fr
@@ -186,7 +209,7 @@ r4       lbsr  ball                draw the new ball first, then erase what is l
          leax  hw16,u
          ldy   #1
          os9   I$Read
-         ldd   #0                  stop the 8088: pixel 0 = 254
+stop8    ldd   #0                  stop the 8088: pixel 0 = 254
          std   vx,u
          std   vy,u
          lbsr  g_beg
@@ -196,6 +219,71 @@ r4       lbsr  ball                draw the new ball first, then erase what is l
          lbsr  g_end
          clrb
          os9   F$Exit
+
+* the seconds after the R (a decimal number, 0 or none: until a key is pressed) -> lim = tenths of a second
+getsec   lda   ,x+
+         cmpa  #' '
+         beq   getsec
+         leax  -1,x
+         clrb
+gs1      lda   ,x+
+         suba  #'0'
+         cmpa  #9
+         bhi   gs9
+         pshs  a
+         lda   #10
+         mul
+         addb  ,s+
+         bra   gs1
+gs9      lda   #10
+         mul
+         std   lim,u
+         rts
+
+* the microsecond counter (byte 0 latches the value)
+rdus0    leay  t0,u
+         bra   rdus
+rdus1    leay  t1,u
+rdus     pshs  cc
+         orcc  #$50
+         lda   #$80+XE_US
+         sta   >XIDX
+         lda   >XDAT
+         sta   ,y
+         lda   >XDAT
+         sta   1,y
+         lda   >XDAT
+         sta   2,y
+         lda   >XDAT
+         sta   3,y
+         puls  cc
+         rts
+
+* tenth = the number of tenths of a second between t0 and the counter at X (the difference divided by 100,000)
+elapsed  ldd   2,x
+         subd  t0+2,u
+         std   gtmp,u
+         ldd   ,x
+         sbcb  t0+1,u
+         sbca  t0,u
+         std   gdx,u
+         ldd   #0
+         std   tenth,u
+el1      ldd   gtmp,u
+         subd  #$86A0
+         std   gsx,u
+         ldd   gdx,u
+         sbcb  #1
+         sbca  #0
+         bcs   el9
+         std   gdx,u
+         ldd   gsx,u
+         std   gtmp,u
+         ldd   tenth,u
+         addd  #1
+         std   tenth,u
+         bra   el1
+el9      rts
 
 * the ball (bxp, byp): 29 rows, shaded
 ball     lbsr  g_beg
