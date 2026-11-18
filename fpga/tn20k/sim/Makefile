@@ -21,7 +21,7 @@ KHZHEX = $(shell python3 -c 'print("%04X" % ($(HZ) // 1000 // $(D88)))')
 PH ?= 9
 D88 ?= 14
 HZ ?= 67500000
-SIM09 ?= /export/nas/archives/MC6809/new-sbc09/fpga/tn9k
+SIM09 ?= ../../../../sim09/fpga/tn9k
 A09   ?= $(SIM09)/../../tools/a09
 # the read cache of the 6809 (docs/TN20K.md 2.4 A) and the posted writes: make CACHEFLAGS= for the machine without them
 CACHEFLAGS ?= -DCACHE -DPOSTW
@@ -62,7 +62,7 @@ build_boot/obj/Vsim_top: $(SOCSRC) build_boot/rom.hex $(SIM09)/sim/tb.cpp
 
 # Both sub CPUs in the FPGA (`define SUBBOTH): the register SUBSEL ($FFCF, the OS-9 command subsel) chooses the Z80 or the 8088.
 #   make bothboot TV80=<dir with tv80s.v ...> DISK=../build/matenro20k_l2.dsk SCRIPT=both.txt CLKS=900000000 PH=7 D88=11 HZ=54000000 CZ=7
-TV80 ?= /export/nas/archives/matenro/private/tv80src/rtl/core
+TV80 ?= ../../../private/tv80src/rtl/core
 CZ ?= 7
 BOTHSRC = $(SOCSRC) ../../rtl/z80_sub.v build_both/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
 bothboot: build_both/obj/Vsim_top
@@ -260,7 +260,7 @@ build_gfxsub/obj/Vsim_top: $(SUBSRC) build_gfxsub/rom.hex $(SIM09)/sim/tb.cpp si
 .PHONY: gfxsub
 
 # MS-DOS 1.25 (run mode of dos) on the whole SoC: tests/dos/gdemo.asm draws through INT E2h of the BIOS and BDOS-like request 30 of dos.asm.   make gfxdos
-DOSOUT ?= /export/nas/archives/matenro/private/dosout
+DOSOUT ?= ../../../private/dosout
 DOS_DISK = build_gfxsub/gdos.dsk
 gfxdos: build_gfxsub/obj/Vsim_top $(DOS_DISK)
 	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gdos.dsk -s $(abspath gfxdos.txt) -c 12000000000 | tr -d '\r' | grep -E "FBDUMP|OS9:|A:|A>|time out" | tail -6

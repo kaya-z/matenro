@@ -11,8 +11,8 @@ import os, subprocess, sys, tempfile, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIM = os.path.join(ROOT, 'matenro')
-A09 = os.environ.get('A09', '/export/nas/archives/MC6809/new-sbc09/tools/a09')
-OS9 = os.environ.get('OS9DIR', '/export/nas/archives/MC6809/new-sbc09/os9')
+A09 = os.environ.get('A09', os.path.join(ROOT, '..', 'sim09', 'tools', 'a09'))
+OS9 = os.environ.get('OS9DIR', os.path.join(ROOT, '..', 'sim09', 'os9'))
 HERE = os.path.join(ROOT, 'tests')
 fails = 0
 total = 0
@@ -210,7 +210,7 @@ def os9_session(tmp, tag, cpu, files, script_lines, timeout=180, driver=False, k
         shutil.copy(d1, os.path.join(d, 'WORK.dsk'))
     shutil.copytree(os.path.join(OS9, 'level2', 'cmds'), os.path.join(d, 'v0', 'cmds'))
     for n in ('cpm', 'xrun', 'cpp80', 'xlink', 'x0', 'reboot', 'etime', 'bdos', 'duo', 'dos', 'subsel', 'kanjild', 'gfx'):
-        if n in keep:                                   # keep the command of the OS-9 disk of new-sbc09 (the same name)
+        if n in keep:                                   # keep the command of the OS-9 disk of sim09 (the same name)
             continue
         shutil.copy(os.path.join(tmp, 'cpmbuild', n), os.path.join(d, 'v0', 'cmds', n))
     for n, data in files.items():
@@ -636,11 +636,11 @@ def os9_reboot(tmp):
     after = out.split('Rebooting')[-1]
     check('OS-9 reboot: the machine starts again (the banner twice), the disk files are still there, the shell works',
           out.count('NitrOS-9/6809 Level 2') == 2 and 'mark' in after and 'hello' in after and 'REBOOTED' in after, out[-900:])
-    # the reboot command of the OS-9 disk of new-sbc09 (it writes $A6 to the power register, ours writes $A7): the same restart
+    # the reboot command of the OS-9 disk of sim09 (it writes $A6 to the power register, ours writes $A7): the same restart
     out, d = os9_session(tmp, 'reboot6', 'z80', {}, [
         'send "reboot\\r"', 'expect "Rebooting"', 'expect "OS9:"',
         'send "echo REBOOTED6\\r"', 'expect "OS9:"'], keep=('reboot',))
-    check('OS-9 reboot with the command of new-sbc09 ($A6): the machine starts again, the shell works',
+    check('OS-9 reboot with the command of sim09 ($A6): the machine starts again, the shell works',
           out.count('NitrOS-9/6809 Level 2') == 2 and 'REBOOTED6' in out, out[-600:])
 
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// hdmi_screen20.v - the HDMI screen of the Tang Nano 20K: hdmi_text.v of sim09 (new-sbc09/fpga/tn9k/rtl, MIT, the same author: the same
+// hdmi_screen20.v - the HDMI screen of the Tang Nano 20K: hdmi_text.v of sim09 (sim09/fpga/tn9k/rtl, MIT, the same author: the same
 // parts, the same connections) with the frame buffer (hdmi_fb.v) between the display (hdmi_video) and the TMDS encoders.  With gfx_on the picture
 // of the frame buffer replaces the text.  The ports of the frame buffer: the palette write, and the read of the SDRAM (rq / go / busy / dout32:
 // the top level connects them to sdram_ctl).

@@ -13,10 +13,10 @@
 # MEMTEST=0  leave out the power-on memory test (it tests 2 MB of the SDRAM: "Matenro Memory >>>> OK 2048K" on the console); on by default
 #
 # The parts of sim09 that are not changed (UART, timer, SD disk, 6809 core) are read from SIM09 (default
-# /export/nas/archives/MC6809/new-sbc09/fpga/tn9k), not copied.
+# <sim09>/fpga/tn9k), not copied.
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SIM09=${SIM09:-/export/nas/archives/MC6809/new-sbc09/fpga/tn9k}
+SIM09=${SIM09:-$HERE/../../../sim09/fpga/tn9k}
 ROM=${1:-xltest88}
 IDE=${2:-${GOWIN_IDE:-/usr/local/IDE}}
 case $ROM in

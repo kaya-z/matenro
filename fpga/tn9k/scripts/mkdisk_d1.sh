@@ -12,7 +12,7 @@
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-SIM09=${SIM09:-/export/nas/archives/MC6809/new-sbc09}
+SIM09=${SIM09:-$ROOT/../sim09}
 HTC=${HTC:?set HTC}
 ZEX=${ZEX:?set ZEX}
 D0=${1:?D0.dsk}; D1=${2:?D1.dsk}; CARD=${3:?CARD.img}

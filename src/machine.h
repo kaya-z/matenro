@@ -2,7 +2,7 @@
 /*
  * machine.h - the simulated single board computer
  *
- * Matenro machine: this file is a modified copy of sim09's (new-sbc09, MIT).  Changes: 2MB physical RAM with a
+ * Matenro machine: this file is a modified copy of sim09's (sim09, MIT).  Changes: 2MB physical RAM with a
  * shared pool above `memsize`, `mainlimit`, IRQ/FIRQ as the OR of timer and cross link (machine_update_irq),
  * XLINK register decode ($FFCA-$FFCE), scheduler hook for the sub CPU, power register $A6.  See docs/DESIGN.md.
  *

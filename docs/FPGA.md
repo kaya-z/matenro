@@ -1,7 +1,7 @@
 # FPGA への実装の検討 (Tang Nano 9K / 20K)
 
 > これは**検討書**です。RTL は XLINK と、Z80 をつないだ `z80_soc.v` (シミュレーションのみ、メモリは配列) までです。数字は 3 種類あり、本文では区別して書きます:
-> **[実測]** 既存の sim09 の FPGA 版 (`new-sbc09/fpga/tn9k/build/fuzix_nohdmi`) の合成・配置配線のレポートから読んだ値、
+> **[実測]** 既存の sim09 の FPGA 版 (`sim09/fpga/tn9k/build/fuzix_nohdmi`) の合成・配置配線のレポートから読んだ値、
 > **[資料]** デバイスのデータシートなど公開資料の値 (手元の Gowin IDE には容量の表がなく、確認していません)、
 > **[見積]** 一般的な傾向からの推定 (**測っていません**。オープンな Z80 / 8086 のコアのソースが手元にないため)。
 > HDMI は検討の対象外です (指示どおり)。
@@ -12,7 +12,7 @@
 |---|---|---|
 | **Tang Nano 9K** (8,640 LUT4) + 6809 + **Z80**、HDMI なし | 約 7,200-7,400 (84-86%) | **入る見込み** (コアと XLINK は実測、調停だけ見積もり)。LUT は 1 割強の余裕。ただし 67.5MHz の配置配線 (Fmax が 72-76MHz、CLS は現行で 76%) が通るかは、つないで配置配線するまで分からない |
 | Tang Nano 9K + 6809 + **8088** | 約 8,800-12,000 (100% 超が普通) | **入らない見込み** (6809 コアだけで 3,281 LUT4 [実測]) |
-| Tang Nano 9K + HDMI (sim09 の FPGA 版は HDMI + 漢字で LUT 86% [`new-sbc09/docs/FPGA.md`]) + サブ CPU | 9,400 以上 | 入らない |
+| Tang Nano 9K + HDMI (sim09 の FPGA 版は HDMI + 漢字で LUT 86% [`sim09/docs/FPGA.md`]) + サブ CPU | 9,400 以上 | 入らない |
 | **Tang Nano 20K** (20,736 LUT4 [資料]) + 6809 + Z80 または 8088 (HDMI あり/なし) | 約 9,400-14,100 (45-68%) | **余裕で入る**。両方のサブ CPU を同時に載せて切り替えることもできる |
 
 **推奨**: まず 9K で「6809 + Z80 + XLINK」を試し (入れば最小構成)、8088 が必要な場合、または 9K の配置配線が通らない場合は 20K に移ります。
@@ -145,7 +145,7 @@ BSRAM の共有領域は後から足せます。
 2. **Z80 のコア** — TV80 を単体で合成して **LUT 数を実測しました** (`fpga/synth/run.sh 9k tv80s ...`、3 章)。
    **つないだ分**: Z80 (TV80 `tv80s`) のバス (メモリ、I/O ポート `$00-$0F`、割り込み応答 = M1+IORQ、NMI、HALT、バス要求) を XLINK につなぎ、メモリを SMMU 経由で物理 RAM に出す部分を `z80_soc.v` に書きました。合成したロジックは Z80 + XLINK + つなぎで **約 1,610 LUT + ALU 54** です (コア 1,043 + 238 + 8 + 7、XLINK 284、つなぎ 30; `fpga/synth/z80_soc_syn.v`、RAM を 1KB にして測定、配置配線なし)。
    **分周も済み**: Z80 は `clk / CLKDIV` のクロックイネーブル (67.5MHz ÷ 9 = 7.5MHz) で動きます。TV80 の `tv80s` は `cen` を 1 に固定しているので、`fpga/sim/mk_tv80s_cen.sh` が sed で `cen_i` ポートつきの `tv80s_cen` を作ります (TV80 のファイルはリポジトリに入れず、手元のものから作る)。CLKDIV = 2, 3, 4, 9, 12 で同じ 11 項目が通ります (1 は未対応)。遅いクロックのために、(1) NMI のパルスを次の `cen` まで保持、(2) コアが T2 のあいだずっと `di` を取り込むので、データバスの選択をサイクルの頭で決めて次のサイクルまで保持、(3) I/O の書き込みはサイクルの終わり (WR が上がるとき) に、最後のクロックのデータとポートで行う、を入れました。合成は CLKDIV = 9 で約 1,620 LUT (つなぎ 38、XLINK 288、コア 1,296 ほか)。
-   **まだ**: sim09 の SoC (`new-sbc09/fpga/tn9k/rtl/sbc09_soc.v`) への接続、PSRAM の調停とウェイト、配置配線でのタイミング確認。
+   **まだ**: sim09 の SoC (`sim09/fpga/tn9k/rtl/sbc09_soc.v`) への接続、PSRAM の調停とウェイト、配置配線でのタイミング確認。
 3. 9K で入らない / 通らなければ 20K へ。SDRAM コントローラとピンを用意し、8088 のコアを載せる。
 4. 調停にウェイトを入れ、BSRAM の共有領域を足して、シミュレータの競合モデル (`-hw`、実装済み) と比べる。
 
@@ -154,7 +154,7 @@ BSRAM の共有領域は後から足せます。
 
 ## 9. sim09 の SoC への統合 (6809 コア + PSRAM + SD + Z80) — 実機 (Tang Nano 9K) で確認済み
 
-`fpga/tn9k/` に、sim09 の Tang Nano 9K 版 SoC (`new-sbc09/fpga/tn9k`) に Z80 を足したものがあります。sim09 のファイルは**読み取り専用で参照**し (UART、タイマ、SD ディスク、PSRAM コントローラ、6809 コア、PLL、ピンとタイミングの制約)、変えたものだけを複製しました (`CREDITS.md`)。
+`fpga/tn9k/` に、sim09 の Tang Nano 9K 版 SoC (`sim09/fpga/tn9k`) に Z80 を足したものがあります。sim09 のファイルは**読み取り専用で参照**し (UART、タイマ、SD ディスク、PSRAM コントローラ、6809 コア、PLL、ピンとタイミングの制約)、変えたものだけを複製しました (`CREDITS.md`)。
 
 | ファイル | 内容 |
 |---|---|
@@ -180,7 +180,7 @@ BSRAM の共有領域は後から足せます。
 
 ### 9.1 OS-9 Level 2 を SoC で起動する (RTL シミュレーションと実機 Tang Nano 9K で確認済み)
 
-sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から Level 2 のローダを読み、ローダが Level 2 の ROM イメージを PSRAM に置いて起動します (`new-sbc09/tools/mkl2disk.py`)。この SoC は同じ ROM で動きます。
+sim09 の 256 バイトの起動 ROM (`$FF00`) が SD カードの LSN 2 から Level 2 のローダを読み、ローダが Level 2 の ROM イメージを PSRAM に置いて起動します (`sim09/tools/mkl2disk.py`)。この SoC は同じ ROM で動きます。
 
 * **SD イメージ**: `fpga/tn9k/scripts/mkdisk.sh OUT.dsk` が sim09 の `os9/OS9L2.dsk` に Matenro のコマンド (`cpm xrun xlink x0 cpp80 cc80`) と `hello.com` を入れます (1MB、4096 セクタ、空きは約 1930 セクタ)。カードには `sudo dd if=OUT.dsk of=/dev/sdX bs=512 conv=fsync` で書きます (**カード全体が上書きされる**ので、デバイス名を確かめてください。ここでは書いていません)。
 * **ビットストリーム**: `TV80=… fpga/tn9k/scripts/build.sh boot` (起動 ROM 版)。LUT 89%、CLS 93%、**Fmax 67.9MHz、負のスラックなし**。
@@ -405,16 +405,16 @@ NitrOS-9/6809 Level 2 V1.0.1
 
 ### 9.11 コンソール ACIA の割り込み (2026-11-06)
 
-`new-sbc09` が 11/5 に、コンソール ACIA に 6850 の制御レジスタと割り込みを入れ (`acia_uart.v`: 受信割り込み RIE、送信割り込み TIE、マスタリセット、状態ビット 7 = IRQ、送信 FIFO 15 文字)、OS-9 の端末ドライバを割り込み駆動にした。`acia_uart.v` は `new-sbc09` のものを共有しているので、Matenro の SoC (`matenro_soc.v`) も合わせる必要があった (合わせないと、新しいポート `wr_ctl`・`cdata` が接続されず、割り込みが動かない)。
+`sim09` が 11/5 に、コンソール ACIA に 6850 の制御レジスタと割り込みを入れ (`acia_uart.v`: 受信割り込み RIE、送信割り込み TIE、マスタリセット、状態ビット 7 = IRQ、送信 FIFO 15 文字)、OS-9 の端末ドライバを割り込み駆動にした。`acia_uart.v` は `sim09` のものを共有しているので、Matenro の SoC (`matenro_soc.v`) も合わせる必要があった (合わせないと、新しいポート `wr_ctl`・`cdata` が接続されず、割り込みが動かない)。
 
 * `$E000` への書き込み (制御レジスタ) を `acia_cwr`・`acia_cbyte` で `acia_uart` に渡す。
 * `acia_irq` を CPU の `nIRQ` に、タイマ (`timer_irq`) とクロスリンク (`xl_irq`) と OR でつなぐ (`FREERUN` のときは ACIA だけ)。IRQ 線は 3 つの源の OR になった (9.10 の図の `nIRQ` に ACIA が加わる)。
-* モードレジスタ (`$E00E`) への書き込みで、ACIA の割り込みを止める (制御レジスタに `03h`: マスタリセット)。`new-sbc09` と同じ。
-* 確認: `fpga/tn9k/sim` の Verilator で、既存の `xltest` が通る (13BA 0037 1D4C) こと、新しいテスト ROM `fpga/tn9k/test/aciirq.asm` (`make ROM=aciirq TV80=…`) で、送信割り込み (TIE) の状態ビット 7 が立ち、IRQ が 1 回入り、マスタリセットで消えること (出力 `S B I R P`)。受信割り込み (RIE) は共有の `acia_uart.v` の中の判定で、`new-sbc09` 側で確かめられている。
-* **`reboot`**: `new-sbc09` の `reboot` コマンドは電源レジスタ (`$E00F`、Level 2 は `$FF8F`) に `$A6` を書く。Matenro の `reboot` は `$A7`。どちらも `reboot_r` を立てて、リセットボタンと同じ再起動にする (`matenro_soc.v`、シミュレータ `src/machine.c` も同じ)。以前の `$A6` = 終了 (コード 1) は廃止した。
-* **コマンド名**: Matenro の C のプリプロセッサは `cpp80` (`new-sbc09` の C コンパイラの `cpp` と名前がぶつかるため)。`cc80` が `cpp80` を呼ぶ。
+* モードレジスタ (`$E00E`) への書き込みで、ACIA の割り込みを止める (制御レジスタに `03h`: マスタリセット)。`sim09` と同じ。
+* 確認: `fpga/tn9k/sim` の Verilator で、既存の `xltest` が通る (13BA 0037 1D4C) こと、新しいテスト ROM `fpga/tn9k/test/aciirq.asm` (`make ROM=aciirq TV80=…`) で、送信割り込み (TIE) の状態ビット 7 が立ち、IRQ が 1 回入り、マスタリセットで消えること (出力 `S B I R P`)。受信割り込み (RIE) は共有の `acia_uart.v` の中の判定で、`sim09` 側で確かめられている。
+* **`reboot`**: `sim09` の `reboot` コマンドは電源レジスタ (`$E00F`、Level 2 は `$FF8F`) に `$A6` を書く。Matenro の `reboot` は `$A7`。どちらも `reboot_r` を立てて、リセットボタンと同じ再起動にする (`matenro_soc.v`、シミュレータ `src/machine.c` も同じ)。以前の `$A6` = 終了 (コード 1) は廃止した。
+* **コマンド名**: Matenro の C のプリプロセッサは `cpp80` (`sim09` の C コンパイラの `cpp` と名前がぶつかるため)。`cc80` が `cpp80` を呼ぶ。
 * ビットストリーム (起動 ROM 版、`TAG=_acirq TV80=… scripts/build.sh boot`): LUT 約 7100、CLS 94%。**`clk81` の Fmax 69.1MHz (目標 67.5MHz)、負のスラックなし** (`$A6` の再起動を入れた版)。
-* **実機 (Tang Nano 9K、2026-11-06)**: このビットストリームを SRAM に書き (`openFPGALoader -b tangnano9k`)、`mkdisk.sh` で作り直した SD イメージ (割り込み駆動の端末ドライバの OS-9 Level 2) で、OS-9 が起動して `OS9:` が出た。`sleep 1000` を `^C` で止めると `Error #003` ですぐ戻る。`dir /d0/cmds` に `new-sbc09` の `cc` `cc1` `cpp` `reboot` と Matenro の `cpp80` `cc80` `cpm` `xrun` が並ぶ。**`reboot` (`$A6`) で `Rebooting...` のあと PSRAM の検査と OS-9 の起動が再び走った**。`load xlink`、`load x0`、`cpm /d0/hello.com abc` が `Hello from CP/M-80 on the Z80` / `!` / ` ABC` を出した。`cpp80` も動く。**フラッシュにも書いた** (`openFPGALoader -b tangnano9k -f`)。USB を抜き差しして電源を入れ直しても、フラッシュから同じ版で起動し、`reboot` (`$A6`) と `cc80 -t=/d1/htc -r hello.c` (`cpp80` → Z80 の HI-TECH C) が動いた。`duo` (6809 が 18 行、Z80 が 7 行、5.8 秒) と、`mandel.c` (`etime` で 186.7 秒、シミュレータの見積もり 183.7 秒) も動いた。
+* **実機 (Tang Nano 9K、2026-11-06)**: このビットストリームを SRAM に書き (`openFPGALoader -b tangnano9k`)、`mkdisk.sh` で作り直した SD イメージ (割り込み駆動の端末ドライバの OS-9 Level 2) で、OS-9 が起動して `OS9:` が出た。`sleep 1000` を `^C` で止めると `Error #003` ですぐ戻る。`dir /d0/cmds` に `sim09` の `cc` `cc1` `cpp` `reboot` と Matenro の `cpp80` `cc80` `cpm` `xrun` が並ぶ。**`reboot` (`$A6`) で `Rebooting...` のあと PSRAM の検査と OS-9 の起動が再び走った**。`load xlink`、`load x0`、`cpm /d0/hello.com abc` が `Hello from CP/M-80 on the Z80` / `!` / ` ABC` を出した。`cpp80` も動く。**フラッシュにも書いた** (`openFPGALoader -b tangnano9k -f`)。USB を抜き差しして電源を入れ直しても、フラッシュから同じ版で起動し、`reboot` (`$A6`) と `cc80 -t=/d1/htc -r hello.c` (`cpp80` → Z80 の HI-TECH C) が動いた。`duo` (6809 が 18 行、Z80 が 7 行、5.8 秒) と、`mandel.c` (`etime` で 186.7 秒、シミュレータの見積もり 183.7 秒) も動いた。
 
 ### 9.12 ディスクの非同期モードと XLINK のアドレス移動、起動メッセージ (実機で確認、2026-11-08)
 

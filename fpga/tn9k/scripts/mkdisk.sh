@@ -4,11 +4,11 @@
 # ROM image, the commands) plus the Matenro commands (cpm xrun reboot etime duo bdos bdostest xlink x0 cpp80 cc80) in /d0/cmds and a CP/M test program
 # (hello.com) in /d0.   [CPM=<dir with ASM.COM LOAD.COM PIP.COM STAT.COM ED.COM DDT.COM DUMP.COM mbasic.com>] fpga/tn9k/scripts/mkdisk.sh OUT.dsk
 # The image is written to the card with:  sudo dd if=OUT.dsk of=/dev/sdX bs=512 conv=fsync   (the whole card is overwritten:
-# check the device name; sim09 reads the card from block 0 as the disk /d0, see new-sbc09/docs/FPGA.md)
+# check the device name; sim09 reads the card from block 0 as the disk /d0, see sim09/docs/FPGA.md)
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-SIM09=${SIM09:-/export/nas/archives/MC6809/new-sbc09}
+SIM09=${SIM09:-$ROOT/../sim09}
 OUT=${1:?output image}
 T=$(mktemp -d)
 "$ROOT/tools/build_cpm.sh" "$T/b" > /dev/null

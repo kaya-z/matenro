@@ -6,8 +6,8 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:?output directory}
-A09=${A09:-/export/nas/archives/MC6809/new-sbc09/tools/a09}
-OS9DIR=${OS9DIR:-/export/nas/archives/MC6809/new-sbc09/os9}
+A09=${A09:-$ROOT/../sim09/tools/a09}
+OS9DIR=${OS9DIR:-$ROOT/../sim09/os9}
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 PYTHONUTF8=1 python3 "$ROOT/os9/cpm/mkshims.py" "$OUT/shims.inc"

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // hdmi_text20.v - the HDMI text screen of the Tang Nano 20K: the console bytes of the guest -> 80 x 25 characters on a 640x480
 // monitor.  The terminal (hdmi_term.v: ESC sequences, colours, scrolling), the display (hdmi_video.v) and the TMDS encoder
-// (tmds_enc.v) are those of sim09 (new-sbc09/fpga/tn9k/rtl, MIT, the same author; read from there by build.sh and the
+// (tmds_enc.v) are those of sim09 (sim09/fpga/tn9k/rtl, MIT, the same author; read from there by build.sh and the
 // simulation, not copied).  What the 9K has more is left out here: the character decoder (UTF-8, EUC-JP, Shift_JIS) and the
 // kanji engine that read tables from the PSRAM.  A byte is one glyph of the 8x16 font (font8x16.hex: ASCII, and the upper
 // half of the font); the cells have no wide characters, so the line buffer of the display is not used.

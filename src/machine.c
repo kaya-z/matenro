@@ -2,7 +2,7 @@
 /*
  * machine.c - bus, MMU, I/O dispatch, timer, RTC, raw disk, scheduler
  *
- * Matenro machine: this file is a modified copy of sim09's (new-sbc09, MIT).  Changes: 2MB physical RAM with a
+ * Matenro machine: this file is a modified copy of sim09's (sim09, MIT).  Changes: 2MB physical RAM with a
  * shared pool above `memsize`, `mainlimit`, IRQ/FIRQ as the OR of timer and cross link (machine_update_irq),
  * XLINK register decode ($FFCA-$FFCE), scheduler hook for the sub CPU, power register $A6.  See docs/DESIGN.md.
  *
@@ -266,7 +266,7 @@ static void io_write(machine_t *m, uint16_t addr, uint8_t v)
             else io[addr & 0x1ff] = v;
             return;
         }
-        if (off == 0x0f) {                       /* power control: $A5 = power off, $A6 (new-sbc09 and its reboot command) or $A7 = reboot */
+        if (off == 0x0f) {                       /* power control: $A5 = power off, $A6 (sim09 and its reboot command) or $A7 = reboot */
             if (v == 0xa5) { m->stop = 1; m->quit = 1; m->exit_code = 0; }
             if (v == 0xa6 || v == 0xa7)  m->reboot_req = 1;        /* reboot: done between two slices (machine_run) */
             return;

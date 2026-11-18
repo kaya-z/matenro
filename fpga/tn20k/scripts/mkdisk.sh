@@ -10,7 +10,7 @@
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-SIM09=${SIM09:-/export/nas/archives/MC6809/new-sbc09}
+SIM09=${SIM09:-$ROOT/../sim09}
 OUT=${1:?output /d0 image}
 T=$(mktemp -d)
 "$ROOT/tools/build_cpm.sh" "$T/b" > /dev/null

@@ -6,7 +6,7 @@
 # Host files you put into $WORK/v0 appear as /v0 in OS-9 (CP/M programs: *.com for the Z80, *.cmd for the 8088).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SBC=${SBC:-/export/nas/archives/MC6809/new-sbc09/os9}
+SBC=${SBC:-$ROOT/../sim09/os9}
 WORK=${WORK:-/tmp/matenro_try}
 CPU=${1:-z80}
 [ $# -gt 0 ] && shift

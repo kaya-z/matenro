@@ -11,10 +11,10 @@
 # Result: fpga/tn9k/build/xltest/impl/pnr/matenro_xltest.fs   (program it with: openFPGALoader -b tangnano9k FILE)
 #
 # The parts of sim09 that are not changed (UART, timer, SD disk, PSRAM controller, 6809 core, PLL, pins and timing
-# constraints) are read from SIM09 (default /export/nas/archives/MC6809/new-sbc09/fpga/tn9k), not copied.
+# constraints) are read from SIM09 (default <sim09>/fpga/tn9k), not copied.
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SIM09=${SIM09:-/export/nas/archives/MC6809/new-sbc09/fpga/tn9k}
+SIM09=${SIM09:-$HERE/../../../sim09/fpga/tn9k}
 TV80=${TV80:?set TV80 to the directory with tv80s.v tv80_core.v tv80_mcode.v tv80_alu.v tv80_reg.v}
 ROM=${1:-xltest}
 IDE=${2:-${GOWIN_IDE:-/usr/local/IDE}}

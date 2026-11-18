@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Verilator simulation of the Matenro SoC (6809 + PSRAM + XLINK + Z80), with the test bench and the PSRAM model of sim09.
 #   make TV80=<dir with tv80s.v tv80_core.v tv80_mcode.v tv80_alu.v tv80_reg.v>    build and run the test ROM (xltest)
-SIM09 ?= /export/nas/archives/MC6809/new-sbc09/fpga/tn9k
+SIM09 ?= ../../../../sim09/fpga/tn9k
 TV80  ?= tv80
 CZDIV ?= 9
 B     := build

@@ -253,7 +253,7 @@ module matenro_soc #(
     wire [2:0] ps_sel;
     wire [15:0] ps_dout_m;           // the word the arbiter read for master 0 (the CPU, the disk)
     reg       pwroff;
-    reg       reboot_r;             // $A6 (the reboot command of new-sbc09) or $A7 in the power register (cleared by the reset it causes)
+    reg       reboot_r;             // $A6 (the reboot command of sim09) or $A7 in the power register (cleared by the reset it causes)
     reg       osrun;                // the boot ROM wrote $A4 to the power register: the OS has been started (LED4)
     reg       acia_pend;            // a character for a busy transmitter: the CPU waits
     // The byte read from the PSRAM lands in rd_reg on the clock where mem_pend falls.  The core takes its

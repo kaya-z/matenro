@@ -58,10 +58,10 @@ subsel 8088       8088 に切り替える (cpm hello86.cmd、CP/M-86、dos ...)
 
 コンソール (OS-9 が UART に出す文字) を、HDMI コネクタのモニタに **80 × 25 の文字画面**で出します (640 × 480、60 Hz、DVI)。**出力だけ**で、入力は USB シリアルです。**実機のモニタに映ることを確かめました。**
 
-* **回路**: 端末 (`hdmi_term.v`: ESC シーケンス、色、スクロール)、表示 (`hdmi_video.v`)、TMDS のエンコーダ (`tmds_enc.v`) は **sim09 のものをそのまま**使います (`new-sbc09/fpga/tn9k/rtl`、同じ作者の MIT。build.sh とシミュレーションがそこから読み、コピーはしません)。20K 用に書いたのは `fpga/rtl/hdmi_text20.v` (9K の文字コードの復号と漢字の字形の読み出しを除いたまとめ役) と `fpga/tn20k/rtl/hdmi_phy20.v` (126 MHz の PLL = 27 × 14 / 3、画素クロック 25.2 MHz、OSER10 の 10:1 のシリアライザ、TLVDS の出力)。
+* **回路**: 端末 (`hdmi_term.v`: ESC シーケンス、色、スクロール)、表示 (`hdmi_video.v`)、TMDS のエンコーダ (`tmds_enc.v`) は **sim09 のものをそのまま**使います (`sim09/fpga/tn9k/rtl`、同じ作者の MIT。build.sh とシミュレーションがそこから読み、コピーはしません)。20K 用に書いたのは `fpga/rtl/hdmi_text20.v` (9K の文字コードの復号と漢字の字形の読み出しを除いたまとめ役) と `fpga/tn20k/rtl/hdmi_phy20.v` (126 MHz の PLL = 27 × 14 / 3、画素クロック 25.2 MHz、OSER10 の 10:1 のシリアライザ、TLVDS の出力)。
 * **ピン**: Sipeed の HDMI の例の `.cst` から: クロック 33/34、データ 0-2 は 35/36、37/38、39/40 (LVDS25)。d0 = 青 (同期つき)、d1 = 緑、d2 = 赤。
 * **文字** (漢字の版、既定): 文字コードの復号 (UTF-8 が既定、`HDMI_CHARSET=0..3` で 0 raw、1 UTF-8、2 EUC-JP、3 Shift_JIS。動作中は `ESC % G` / `E` / `S` / `@`) と、JIS X 0208 の記号・ひらがな・カタカナ・第 1 水準漢字 (16×16、東雲フォント) は sim09 の `hdmi_decode.v` `hdmi_glyph.v` `psram_xfer.v` をそのまま使います。ASCII、半角カナ、Latin-1 は 8×16 のフォント。第 2 水準以降は〓。`KANJI=0` で漢字なし (`hdmi_text20.v`: 1 バイト = フォントの 1 字) の版を作れます。
-* **字形のデータ** (`kanji.bin`、185,856 バイト、`new-sbc09/fpga/tn9k/images/kanji.bin`): SDRAM の **`$200000`** (OS-9 の 2 MB の上) にあります。復号器と字形の読み出しは、アービタのマスタ 1 と 2 で SDRAM から読みます。**SD カードから OS-9 のコマンド `kanjild` で読み込みます** (SPI フラッシュの版は 9K のもの。20K の SDRAM は電源を切ると消えるので、電源を入れるたびに `kanjild` が要ります):
+* **字形のデータ** (`kanji.bin`、185,856 バイト、`sim09/fpga/tn9k/images/kanji.bin`): SDRAM の **`$200000`** (OS-9 の 2 MB の上) にあります。復号器と字形の読み出しは、アービタのマスタ 1 と 2 で SDRAM から読みます。**SD カードから OS-9 のコマンド `kanjild` で読み込みます** (SPI フラッシュの版は 9K のもの。20K の SDRAM は電源を切ると消えるので、電源を入れるたびに `kanjild` が要ります):
   ```
   chx /d0/cmds
   kanjild                       (既定: /d1/kanji.bin)

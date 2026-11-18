@@ -9,7 +9,7 @@
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-SIM09=${SIM09:-/export/nas/archives/MC6809/new-sbc09}
+SIM09=${SIM09:-$ROOT/../sim09}
 OLD=${1:?old /d1 image}; NEW=${2:?new /d1 image}
 D0=${D0:-}
 T=$(mktemp -d)

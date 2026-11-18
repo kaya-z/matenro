@@ -2,7 +2,7 @@
 /*
  * memtest.c - the memory test of the power-on sequence
  *
- * The real sim09 board (new-sbc09, fpga/tn9k/rtl/sbc09_soc.v, parameter MEMTEST) tests its whole 2MB PSRAM
+ * The real sim09 board (sim09, fpga/tn9k/rtl/sbc09_soc.v, parameter MEMTEST) tests its whole 2MB PSRAM
  * in hardware before the 6809 is released from reset: three passes over the RAM, each one writes every byte
  * and reads it back:
  *     pass 0: $55     pass 1: $AA     pass 2: the address folded to 8 bits (a[7:0] ^ a[15:8] ^ a[21:16])
@@ -10,7 +10,7 @@
  * " NG @aaaaaa" with the address of the first mismatch (6 hex digits); the start-up goes on in both cases.
  * Afterwards the RAM is cleared.  This file repeats that sequence and the text on the host RAM, so that the
  * console output of the simulator is the one of the board.  The algorithm and the message are taken from the
- * RTL of new-sbc09 (the 6809 side of this project does not otherwise depend on it).
+ * RTL of sim09 (the 6809 side of this project does not otherwise depend on it).
  *
  * A host RAM cannot fail, so `fault` (-memfault) injects a stuck bit 0 at one address to exercise the NG path.
  */
