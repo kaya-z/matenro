@@ -16,6 +16,7 @@ mkdir -p "$WORK/v0"
 rm -rf "$WORK/v0/cmds"
 cp -r "$SBC/level2/cmds" "$WORK/v0/cmds"
 cp "$ROOT"/build/os9/cpm "$ROOT"/build/os9/cpp80 "$ROOT"/build/os9/cc80 "$ROOT"/build/os9/xrun "$WORK/v0/cmds/"
+cp "$ROOT"/build/os9/duo "$WORK/v0/cmds/"
 if [ "$CPU" = z80 ]; then
     for n in hello fileio line tcat tcount twrite; do
         python3 "$ROOT/tools/z80asm.py" "$ROOT/tests/cpm/$n.asm" -o "$WORK/v0/$n.com"
@@ -26,5 +27,6 @@ else
         python3 "$ROOT/tools/mkcmd.py" 8080 "$WORK/$n.bin" "$WORK/v0/$n.cmd"
     done
 fi
+echo "(Mandelbrot on both CPUs: duo, duo -1, duo -z, duo -n)"
 echo "OS-9 starts.  Type:  chx /v0/cmds   then   chd /v0   then   cpm hello.com abc   (exit: Ctrl-] then q)"
 exec "$ROOT/matenro" -m 1M -sub "$CPU" -rom "$SBC/os9v2.rom" -0 "$WORK/OS9.dsk" -1 "$WORK/WORK.dsk" -v "$WORK/v0" "$@"
