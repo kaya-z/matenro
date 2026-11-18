@@ -88,12 +88,8 @@ msgok    fcc   "HDMI: a monitor is connected (HPD high)"
 msguse   fcc   "usage: gfx on|over|off|status|fill|test|load|pal|pix|line|rect|box|text (MANUAL 6.8.3)"
          fcb   C$CR
 
-start    lda   #$FE                is there a register?  after $FE a read of HCTL gives 2 (plain RAM gives $FE)
-         sta   >HCTL
-         lda   >HCTL
-         cmpa  #2
+start    lbsr  g_probe             is there a register? (HCTL.0, the kanji image, stays)
          lbne  noreg
-         clr   >HCTL
          lbsr  skipsp
          lda   ,x+
          anda  #$DF

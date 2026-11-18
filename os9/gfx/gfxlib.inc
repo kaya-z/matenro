@@ -24,13 +24,18 @@ GCTL     equ   $FFB8
 PIDX     equ   $FFB9
 PDAT     equ   $FFBA
 
-g_probe  lda   #$FE                is there a register?  after $FE a read of HCTL gives 2 (plain RAM gives $FE)
+g_probe  lda   >HCTL               is there a register?  after $FE a read of HCTL gives 2 (plain RAM gives $FE)
+         pshs  a                   (bit 0 of HCTL says that the kanji image is loaded: it stays)
+         lda   #$FE
          sta   >HCTL
          lda   >HCTL
          cmpa  #2
          pshs  cc
-         clr   >HCTL
+         lda   1,s
+         anda  #1
+         sta   >HCTL
          puls  cc
+         leas  1,s
          rts
 
 * the window on the picture (HCTL.1 on, window address $100000 = physical $300000)

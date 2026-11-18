@@ -186,7 +186,7 @@ def build_cpm(tmp):
     """assemble the OS-9 commands cpm, xrun, reboot, etime, subsel, bdos, cpp80 and dos (tools/build_cpm.sh); returns the output directory"""
     out = os.path.join(tmp, 'cpmbuild')
     r = run([os.path.join(ROOT, 'tools', 'build_cpm.sh'), out])
-    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 15:
+    if r.returncode != 0 or r.stdout.count(b'0 Pass 2 errors') != 17:
         raise RuntimeError('build_cpm.sh failed: ' + r.stdout.decode(errors='replace'))
     return out
 

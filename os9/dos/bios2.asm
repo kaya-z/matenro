@@ -403,6 +403,7 @@ SCRW    DW      0
 SCRL    DB      0
 SCRT    DB      0
 SCRB    DB      0
+XPEND   DB      0               ; the scan code of an extended key, still to be given by the console after its 0
 
 ; INT 16h, the keyboard of the IBM PC (Turbo Pascal reads its keys with it): AH = 0 waits for a key (AL the character, AH 0), 1 asks whether there is
 ; one (ZF = 0 and AX the key if so; the key stays), 2 the shift flags (0).  The keys come from the 6809 like those of the console (requests 1 and 2).
@@ -417,7 +418,7 @@ INT16:  STI
 I16X:   IRET
 I16RD:  REQ     2
         MOV     AL,CS:[RQ+16]
-        XOR     AH,AH
+        MOV     AH,CS:[RQ+18]       ; an extended key: AL = 0, AH = its scan code
         IRET
 I16ST:  PUSH    BP
         MOV     BP,SP
@@ -425,7 +426,7 @@ I16ST:  PUSH    BP
         CMP     BYTE PTR CS:[RQ+17],0
         JE      I16NO
         MOV     AL,CS:[RQ+16]
-        XOR     AH,AH
+        MOV     AH,CS:[RQ+18]
         AND     WORD PTR [BP+6],0FFBFh  ; ZF = 0: a key
         POP     BP
         IRET
@@ -433,8 +434,9 @@ I16NO:  OR      WORD PTR [BP+6],40h     ; ZF = 1: no key
         POP     BP
         IRET
 
-; INT 1Ah, the clock of the IBM PC: AH = 0 gives the ticks since midnight (18.2 per second: here seconds * 18 + seconds / 5, from the time of the
-; 6809, which is in whole seconds) in CX:DX and AL = 0 (no midnight); Turbo Pascal times its delay loop with it.  The other functions do nothing.
+; INT 1Ah, the clock of the IBM PC: AH = 0 gives the ticks since midnight (18.2 per second) in CX:DX and AL = 0 (no midnight).  The first call takes the
+; time of the day from the 6809 (whole seconds: seconds * 18 + seconds / 5) and the microsecond counter of the cross link (request 32); after that the ticks
+; are that base plus the microseconds since / 54925, so the ticks go on in steps of 55 ms (Turbo Pascal times its delay loop with it).  The other functions do nothing.
 INT1A:  STI
         OR      AH,AH
         JZ      I1A0
@@ -442,7 +444,9 @@ INT1A:  STI
 I1A0:   PUSH    BX
         PUSH    SI
         PUSH    DI
-        REQ     12                      ; RQ+26: year-1900 month day hour minute second
+        CMP     BYTE PTR CS:[UINIT],0
+        JNE     I1AGO
+        REQ     12                      ; the first call: RQ+26: year-1900 month day hour minute second
         MOV     AL,CS:[RQ+29]           ; the hour * 3600
         XOR     AH,AH
         MOV     BX,3600
@@ -474,11 +478,50 @@ I1A0:   PUSH    BX
         POP     DX                      ; the low word of seconds * 18
         ADD     DX,BX
         ADC     CX,0
+        MOV     CS:[TBASE],DX
+        MOV     CS:[TBASE+2],CX
+        REQ     32                      ; the counter now is the origin
+        MOV     AX,WORD PTR CS:[RQ+22]
+        MOV     CS:[UBASE],AX
+        MOV     AX,WORD PTR CS:[RQ+20]
+        MOV     CS:[UBASE+2],AX
+        MOV     BYTE PTR CS:[UINIT],1
+        JMP     SHORT I1AOUT
+I1AGO:  REQ     32
+        MOV     SI,WORD PTR CS:[RQ+22]           ; the counter now: DI:SI
+        MOV     DI,WORD PTR CS:[RQ+20]
+        MOV     DX,SI
+        MOV     CX,DI
+        SUB     DX,CS:[UBASE]
+        SBB     CX,CS:[UBASE+2]         ; the microseconds since the origin: CX:DX
+        MOV     AX,DX
+        MOV     DX,CX
+        MOV     BX,54925                ; one tick in microseconds
+        PUSH    AX
+        MOV     AX,DX
+        XOR     DX,DX
+        DIV     BX
+        MOV     CX,AX                   ; the high word of the ticks
+        POP     AX
+        DIV     BX                      ; AX the low word of the ticks, DX the rest
+        ADD     CS:[TBASE],AX
+        ADC     CS:[TBASE+2],CX         ; the base moves on by the whole ticks
+        MOV     AX,SI                   ; the origin: the counter now minus the rest
+        SUB     AX,DX
+        MOV     CS:[UBASE],AX
+        MOV     AX,DI
+        SBB     AX,0
+        MOV     CS:[UBASE+2],AX
+I1AOUT: MOV     DX,CS:[TBASE]
+        MOV     CX,CS:[TBASE+2]
         XOR     AL,AL
         POP     DI
         POP     SI
         POP     BX
         IRET
+TBASE   DW      0,0                     ; the ticks at the origin of the counter
+UBASE   DW      0,0                     ; the counter at the origin
+UINIT   DB      0
 
 ; INT E2h: the graphics of the HDMI screen of the Tang Nano 20K (the 6809 draws: os9/cpm/cpmgfx.asm, the block of DS:BX), AL = 0 done, FFh no frame buffer
 GFXINT: REQ     30
@@ -612,9 +655,16 @@ DEXIT1:  LDS     BX,CS:[PTRSAV]
 ; the console: AL from the 6809 (REQ 2 waits for a key), the typeahead of one character is kept by the 6809
 CON_READ:
         JCXZ    CRDONE
-CRLOOP: REQ     2
+CRLOOP: CMP     BYTE PTR CS:[XPEND],0
+        JE      CRNEW
+        MOV     AL,CS:[XPEND]       ; the scan code after the 0 of an extended key
+        MOV     BYTE PTR CS:[XPEND],0
+        JMP     SHORT CRPUT
+CRNEW:  REQ     2
         MOV     AL,CS:[RQ+16]
-        STOSB
+        MOV     AH,CS:[RQ+18]
+        MOV     CS:[XPEND],AH
+CRPUT:  STOSB
         LOOP    CRLOOP
 CRDONE: JMP     DEXIT
 

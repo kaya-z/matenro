@@ -137,7 +137,25 @@ m19:    xor     ah, ah                  ; INT 1Ah AH=0: the ticks since midnight
 m20:    cmp     cx, 0x18
         jb      m21
         inc     bp
-m21:    ; the result file
+m21:    mov     bx, cx                  ; the ticks: after a busy loop of about 0.1 s of the 8088 the clock has moved on by 1 to 40 ticks
+        mov     si, dx
+        mov     cx, 0xffff
+t1:     nop
+        loop    t1
+        mov     cx, 0xffff
+t2:     nop
+        loop    t2
+        xor     ah, ah
+        int     0x1a
+        sub     dx, si
+        sbb     cx, bx
+        jnz     m22
+        cmp     dx, 40
+        ja      m22
+        test    dx, dx
+        jnz     m23
+m22:    inc     bp
+m23:    ; the result file
         mov     ah, 0x3c
         xor     cx, cx
         mov     dx, fname

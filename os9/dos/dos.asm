@@ -86,6 +86,7 @@ tmp8     rmb   1
 cnt      rmb   2
 kbv      rmb   1                 a key is waiting in kbc
 kbc      rmb   1
+kbs      rmb   1                 the scan code if kbc is an extended key (kbc = 0), else 0
 rawf     rmb   1                 the terminal is in the raw mode
 done     rmb   1                 leave
 tnm      rmb   2                 -t=: the work image of the run mode (default dostmp.img in the current directory)
@@ -152,6 +153,7 @@ start    stx   argp,u
          clr   hfile,u
          clr   rawf,u
          clr   kbv,u
+         clr   kbs,u
          lda   >XID
          cmpa  #2
          lbne  nosub
@@ -757,6 +759,8 @@ dp0      clr   ,x+
          lbeq  f_gfx
          cmpa  #31
          lbeq  f_pcs
+         cmpa  #32
+         lbeq  f_us
          rts
 
 * 1: console status, AH = 1 and AL = the key if there is one (the key stays for INP)
@@ -766,6 +770,8 @@ f_stat   tst   kbv,u
          bcs   fs9
 fs2      lda   kbc,u
          sta   rp,u
+         lda   kbs,u
+         sta   rp+2,u
          lda   #1
          sta   rp+1,u
 fs9      rts
@@ -782,12 +788,19 @@ fi1      lda   #0
          bcs   fi3
          lda   iobuf,u
          cmpa  #EXITKEY
-         bne   fi4
+         bne   fi5
 fi3      inc   done,u                the exit key (or the end of the input): leave
          rts
+fi5      cmpa  #$1B
+         bne   fi4
+         lbsr  escx
+         bra   fi4
 fi2      clr   kbv,u
          lda   kbc,u
 fi4      sta   rp,u
+         lda   kbs,u
+         sta   rp+2,u
+         clr   kbs,u
          rts
 
 * 3: console output, AL
@@ -967,6 +980,7 @@ ft1      lda   ,x+
 
 * 13: throw the typed-ahead keys away
 f_flush  clr   kbv,u
+         clr   kbs,u
 fl1      lbsr  keyrdy
          bcc   fl2
          rts
@@ -989,7 +1003,10 @@ keyrdy   lbsr  scrkey
          lda   iobuf,u
          cmpa  #EXITKEY
          beq   kr7
-         sta   kbc,u
+         cmpa  #$1B
+         bne   kr6
+         lbsr  escx
+kr6      sta   kbc,u
          lda   #1
          sta   kbv,u
          andcc #$FE
@@ -998,6 +1015,60 @@ kr7      inc   done,u
 kr8      orcc  #1
          rts
 kr0      rts
+
+* ESC was read: a terminal sequence (ESC [ A, ESC [ 3 ~, ESC O P) may follow
+* within 20 ms: A = 0 and kbs = the PC scan code; else A = ESC
+escx     clr   kbs,u
+         ldx   #2
+         os9   F$Sleep
+         lbsr  esc1
+         bcs   esc0
+         cmpa  #'['
+         beq   esc2
+         cmpa  #'O'
+         bne   esc0
+esc2     lbsr  esc1
+         bcs   esc0
+         sta   tmp8,u
+         cmpa  #'1'
+         blo   esc3
+         cmpa  #'6'
+         bhi   esc3
+         lbsr  esc1                  the final ~
+         bcs   esc0
+esc3     ldb   tmp8,u
+         leax  esctab,pcr
+esc4     lda   ,x
+         beq   esc0
+         cmpb  ,x
+         beq   esc5
+         leax  2,x
+         bra   esc4
+esc5     lda   1,x
+         sta   kbs,u
+         clra
+         rts
+esc0     lda   #$1B
+         clr   kbs,u
+         rts
+esc1     lda   #0
+         ldb   #SS.Ready
+         os9   I$GetStt
+         bcs   esc9
+         lda   #0
+         leax  iobuf,u
+         ldy   #1
+         os9   I$Read
+         bcs   esc9
+         lda   iobuf,u
+         andcc #$FE
+         rts
+esc9     orcc  #1
+         rts
+* final character -> scan code: arrows, Home, End, Ins, Del, PgUp, PgDn, F1-F4
+esctab   fcb   'A',$48,'B',$50,'C',$4D,'D',$4B,'H',$47,'F',$4F
+         fcb   '1',$47,'2',$52,'3',$53,'4',$4F,'5',$49,'6',$51
+         fcb   'P',$3B,'Q',$3C,'R',$3D,'S',$3E,0
 
 * run mode: the next typed-ahead key into kbc / kbv (C clear), or C set if there is none
 scrkey   ldx   scrp,u
@@ -1201,6 +1272,20 @@ pcstop   lda   pcs,u                 back to the terminal's text screen: cleared
          ldy   #7
          os9   I$Write
 pcs8     rts
+* 32: the microsecond counter XE_US (see etime) to CX:DX (CX = high word):
+* the clock of INT 1Ah of the BIOS
+XE_US    equ   $14
+f_us     lda   #$80+XE_US
+         sta   >XIDX
+         lda   >XDAT                 byte 0 latches the value: bits 31-24 first
+         sta   rp+5,u
+         lda   >XDAT
+         sta   rp+4,u
+         lda   >XDAT
+         sta   rp+7,u
+         lda   >XDAT
+         sta   rp+6,u
+         rts
 * 31: the cursor of the text screen of the PC (the BIOS tells it after each change): DH row, DL column
 f_pcs    lda   pcs,u
          cmpa  #1
