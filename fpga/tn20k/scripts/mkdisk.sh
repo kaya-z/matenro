@@ -53,8 +53,12 @@ cp "$SIM09/os9/OS9L2.dsk" "$OUT"
 mkdir -p "$T/rom"
 sed 's/Tang Nano 9K/Tang Nano 20K/' "$SIM09/os9/level2/init.asm" > "$T/rom/init.asm"
 ( cd "$T/rom" && "$SIM09/tools/a09" -I "$SIM09/os9/nitros9-code/defs/" -I "$SIM09/os9/level2/" -D TN9K init.asm -o init_tn20k 2>&1 | grep -q '^0 Pass 2 errors' )
+# the second line of the banner of SysGo: "(C) 2026 YUKARI Semiconductor Devices" (a copy of sysgo.asm with the line added; sim09 stays as it is)
+sed 's|^CrRtn    fcb   C\$CR,C\$LF$|CrRtn    fcb   C$CR,C$LF\n         fcc   /(C) 2026 YUKARI Semiconductor Devices/\n         fcb   C$CR,C$LF|' "$SIM09/os9/level2/sysgo.asm" > "$T/rom/sysgo.asm"
+grep -q 'YUKARI' "$T/rom/sysgo.asm"
+( cd "$T/rom" && "$SIM09/tools/a09" -I "$SIM09/os9/nitros9-code/defs/" -I "$SIM09/os9/level2/" -D TN9K sysgo.asm -o sysgo_tn20k 2>&1 | grep -q '^0 Pass 2 errors' )
 ( cd "$SIM09/os9" && ../tools/make9rom -o "$T/rom/os9v2_tn20k.rom" -2 level2/shell level2/dir level2/d1 level2/ioman level2/os9p3_perr \
-    level2/os9p4_regdump level2/pipe level2/piper level2/pipeman level2/v0 level2/vrbf level2/scf level2/rbf level2/os9p2 level2/sysgo_tn9k \
+    level2/os9p4_regdump level2/pipe level2/piper level2/pipeman level2/v0 level2/vrbf level2/scf level2/rbf level2/os9p2 $T/rom/sysgo_tn20k \
     level2/clock level2/pdisk level2/d0 level2/pty level2/term "$T/rom/init_tn20k" level2/boot level2/npty level2/n1 level2/n2 level2/n3 \
     level2/os9p1 > /dev/null )
 [ "$(stat -c %s "$T/rom/os9v2_tn20k.rom")" -le 28672 ]

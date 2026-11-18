@@ -883,13 +883,13 @@ def memtest():
         return
     base = [SIM, '-max', '-nt', '-maxcount', '10', '-rom', rom]
     out = run(base).stdout.decode(errors='replace')
-    check('memory test: Matenro Memory %s OK 2048K' % ('>' * 24), out.startswith('Matenro Memory ' + '>' * 24 + ' OK 2048K\r\n'), out[:80])
+    check('memory test: Matenro Memory %s OK 2048K' % ('>' * 24), out.startswith('YUKARI Semiconductor Devices\r\nMatenro Memory \x1b[32m' + '>' * 24 + '\x1b[0m OK 2048K\r\n'), out[:80])
     out = run(base + ['-memfault', '123456']).stdout.decode(errors='replace')
-    check('memory test: a stuck bit is reported with its address', out.startswith('Matenro Memory ' + '>' * 24 + ' NG @123456\r\n'), out[:80])
+    check('memory test: a stuck bit is reported with its address', out.startswith('YUKARI Semiconductor Devices\r\nMatenro Memory \x1b[32m' + '>' * 24 + '\x1b[0m NG @123456\r\n'), out[:80])
     out = run(base + ['-nomemtest']).stdout.decode(errors='replace')
-    check('memory test: -nomemtest prints nothing', not out.startswith('Matenro Memory'), out[:80])
+    check('memory test: -nomemtest prints nothing', not out.startswith('YUKARI'), out[:80])
     out = run(base + ['-L1', '-rom', os.path.join(OS9, 'v09.rom')]).stdout.decode(errors='replace')
-    check('memory test: Level 1 tests its 64KB', out.startswith('Matenro Memory >>> OK 64K\r\n'), out[:80])
+    check('memory test: Level 1 tests its 64KB', out.startswith('YUKARI Semiconductor Devices\r\nMatenro Memory \x1b[32m>>>\x1b[0m OK 64K\r\n'), out[:80])
 
 
 def main():

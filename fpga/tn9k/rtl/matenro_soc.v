@@ -301,7 +301,7 @@ module matenro_soc #(
 
     // ---------------------------------------------------------------- start-up: PSRAM, clear, reset of the CPU
     localparam [3:0] C_WAIT = 4'd0, C_CLR = 4'd1, C_WAIT2 = 4'd2, C_RUN = 4'd3,
-                     M_HDR = 4'd6, M_W = 4'd7, M_WW = 4'd8, M_R = 4'd9, M_RW = 4'd10, M_RC = 4'd11, M_FIN = 4'd12;
+                     M_HDR = 4'd6, M_W = 4'd7, M_WW = 4'd8, M_R = 4'd9, M_RW = 4'd10, M_RC = 4'd11, M_FIN = 4'd12, M_CRED = 4'd13;
     localparam [21:0] CLR_LAST = 22'h1fffff;                              // the last byte to clear: 2 MB (the Level 2 mode)
     reg [3:0]  cs_;
     reg [21:0] cw;
@@ -317,14 +317,28 @@ module matenro_soc #(
     wire [7:0] tdata = (tp == 2'd0) ? 8'h55 : (tp == 2'd1) ? 8'hAA : (tp == 2'd2) ? (cw[7:0] ^ cw[15:8] ^ {2'b00, cw[21:16]}) : 8'h00;
     reg        t_fail;
     reg [21:0] t_faddr;
-    reg [3:0]  mi;                                   // the index in the message
+    reg [4:0]  mi;                                   // the index in the message
     reg [7:0]  msg_q;                                // msg(), registered (see M_FIN)
     // the console output of the test: one character at a time (the ACIA and the screen)
     reg        p_go, st_wr, st_d, st_d2;
     reg [7:0]  p_ch, st_byte;
+    function [7:0] cred(input [4:0] i);
+        case (i)
+            5'd0: cred = "Y"; 5'd1: cred = "U"; 5'd2: cred = "K"; 5'd3: cred = "A"; 5'd4: cred = "R"; 5'd5: cred = "I"; 5'd6: cred = " ";
+            5'd7: cred = "S"; 5'd8: cred = "e"; 5'd9: cred = "m"; 5'd10: cred = "i"; 5'd11: cred = "c"; 5'd12: cred = "o"; 5'd13: cred = "n";
+            5'd14: cred = "d"; 5'd15: cred = "u"; 5'd16: cred = "c"; 5'd17: cred = "t"; 5'd18: cred = "o"; 5'd19: cred = "r"; 5'd20: cred = " ";
+            5'd21: cred = "D"; 5'd22: cred = "e"; 5'd23: cred = "v"; 5'd24: cred = "i"; 5'd25: cred = "c"; 5'd26: cred = "e"; 5'd27: cred = "s";
+            5'd28: cred = 8'h0d; default: cred = 8'h0a;
+        endcase
+    endfunction
     function [7:0] hexc(input [3:0] n); hexc = (n < 4'd10) ? (8'h30 + n) : (8'h37 + n); endfunction
-    function [7:0] msg(input [3:0] i, input fail, input [21:0] fa);
-        if (!fail) case (i)
+    function [7:0] msg(input [4:0] i5, input fail, input [21:0] fa);
+        reg [3:0] i;
+        begin
+        i = i5[3:0] - 4'd4;                                // the first four characters are ESC [ 0 m (the > were green)
+        if (i5 < 5'd4) case (i5[1:0])
+            2'd0: msg = 8'h1b; 2'd1: msg = "["; 2'd2: msg = "0"; default: msg = "m";
+        endcase else if (!fail) case (i)
             4'd0: msg = " "; 4'd1: msg = "O"; 4'd2: msg = "K"; 4'd3: msg = " "; 4'd4: msg = "2"; 4'd5: msg = "0";
             4'd6: msg = "4"; 4'd7: msg = "8"; 4'd8: msg = "K"; 4'd9: msg = 8'h0d; 4'd10: msg = 8'h0a; default: msg = 8'h00;
         endcase else case (i)
@@ -333,6 +347,7 @@ module matenro_soc #(
             4'd7: msg = hexc(fa[11:8]); 4'd8: msg = hexc(fa[7:4]); 4'd9: msg = hexc(fa[3:0]);
             4'd10: msg = 8'h0d; 4'd11: msg = 8'h0a; default: msg = 8'h00;
         endcase
+        end
     endfunction
     // registered (the address and the pass are stable for several clocks before the values are used)
     reg [7:0]  td_r, t_got_r;
@@ -354,21 +369,27 @@ module matenro_soc #(
         if (p_go && !st_wr && !st_d && !st_d2 && !acia_tx_full && !term_busy) begin st_wr <= 1'b1; st_byte <= p_ch; p_go <= 1'b0; end
         if (rst) begin
             cs_ <= C_WAIT; cw <= 0; bsy_d <= 0; rcnt <= 0; nreset_cpu <= 1'b0;
-            tp <= MEMTEST ? 2'd0 : 2'd3; t_fail <= 1'b0; t_faddr <= 22'd0; mi <= 4'd0; p_go <= 1'b0; p_ch <= 8'h00;
+            tp <= MEMTEST ? 2'd0 : 2'd3; t_fail <= 1'b0; t_faddr <= 22'd0; mi <= 5'd0; p_go <= 1'b0; p_ch <= 8'h00;
         end else begin
             bsy_d <= {bsy_d[2:0], ps_busy_m};
             if (go_req) begin nreset_cpu <= 1'b0; rcnt <= 4'd0; end      // the mode register: reset the CPU (in the Level 2 mode)
             case (cs_)
-                C_WAIT:  if (bsy_d == 4'b0000 && !ps_busy) cs_ <= MEMTEST ? M_HDR : C_CLR;
+                C_WAIT:  if (bsy_d == 4'b0000 && !ps_busy) cs_ <= MEMTEST ? M_CRED : C_CLR;
+                M_CRED: if (MEMTEST && !p_go && !st_wr && !st_d) begin                   // the credit line first: "YUKARI Semiconductor Devices"
+                    p_ch <= cred(mi);
+                    p_go <= 1'b1;
+                    if (mi == 5'd29) begin mi <= 5'd0; cs_ <= M_HDR; end else mi <= mi + 1'b1;
+                end
                 M_HDR: if (MEMTEST && !p_go && !st_wr && !st_d) begin                    // "Matenro Memory " (tells this system from a plain sim09 board)
                     case (mi)
                         4'd0: p_ch <= "M"; 4'd1: p_ch <= "a"; 4'd2: p_ch <= "t"; 4'd3: p_ch <= "e";
                         4'd4: p_ch <= "n"; 4'd5: p_ch <= "r"; 4'd6: p_ch <= "o"; 4'd7: p_ch <= " ";
                         4'd8: p_ch <= "M"; 4'd9: p_ch <= "e"; 4'd10: p_ch <= "m"; 4'd11: p_ch <= "o";
-                        4'd12: p_ch <= "r"; 4'd13: p_ch <= "y"; default: p_ch <= " ";
+                        4'd12: p_ch <= "r"; 4'd13: p_ch <= "y"; 4'd14: p_ch <= " ";
+                        4'd15: p_ch <= 8'h1b; 5'd16: p_ch <= "["; 5'd17: p_ch <= "3"; 5'd18: p_ch <= "2"; default: p_ch <= "m";   // ESC [ 3 2 m: the > in green
                     endcase
                     p_go <= 1'b1;
-                    if (mi == 4'd14) begin mi <= 4'd0; cs_ <= M_W; end else mi <= mi + 1'b1;
+                    if (mi == 5'd19) begin mi <= 5'd0; cs_ <= M_W; end else mi <= mi + 1'b1;
                 end
                 M_W: if (MEMTEST) begin c_wr <= 1'b1; cs_ <= M_WW; end
                 M_WW: if (MEMTEST && !c_wr && !ps_busy_m && !bsy_d[0] && !bsy_d[1]) begin

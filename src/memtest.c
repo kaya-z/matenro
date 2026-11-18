@@ -36,7 +36,7 @@ int machine_memtest(machine_t *m, long fault, char *out, size_t outsz)
     int failed = 0;
     size_t n = 0;
 
-    n += (size_t)snprintf(out + n, outsz - n, "Matenro Memory ");
+    n += (size_t)snprintf(out + n, outsz - n, "YUKARI Semiconductor Devices\r\nMatenro Memory \033[32m");   /* the > in green */
     for (int pass = 0; pass < 3; pass++) {
         for (uint32_t a = 0; a <= last; a++) ram[a] = pattern(pass, a);
         for (uint32_t a = 0; a <= last; a++) {
@@ -48,7 +48,7 @@ int machine_memtest(machine_t *m, long fault, char *out, size_t outsz)
         }
     }
     memset(ram, 0, size);
-    if (failed) snprintf(out + n, outsz - n, " NG @%06X\r\n", (unsigned)bad);
-    else        snprintf(out + n, outsz - n, " OK %uK\r\n", (unsigned)(size / 1024));
+    if (failed) snprintf(out + n, outsz - n, "\033[0m NG @%06X\r\n", (unsigned)bad);
+    else        snprintf(out + n, outsz - n, "\033[0m OK %uK\r\n", (unsigned)(size / 1024));
     return failed ? -1 : 0;
 }
