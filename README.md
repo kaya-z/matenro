@@ -1,17 +1,25 @@
-# 摩天楼 (Matenro): MC6809 (OS-9 Level 2) + 差し替え可能なサブ CPU (Z80 / 8088) のシミュレータ
+# 摩天楼 (Matenro): MC6809 (OS-9 Level 2) + 差し替え可能なサブ CPU (Z80 / 8088) のシミュレータと FPGA 実機 (Tang Nano 20K / 9K)
 
-FM-11 の「マンハッタンシステム」のように、**異種 CPU を 1 つのメモリに密結合**したマシンを C 言語で作りました。
+FM-11 の「マンハッタンシステム」のように、**異種 CPU を 1 つのメモリに密結合**したマシンを、C 言語のシミュレータと、FPGA ボード (**Tang Nano 20K** と **9K**) の実機で作りました。
 MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしていて、OS-9 Level 2 がそのまま動きます。
 サブ CPU は 1 ファイルで差し込む作りで、**Z80** と **8088** が入っています。
-**OS-9 のコマンド `cpm` で、Z80 では CP/M-80 の `.COM`、8088 では CP/M-86 の `.CMD` が動きます** ([下](#cp-m-のプログラムを-os-9-から動かす))。
+**OS-9 のコマンド `cpm` で、Z80 では CP/M-80 の `.COM`、8088 では CP/M-86 の `.CMD` が動きます** ([下](#cp-m-のプログラムを-os-9-から動かす))。8088 では MS-DOS も動きます (`dos`)。
+
+| 形 | サブ CPU | 動かせるもの |
+|---|---|---|
+| **シミュレータ** (`./matenro`、Linux) | Z80 または 8088 | CP/M-80、CP/M-86、MS-DOS 1.25 / 2.0 |
+| **Tang Nano 20K** (実機、54 MHz、HDMI つき) | Z80 と 8088 (OS-9 から `subsel` で切り替え) | 上の全部、HDMI の文字・漢字・フレームバッファ、デモ |
+| **Tang Nano 9K** (実機、67.5 MHz) | Z80 のみ | CP/M-80 (HI-TECH C、Turbo Pascal、ZEXDOC) |
+
+実機を使うなら **20K** をすすめます。9K は Z80 だけで、HDMI がありません。
 
 * 2 つの CPU は**物理 RAM を共有**し、**それぞれの最大クロック** (6809 = 2 MHz、Z80 = 8 MHz、8088 = 8 MHz) で同時に動きます。
-* **デモ `duo`: 6809 と Z80 が一つの絵を一緒に描きます** ([docs/MANUAL.md](docs/MANUAL.md) の 6.7)。マンデルブロ集合 (25 行 × 79 桁) の行を、6809 と Z80 が共通の行カウンタから一行ずつ取り、同時に計算します。Z80 のプログラムは OS-9 の `duo` コマンドに組み込まれ、共有 RAM を通して 6809 と受け渡します。絵は、Z80 が計算した行をシアン、6809 が計算した行を黄色で書き、最後に各 CPU の行数と計算時間を出します (`-1` は 6809 だけ、`-z` は Z80 だけ、`-n` は色なし)。**色は ANSI のエスケープシーケンス (`ESC [ 36 m` など) で付けます。シミュレータの端末では色が付きます。実機では、エスケープシーケンスが画面側で解釈されない端末では色が付きません。色なしで出すには `-n`。**シミュレータでは 4.1 秒 (6809 が 17 行、Z80 が 8 行)、**実機 (Tang Nano 9K) では 5.8 秒 (6809 が 18 行、Z80 が 7 行)** です。6809 だけだと 7.5 秒、つまり二つで約 1.3 倍の速さです。
+* **デモ `duo`: 6809 と Z80 が一つの絵を一緒に描きます** ([docs/MANUAL.md](docs/MANUAL.md) の 6.7)。マンデルブロ集合 (25 行 × 79 桁) の行を、6809 と Z80 が共通の行カウンタから一行ずつ取り、同時に計算します。Z80 のプログラムは OS-9 の `duo` コマンドに組み込まれ、共有 RAM を通して 6809 と受け渡します。絵は、Z80 が計算した行をシアン、6809 が計算した行を黄色で書き、最後に各 CPU の行数と計算時間を出します (`-1` は 6809 だけ、`-z` は Z80 だけ、`-n` は色なし)。**色は ANSI のエスケープシーケンス (`ESC [ 36 m` など) で付けます。シミュレータの端末では色が付きます。実機では、エスケープシーケンスが画面側で解釈されない端末では色が付きません。色なしで出すには `-n`。**シミュレータでは 4.1 秒 (6809 が 17 行、Z80 が 8 行)、**実機 (Tang Nano 9K) では 5.8 秒 (6809 が 18 行、Z80 が 7 行)** です。6809 だけだと 7.5 秒、つまり二つで約 1.3 倍の速さです。**20K の実機 (Z80 7.7 MHz) では 4.3 秒 (6809 が 18 行、Z80 が 7 行)、6809 だけで 5.9 秒、Z80 だけで 13.5 秒** です (約 1.4 倍)。
 * **20K のデモ: 8088 と 6809 が HDMI に一緒に描きます** ([docs/MANUAL.md](docs/MANUAL.md) の 6.10)。マンデルブロ競演 (8088 が上半分、6809 が下半分、所要時間を比べる)、星空とボール、回る 3D の立方体を、`/d0` の `shell <show` で順に見せます (日本語のタイトル付き。電源を入れたあと `kanjild` が要ります)。
 
   ```
   OS9:chx /d0/cmds
-  OS9:load xlink          (実機では要る。シミュレータは -m 1M の運用なら不要)
+  OS9:load xlink          (9K では要る。20K とシミュレータの -m 1M の運用では不要)
   OS9:load x0
   OS9:duo
   ```
@@ -19,14 +27,14 @@ MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしてい�
 * ストレージは SD カード相当のディスクイメージ (6809/OS-9 側だけが持つ。生デバイスも指せる)。
 * 8088 では、CP/M-86 のほかに **MS-DOS 1.25 と 2.0 が動きます** (OS-9 のコマンド `dos`。カーネルと `COMMAND` は Microsoft が公開したものを組むか、そのまま使います。`EDLIN`、`DEBUG`、`DATE`/`TIME`、プリンタ、ディスクイメージ。使い方は [docs/MANUAL.md](docs/MANUAL.md) の 6.8、設計は [docs/DESIGN.md](docs/DESIGN.md) の 18 章)。**`cpm` のように OS-9 のコマンドラインから `dos -v=2 -a=dosrun2.img tbasic` で DOS のプログラムも実行できます** (実行モード、MANUAL 6.9: OS-9 のカレントディレクトリのファイルを DOS のディスクに出し入れします)。
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
-* **FPGA 版 (Tang Nano 9K) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 88%、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、20K の版です (次の項目)。
-* **FPGA 版 (Tang Nano 20K) も実機で動いています** ([docs/TN20K.md](docs/TN20K.md)): 6809 + Z80 + 8088 (MCL86) と HDMI を載せた SoC (`fpga/tn20k/`) です。メモリはパッケージ内の SDRAM (2MB)、システムクロックは 54 MHz (6809 は E = 約 1.9 MHz) です。Z80 と 8088 は OS-9 から `subsel z80` / `subsel 8088` で切り替えて使います (同時には動かしません)。実機で、OS-9 Level 2 の SD カードからの起動、CP/M-80、CP/M-86、MS-DOS 1.25 / 2.0 (OS-9 の `dos` コマンド。Tiny BASIC など)、HDMI の文字画面、漢字 (`kanjild`)、320×240・256 色のフレームバッファと文字の重ね表示 (`gfx`) を確かめました。CP/M-80、CP/M-86、MS-DOS のプログラムからは、6809 に頼む (BDOS 112、`INT E2h`) か、フレームバッファをメモリとして直接書いて描けます ([docs/MANUAL.md](docs/MANUAL.md) の 6.8)。資源と Fmax は [docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md) の 7 章です。
+* **FPGA 版 Tang Nano 9K (Z80 のみ) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 88%、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、20K の版です (次の項目)。
+* **FPGA 版 Tang Nano 20K (Z80 と 8088、HDMI) も実機で動いています** ([docs/TN20K.md](docs/TN20K.md)): 6809 + Z80 + 8088 (MCL86) と HDMI を載せた SoC (`fpga/tn20k/`) です。メモリはパッケージ内の SDRAM (OS-9 とサブ CPU が共有する 2MB。上は漢字と画面)、システムクロックは 54 MHz (6809 は E = 約 1.9 MHz、Z80 は 7.7 MHz、8088 は 4.9 MHz) です。ビットストリームはフラッシュに書けます (`openFPGALoader -f`)。Z80 と 8088 は OS-9 から `subsel z80` / `subsel 8088` で切り替えて使います (同時には動かしません)。実機で、OS-9 Level 2 の SD カードからの起動、CP/M-80、CP/M-86、MS-DOS 1.25 / 2.0 (OS-9 の `dos` コマンド。Tiny BASIC など)、HDMI の文字画面、漢字 (`kanjild`)、320×240・256 色のフレームバッファと文字の重ね表示 (`gfx`) を確かめました。CP/M-80、CP/M-86、MS-DOS のプログラムからは、6809 に頼む (BDOS 112、`INT E2h`) か、フレームバッファをメモリとして直接書いて描けます ([docs/MANUAL.md](docs/MANUAL.md) の 6.8)。資源と Fmax は [docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md) の 7 章です。
 
-**使い方は [docs/MANUAL.md](docs/MANUAL.md)** (ユーザーマニュアル)。詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
+**使い方は [docs/MANUAL.md](docs/MANUAL.md)** (ユーザーマニュアル。シミュレータ、20K、9K の別に書いています)。実機のビットストリームの作り方と SD カードの作り方は、MANUAL の 9、10 章です。詳しい設計: [docs/DESIGN.md](docs/DESIGN.md)。クレジット: [CREDITS.md](CREDITS.md)。
 
 ## Claude Code による開発
 
-このプロジェクトは **Claude Code (Anthropic の AI コーディングツール) を使って開発しました**。C のシミュレータ、Z80 / 8088 のコア、OS-9 のコマンドとドライバ (6809 のアセンブラ)、FPGA の RTL とビルドスクリプト、テスト、文書は、Claude が書いたものです。要求の提示、実機 (Tang Nano 9K) の接続、SD カードの書き込み、実機の結果の確認は人 (kaya-z) が行いました。土台の [sim09](https://github.com/kaya-z/sim09) と、使った外部のコード (TV80、ZEXDOC、HI-TECH C など) の出典とライセンスは [CREDITS.md](CREDITS.md) に書いています。
+このプロジェクトは **Claude Code (Anthropic の AI コーディングツール) を使って開発しました**。C のシミュレータ、Z80 / 8088 のコア、OS-9 のコマンドとドライバ (6809 のアセンブラ)、FPGA の RTL とビルドスクリプト、テスト、文書は、Claude が書いたものです。要求の提示、実機 (Tang Nano 9K と 20K) の接続、SD カードの書き込み、実機の結果の確認は人 (kaya-z) が行いました。土台の [sim09](https://github.com/kaya-z/sim09) と、使った外部のコード (TV80、ZEXDOC、HI-TECH C など) の出典とライセンスは [CREDITS.md](CREDITS.md) に書いています。
 
 ## ビルドとテスト
 
@@ -50,7 +58,7 @@ sim09 は**読み取り専用**で使います (ディスクイメージはテ�
 |---|---|
 | `make test-z80` | Z80 の既知答えテスト 179 項目 |
 | `make test-8088` | 8088 の自己判定プログラム (nasm) + クロック数 + 割り込み 67 項目 |
-| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp80` (6 項目)、**`dos` で MS-DOS 1.25 と 2.0 を 8088 で動かす** (`MATENRO_DOS_SRC` `MATENRO_DOS2_SRC` と `UASM` があれば。1.25 は 17 項目、2.0 は 20 項目 (実行モードの 4 項目を含む))、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、全部で 48 項目 (`MATENRO_HTC` があれば 51 項目、`MATENRO_TP` (Turbo Pascal) もあれば 53 項目、`MATENRO_CPM` (DR のツールと MBASIC) もあれば 56 項目) |
+| `make test-mh` | 6809 ↔ Z80 / 8088 の統合 (メールボックス、doorbell の割り込み、共有 RAM、ウィンドウ、SMMU)、サブ CPU 単独、トレース、OS-9 Level 2 の起動 (サブ CPU なし/あり)、OS-9 上の `xrun`、**`cpm` で CP/M-80 と CP/M-86 のテストプログラム**を動かす、OS-9 の `cpp80` (6 項目)、**`dos` で MS-DOS 1.25 と 2.0 を 8088 で動かす** (`MATENRO_DOS_SRC` `MATENRO_DOS2_SRC` と `UASM` があれば。1.25 は 17 項目、2.0 は 20 項目 (実行モードの 4 項目を含む))、`MATENRO_HTC` があれば `cc80` で HI-TECH C まで通す、ドライバ `xlink` 3 項目 (Z80 と 8088、Z80 と BDOS を 3000 回繰り返す負荷試験)、外部のものを指定しないと、全部で 56 項目が通り (2026-11-19 に確認)、HI-TECH C、Turbo Pascal、DR のツール、MS-DOS の試験は `skip` と出ます。`MATENRO_HTC` `MATENRO_TP` `MATENRO_CPM` `MATENRO_DOS_SRC` などを指定すると、その分の項目が増えます |
 | `make test-asm` | 自作 Z80 アセンブラの既知の機械語 90 項目 |
 
 **テストの限界**: 期待値は資料から手で計算したものです。Z80 は公開テスト ZEXDOC (67 項目) を `cpm` 経由で、シミュレータと**実機の FPGA** (7.5 MHz、約 3 時間) の両方で通しました (リポジトリには入れていません)。実機の 1 回目は、7 項目目のあとで出力が止まりましたが、同じ条件で 2 回やり直すと 2 回とも完走し、原因は分かっていません ([docs/FPGA.md](docs/FPGA.md) の 9.3)。8086 の公開テストは**走らせていません**。
@@ -161,12 +169,12 @@ HI-TECH C (P1.COM CGEN.COM ZAS.COM LINQ.COM CRTCPM.OBJ LIBC.LIB LIBF.LIB とヘ�
 から自分で取得して `/v0/htc` (または `-t=dir`) に置いてください。テストは環境変数 `MATENRO_HTC=そのディレクトリ` のときだけ `cc80` を試します。
 `cpp80` だけでも使えます (`cpp80 -Dname=v -Idir -ofile file.c`、`#` `##` は関数形式マクロのみ)。仕組みは [docs/DESIGN.md](docs/DESIGN.md) の 13 章です。
 
-**実機 (Tang Nano 9K) で使うとき**: 上の例はシミュレータ (`/v0/htc` がホストのディレクトリ) の場合です。実機は HI-TECH C が SD カードの `/d1/htc` にあるので、`-t=/d1/htc` が要ります。ソース (`hello.c` `demo.c` `mandel.c`) も `/d1` にあるので、先に `chd /d1` します。
+**実機 (Tang Nano 9K と 20K) で使うとき** (20K でも `subsel z80` のあと `cc80 -t=/d1/htc -r hello.c` が動くことを、実機で確かめました): 上の例はシミュレータ (`/v0/htc` がホストのディレクトリ) の場合です。実機は HI-TECH C が SD カードの `/d1/htc` にあるので、`-t=/d1/htc` が要ります。ソース (`hello.c` `demo.c` `mandel.c`) も `/d1` にあるので、先に `chd /d1` します。
 
 ```
 OS9:chx /d0/cmds
-OS9:load xlink
-OS9:load x0
+OS9:load xlink              (9K だけ。20K は `subsel z80` にする)
+OS9:load x0                 (9K だけ)
 OS9:chd /d1
 OS9:cc80 -t=/d1/htc -r demo.c
 big 36
@@ -203,10 +211,11 @@ OS9:del DEMO.COM
 
 ```
 src/            sim09 の複製 (m6809 dis6809 console net vdisk dbg) + 変更 (machine main) + 新規 (subcpu.h z80.c i8088.c xlink.c/h)
-os9/            xrun.asm と cpm/ cpp/ cc80/ (OS-9 Level 2 のコマンド `xrun` `cpm` `cpp80` `cc80`)、sub/ (デモのサブ CPU プログラム)
-tools/          z80asm.py (Z80 アセンブラ)、mkcmd.py (CP/M-86 の .CMD を作る)、build_cpm.sh (OS-9 コマンドのビルド)
+os9/            xrun.asm と cpm/ cpp/ cc80/ dos/ gfx/ demo/ (OS-9 Level 2 のコマンド `xrun` `cpm` `cpp80` `cc80` `dos` `gfx` とデモ)、sub/ (デモのサブ CPU プログラム)
+demo/           20K のデモの 8088 側 (mand88.asm stars88.asm cube88.asm)
+tools/          z80asm.py (Z80 アセンブラ)、mkcmd.py (CP/M-86 の .CMD を作る)、build_cpm.sh (OS-9 コマンドのビルド)、build_dosbin*.sh と build_dosrun.sh と mkdosimg.py (MS-DOS の部品とディスクイメージ)
 tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80asm_test.py mh/xlink_test.asm cpm/ (CP/M のテストプログラム) cpp/ (cpp80 と cc80 の C ソース)
-docs/           DESIGN.md (設計・レジスタ仕様) FPGA.md (FPGA の検討)
+docs/           MANUAL.md (ユーザーマニュアル) SETUP.md (clone から使うまで) DESIGN.md (設計・レジスタ仕様) FPGA.md (9K の検討と記録) TN20K.md (20K の設計と記録) FPGA_RESOURCES.md (資源とタイミング)
 fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト、テストベンチは Verilog: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
 fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットストリーム、mkdisk.sh と mkdisk_d1.sh で SD イメージ、sim/ で RTL シミュレーション)
 fpga/tn20k/     Tang Nano 20K の SoC (rtl/ の HDMI、scripts/build.sh でビットストリーム、mkdisk.sh で SD イメージ、sim/ で RTL シミュレーション)。8088 とその部品は fpga/rtl/ と fpga/vendor/
