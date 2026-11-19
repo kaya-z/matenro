@@ -16,7 +16,8 @@
 # <sim09>/fpga/tn9k), not copied.
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SIM09=${SIM09:-$HERE/../../../sim09/fpga/tn9k}
+SIM09=${SIM09:-$HERE/../../../sim09}               # the checkout of sim09 (git clone https://github.com/kaya-z/sim09 next to this repository)
+[ -d "$SIM09/fpga/tn9k" ] && SIM09=$SIM09/fpga/tn9k    # (a path of sim09/fpga/tn9k itself is taken as it is)
 ROM=${1:-xltest88}
 IDE=${2:-${GOWIN_IDE:-/usr/local/IDE}}
 case $ROM in

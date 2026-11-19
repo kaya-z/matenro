@@ -55,6 +55,7 @@ OS-9 のコマンドから CP/M のプログラムを、そのまま動かせま
 ### 3.1 用意するもの
 
 * Linux (Debian 12 で確認)、`gcc`、`make`、`python3`。テストには `nasm` も要ります。
+* **`git clone` から始めるときは [SETUP.md](SETUP.md) を先に読んでください** (確認した環境と版、外部のものの入手、実行ファイルの違い)。
 * [sim09](https://github.com/kaya-z/sim09) を `git clone` します (6809 のアセンブラ `tools/a09` と OS-9 のディスクイメージ `os9/` を、読み取り専用で使います)。
 
 ```sh
@@ -591,7 +592,7 @@ HTC=<HI-TECH C のディレクトリ> ZEX=<zexdoc.com と zexall.com のディ�
   fpga/tn9k/scripts/mkdisk_d1.sh fpga/tn9k/build/matenro_l2.dsk fpga/tn9k/build/matenro_d1.dsk fpga/tn9k/build/matenro_card.img
 ```
 
-* `SIM09=<sim09 の場所>` の指定が要ります (既定は筆者の環境のパス)。
+* sim09 は、このリポジトリと同じ階層 (`../sim09`) にあれば、指定は要りません (別の場所なら `SIM09=<sim09 の場所>`)。
 * HI-TECH C、ZEXDOC/ZEXALL、Turbo Pascal は、**このリポジトリに入っていません**。ZEXDOC は Frank D. Cringle の Z80 命令試験 (Yaze 付属、GPL v2) です。
 * `/d1` (`matenro_d1.dsk`) は**2048 セクタ (512KB) で、空きは 130 セクタしかありません** (1 セクタの割り当て表の限界。`cc80 -r` は、できた `.COM` を残すので、使い終えたら `del` で消してください。満杯になると `cc80` は `cpm: a write failed (disk full)` で止まります)。`/d0` は 4096 セクタ (2 セクタ/クラスタ) で、空きは約 1900 セクタです。
 * **`/d1` を 64MB のハードディスクのように使うには**、`fpga/tn9k/scripts/bigd1.sh` で、古い `/d1` のファイルをそのまま新しい大きなボリュームへ移します (`tools/mkrbf.py` が空のボリュームを作り、シミュレータが `copy` で移します。属性も同じ)。HTC や ZEX がなくてもできます:
@@ -612,7 +613,7 @@ HTC=<HI-TECH C のディレクトリ> ZEX=<zexdoc.com と zexall.com のディ�
 
 ### 10.1 用意するもの
 
-* **Gowin IDE** (`/usr/local/IDE` など。`gw_sh` を使います。ライセンスは Gowin のものに従います)。
+* **Gowin IDE** (`/usr/local/IDE` など。`gw_sh` を使います。ライセンスは Gowin のものに従います)。**注意: スクリプトは、筆者の環境の Gowin IDE V1.9.11.03 Education (Linux) に特化していて、ほかの版や環境では確認していません。結果 (Fmax、LUT 数) も、その版での値で、ほかの環境ではタイミングが通らないことがあります。環境変数 `GOWIN_IDE` で場所を変えられます。詳しくは [SETUP.md の 7 章](SETUP.md#7-gowin-ide-について-注意)。**
 * **TV80** (Z80 の Verilog コア、Guy Hutchison / MIT): <https://github.com/hutch31/tv80> の `rtl/core/` にある `tv80s.v` `tv80_core.v` `tv80_mcode.v` `tv80_alu.v` `tv80_reg.v`。リポジトリには入っていません。
 * sim09 (`SIM09=` で場所を指定)。
 

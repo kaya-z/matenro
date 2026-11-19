@@ -21,7 +21,12 @@ KHZHEX = $(shell python3 -c 'print("%04X" % ($(HZ) // 1000 // $(D88)))')
 PH ?= 9
 D88 ?= 14
 HZ ?= 67500000
-SIM09 ?= ../../../../sim09/fpga/tn9k
+# SIM09: the checkout of sim09 (git clone https://github.com/kaya-z/sim09 next to this repository, or SIM09=<its directory>), an absolute path:
+# the verilator build runs in other directories.  A path of sim09/fpga/tn9k is taken as it is (the older form).
+SIM09 ?= $(abspath ../../../../sim09)
+ifneq ($(wildcard $(SIM09)/fpga/tn9k),)
+SIM09 := $(SIM09)/fpga/tn9k
+endif
 A09   ?= $(SIM09)/../../tools/a09
 # the read cache of the 6809 (docs/TN20K.md 2.4 A) and the posted writes: make CACHEFLAGS= for the machine without them
 CACHEFLAGS ?= -DCACHE -DPOSTW

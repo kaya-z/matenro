@@ -14,7 +14,8 @@
 # constraints) are read from SIM09 (default <sim09>/fpga/tn9k), not copied.
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-SIM09=${SIM09:-$HERE/../../../sim09/fpga/tn9k}
+SIM09=${SIM09:-$HERE/../../../sim09}               # the checkout of sim09 (git clone https://github.com/kaya-z/sim09 next to this repository)
+[ -d "$SIM09/fpga/tn9k" ] && SIM09=$SIM09/fpga/tn9k    # (a path of sim09/fpga/tn9k itself is taken as it is)
 TV80=${TV80:?set TV80 to the directory with tv80s.v tv80_core.v tv80_mcode.v tv80_alu.v tv80_reg.v}
 ROM=${1:-xltest}
 IDE=${2:-${GOWIN_IDE:-/usr/local/IDE}}
