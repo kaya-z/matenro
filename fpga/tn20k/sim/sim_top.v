@@ -133,7 +133,7 @@ module sim_top #(
         if (soc.subz.cen) cz_cen = cz_cen + 1;
         if (soc.subz.cen_raw && soc.subz.zstall) cz_hold = cz_hold + 1;
     end
-    always @(posedge clk) begin cs_clk = cs_clk + 1; if (cs_clk % 1000000 == 0) $display("CACHE@%0d: read hits %0d, read misses %0d, writes %0d, E cycles %0d, hold ph0 %0d, hold ph2 %0d, Z80 stall clocks %0d cen %0d held %0d", cs_clk, soc.cs_hit, soc.cs_miss, soc.cs_wr, soc.cs_ecyc, soc.cs_hold, soc.cs_hold2, cz_stall, cz_cen, cz_hold); end
+    always @(posedge clk) begin cs_clk = cs_clk + 1; if (cs_clk % 1000000 == 0) $display("CACHE@%0d: read hits %0d, read misses %0d, writes %0d, E cycles %0d, hold ph0 %0d, hold ph2 %0d, Z80 stall clocks %0d cen %0d held %0d SUB: hit %0d miss %0d shr %0d nc %0d wr %0d WAIT rd %0d wr %0d rdmiss %0d", cs_clk, soc.cs_hit, soc.cs_miss, soc.cs_wr, soc.cs_ecyc, soc.cs_hold, soc.cs_hold2, cz_stall, cz_cen, cz_hold, soc.ss_hit, soc.ss_miss, soc.ss_shr, soc.ss_nc, soc.ss_wr, soc.ss_wrd, soc.ss_wwr, soc.ss_wrdmiss); end
 `endif
 `ifdef TRACE88
     always @(posedge clk) if (soc.zm_ack) $display("%s %h %h", soc.zm_wr ? "W" : "R", soc.zm_addr, soc.zm_wr ? soc.zm_wdata : soc.zm_rdata);

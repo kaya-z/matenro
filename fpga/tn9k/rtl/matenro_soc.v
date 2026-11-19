@@ -950,6 +950,26 @@ module matenro_soc #(
         end
     end
     assign      m3_go    = zm_req && !zb_hit && !sc_use && !sc_done;
+`ifdef CSTAT
+    // statistics of the simulation: the reads of the sub CPU by where they are served (the request is counted once, at its first clock)
+    integer ss_hit = 0, ss_miss = 0, ss_shr = 0, ss_nc = 0, ss_wr = 0;
+    integer ss_wrd = 0, ss_wwr = 0, ss_wrdmiss = 0;                 // clocks of the sub CPU's access that wait for the acknowledge: reads, writes (all reads, and the reads that miss)
+    reg zm_req_q = 1'b0;
+    always @(posedge clk) begin
+        zm_req_q <= zm_req;
+        if (zm_req && !zm_req_q) begin
+            if (zm_wr) ss_wr = ss_wr + 1;
+            else if (zb_hit) ss_shr = ss_shr + 1;
+            else if (sc_nc) ss_nc = ss_nc + 1;
+        end
+        if (sc_use && !sc_done) ss_hit = ss_hit + 1;
+        if (zm_req && !zm_ack) begin
+            if (zm_wr) ss_wwr = ss_wwr + 1; else ss_wrd = ss_wrd + 1;
+            if (!zm_wr && !zb_hit && !sc_nc) ss_wrdmiss = ss_wrdmiss + 1;
+        end
+        if (m3_go && m3_wide && !zm_wr && !sc_sent) ss_miss = ss_miss + 1;
+    end
+`endif
     assign      m3_wide  = !zm_wr && !sc_nc;
     // fills: the word of a wide read of master 3 is taken with dv (like the 6809's: the acknowledge of the arbiter may come after a burst of the frame buffer)
     reg         sf_arm = 1'b0, sf_we = 1'b0, su_we = 1'b0;
