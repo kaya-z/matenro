@@ -104,19 +104,19 @@ add_file -type verilog $HERE/rtl/tn20k_pll.v
 $( [ "$HDMI" != 0 ] && { echo "add_file -type verilog $HERE/rtl/hdmi_phy20.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_text20.v"; for f in hdmi_term hdmi_video tmds_enc; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done; } )
 $( [ "$KANJI" != 0 ] && { for f in hdmi_decode hdmi_glyph psram_xfer; do echo "add_file -type verilog $SIM09/rtl/$f.v"; done; echo "add_file -type verilog $HERE/../rtl/hdmi_screen20.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_pctext.v"; echo "add_file -type verilog $HERE/../rtl/hdmi_fb.v"; } )
 add_file -type verilog $HERE/../rtl/sdram_ctl.v
-add_file -type verilog $HERE/../tn9k/rtl/matenro_soc.v
-add_file -type verilog $HERE/../tn9k/rtl/psram_arb4.v
-add_file -type verilog $HERE/../tn9k/rtl/btn_toggle.v
-add_file -type verilog $HERE/../rtl/shr_ap.v
+add_file -type verilog $HERE/rtl/matenro_soc.v
+add_file -type verilog $HERE/rtl/psram_arb4.v
+add_file -type verilog $HERE/rtl/btn_toggle.v
+add_file -type verilog $HERE/rtl/shr_ap.v
 add_file -type verilog $HERE/../rtl/rcache.v
 add_file -type verilog $HERE/../rtl/i8088_sub.v
-add_file -type verilog $HERE/../rtl/z80_sub.v
+add_file -type verilog $HERE/rtl/z80_sub.v
 add_file -type verilog $B/tv80s_cen.v
 add_file -type verilog $TV80/tv80_core.v
 add_file -type verilog $TV80/tv80_mcode.v
 add_file -type verilog $TV80/tv80_alu.v
 add_file -type verilog $TV80/tv80_reg.v
-add_file -type verilog $HERE/../rtl/xlink.v
+add_file -type verilog $HERE/rtl/xlink.v
 add_file -type verilog $HERE/../rtl/eu4kx32.v
 add_file -type verilog $HERE/../vendor/mcl86/eu.v
 add_file -type verilog $HERE/../vendor/mcl86/biu_min.v

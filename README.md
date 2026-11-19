@@ -218,7 +218,7 @@ tests/          z80_test.c i8088_test.c (+ i8088/core.asm) matenro_test.py z80as
 docs/           MANUAL.md (ユーザーマニュアル) SETUP.md (clone から使うまで) DESIGN.md (設計・レジスタ仕様) FPGA.md (9K の検討と記録) TN20K.md (20K の設計と記録) FPGA_RESOURCES.md (資源とタイミング)
 fpga/           rtl/ (xlink.v z80_sub.v z80_soc.v)、sim/ (Verilator のテスト、テストベンチは Verilog: make -C fpga/sim)、synth/run.sh (Gowin で合成して資源を出す)
 fpga/tn9k/      Tang Nano 9K の SoC (rtl/、scripts/build.sh でビットストリーム、mkdisk.sh と mkdisk_d1.sh で SD イメージ、sim/ で RTL シミュレーション)
-fpga/tn20k/     Tang Nano 20K の SoC (rtl/ の HDMI、scripts/build.sh でビットストリーム、mkdisk.sh で SD イメージ、sim/ で RTL シミュレーション)。8088 とその部品は fpga/rtl/ と fpga/vendor/
+fpga/tn20k/     Tang Nano 20K の SoC (rtl/ に 20K 専用の matenro_soc.v などの写し (9K と分けてある) と HDMI、scripts/build.sh でビットストリーム、mkdisk.sh で SD イメージ、sim/ で RTL シミュレーション)。8088 とその部品は fpga/rtl/ と fpga/vendor/
 ```
 
 ## できていないこと

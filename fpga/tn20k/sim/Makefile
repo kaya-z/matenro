@@ -30,8 +30,8 @@ endif
 A09   ?= $(SIM09)/../../tools/a09
 # the read cache of the 6809 (docs/TN20K.md 2.4 A) and the posted writes: make CACHEFLAGS= for the machine without them
 CACHEFLAGS ?= -DCACHE -DPOSTW
-SOCSRC = ../../rtl/rcache.v ../../tn9k/rtl/matenro_soc.v ../../tn9k/rtl/psram_arb4.v ../../rtl/i8088_sub.v ../../rtl/eu4kx32.v ../../vendor/mcl86/eu.v ../../vendor/mcl86/biu_min.v \
-         ../../rtl/xlink.v ../../rtl/shr_ap.v ../../rtl/sdram_ctl.v sdram_model.v sim_top.v \
+SOCSRC = ../../rtl/rcache.v ../rtl/matenro_soc.v ../rtl/psram_arb4.v ../../rtl/i8088_sub.v ../../rtl/eu4kx32.v ../../vendor/mcl86/eu.v ../../vendor/mcl86/biu_min.v \
+         ../rtl/xlink.v ../rtl/shr_ap.v ../../rtl/sdram_ctl.v sdram_model.v sim_top.v \
          $(SIM09)/rtl/acia_uart.v $(SIM09)/rtl/timer_rtc.v $(SIM09)/rtl/sd_disk.v $(SIM09)/vendor/mc6809/mc6809i.v
 soc: build_soc/obj/Vsim_top
 	build_soc/obj/Vsim_top -nosd -c 400000000 | tee build_soc/out.txt
@@ -69,7 +69,7 @@ build_boot/obj/Vsim_top: $(SOCSRC) build_boot/rom.hex $(SIM09)/sim/tb.cpp
 #   make bothboot TV80=<dir with tv80s.v ...> DISK=../build/matenro20k_l2.dsk SCRIPT=both.txt CLKS=900000000 PH=7 D88=11 HZ=54000000 CZ=7
 TV80 ?= ../../../private/tv80src/rtl/core
 CZ ?= 7
-BOTHSRC = $(SOCSRC) ../../rtl/z80_sub.v build_both/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
+BOTHSRC = $(SOCSRC) ../rtl/z80_sub.v build_both/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
 bothboot: build_both/obj/Vsim_top
 	build_both/obj/Vsim_top -d $(DISK) -s $(SCRIPT) -c $(CLKS)
 build_both/rom.hex:
@@ -104,7 +104,7 @@ build_hdmi/obj/Vhdmi_top: $(HDMI_SRC) $(SIM09)/sim/tb_hdmi.cpp
 # loaded with it), behind psram_arb4 and sdram_ctl; the picture against the glyphs of the image (check_kanji.py).   make hdmik
 KANJI_BIN ?= $(SIM09)/images/kanji.bin
 HDMIK_SRC = $(SIM09)/rtl/hdmi_text.v $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v \
-            $(SIM09)/rtl/hdmi_video.v $(SIM09)/rtl/tmds_enc.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmik_top.v
+            $(SIM09)/rtl/hdmi_video.v $(SIM09)/rtl/tmds_enc.v ../rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmik_top.v
 hdmik: build_hdmik/obj/Vhdmi_top
 	cd build_hdmik && obj/Vhdmi_top -i $(abspath hdmik_in.txt) -o screen.ppm -f 3
 	python3 check_kanji.py build_hdmik/screen.ppm $(KANJI_BIN) $(SIM09)/rtl/font8x16.hex
@@ -146,7 +146,7 @@ build_kj/obj/Vsim_top: $(SOCSRC) build_kj/rom.hex $(SIM09)/sim/tb.cpp sim_top.v
 # The frame buffer of the HDMI screen: 320 x 240 x 8 bit in the SDRAM model at $300000 (fb32.hex: a test pattern), the screen (hdmi_screen20 + hdmi_fb)
 # shows it doubled with the default palette and the entry 7; check_fb.py compares the whole picture.   make hdmig
 HDMIG_SRC = $(SIM09)/rtl/hdmi_decode.v $(SIM09)/rtl/hdmi_glyph.v $(SIM09)/rtl/psram_xfer.v $(SIM09)/rtl/hdmi_term.v $(SIM09)/rtl/hdmi_video.v \
-            $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_pctext.v ../../rtl/hdmi_fb.v ../../tn9k/rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmig_top.v
+            $(SIM09)/rtl/tmds_enc.v ../../rtl/hdmi_screen20.v ../../rtl/hdmi_pctext.v ../../rtl/hdmi_fb.v ../rtl/psram_arb4.v ../../rtl/sdram_ctl.v sdram_model.v hdmig_top.v
 hdmig: build_hdmig/obj/Vhdmi_top
 	cd build_hdmig && obj/Vhdmi_top -i $(abspath hdmig_in.txt) -o screen.ppm -f 3
 	python3 check_fb.py build_hdmig/screen.ppm $(SIM09)/rtl/font8x16.hex
@@ -226,7 +226,7 @@ gfxdraw: build_gfx/obj/Vsim_top $(GFX_DISK)
 
 # The graphics of the sub CPUs (BDOS 112 of cpm): gdemo.com on the Z80 and gdemo86.cmd on the 8088 draw a picture through the OS-9 command cpm (the drawing
 # is done by the 6809); the SDRAM dump against check_gdemo.py.  Both CPUs are in this FPGA (SUBBOTH): subsel chooses.   make gfxsub
-SUBSRC = $(SOCSRC) ../../rtl/z80_sub.v build_gfxsub/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
+SUBSRC = $(SOCSRC) ../rtl/z80_sub.v build_gfxsub/tv80s_cen.v $(TV80)/tv80_core.v $(TV80)/tv80_mcode.v $(TV80)/tv80_alu.v $(TV80)/tv80_reg.v
 SUB_DISK = build_gfxsub/gs.dsk
 gfxsub: build_gfxsub/obj/Vsim_top $(SUB_DISK)
 	cd build_gfxsub && rm -f fbdump.bin && obj/Vsim_top -d gs.dsk -s $(abspath gfxz80.txt) -c 3500000000 | tr -d '\r' | grep -E "FBDUMP|OS9:" | tail -2

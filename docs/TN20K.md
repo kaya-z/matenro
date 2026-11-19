@@ -256,8 +256,7 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 | `fpga/rtl/eu4kx32.v` | MCL86 のマイクロコード ROM (4K × 32) |
 | `fpga/vendor/mcl86/` | MCL86 の `eu.v` `biu_min.v`、マイクロコード `mcl86_ucode.hex`、README (出どころとライセンス) |
 | `fpga/rtl/sdram_ctl.v` | SDRAM コントローラ (`PsramController` と同じ要求) |
-| `fpga/rtl/xlink.v` | `SMMU_WT` を足した (9K では 0) |
-| `fpga/tn9k/rtl/matenro_soc.v` | `` `define SUB8088 `` で Z80 のかわりに 8088 (`C88_DIV` パラメータ) |
+| `fpga/tn20k/rtl/matenro_soc.v` `psram_arb4.v` `xlink.v` `z80_sub.v` `shr_ap.v` `btn_toggle.v` | **20K 専用のソース** (2026-11-19 に 9K のものを写して分けた。**以後の 20K の変更は、ここだけに入れる。9K は `fpga/tn9k/rtl` と `fpga/rtl` の同名のファイルを使い続け、20K の変更の影響を受けない**)。`matenro_soc.v` は `` `define SUB8088 `` / `SUBBOTH` で 8088、`xlink.v` は `SMMU_WT` を持つ |
 | `fpga/tn20k/rtl/tn20k_top.v` `tn20k_pll.v` | 20K の最上位と PLL |
 | `fpga/tn20k/constraints/tn20k.cst` `tn20k.sdc` | ピンとタイミング |
 | `fpga/tn20k/scripts/build.sh` | Gowin のビルド (`xltest88` / `boot`、`CLKMHZ=54|60|67.5`) |

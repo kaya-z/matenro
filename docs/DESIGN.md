@@ -613,6 +613,7 @@ openFPGALoader -b tangnano9k -f fpga/tn9k/build/boot/impl/pnr/matenro_boot.fs   
 | ビルド | `fpga/tn9k/scripts/build.sh` | `fpga/tn20k/scripts/build.sh` |
 | カード | `mkdisk.sh` `mkdisk_d1.sh` | `fpga/tn20k/scripts/mkdisk.sh` (9K のカードの `/d0` を差し替える) |
 | `load xlink` | 要る | 要らない |
+| ソース | `fpga/tn9k/rtl` と `fpga/rtl` (`matenro_soc.v` `psram_arb4.v` `xlink.v` `z80_sub.v` `shr_ap.v` `btn_toggle.v`)。**9K で確定したので、20K の変更では触らない** | `fpga/tn20k/rtl` に、同じ名前のファイルの 20K 専用の写し (2026-11-19 に分けた)。20K の変更はここだけ |
 
 どちらも Gowin IDE の特定の版 (V1.9.11.03 Education) で作った値で、ほかの環境では確認していません ([SETUP.md](SETUP.md) の 7 章)。フラッシュへの書き込みは、20K でも `openFPGALoader -f` (`-b` なし、0.10.0) で、実機で確認しました。
 
