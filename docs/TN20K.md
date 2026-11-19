@@ -244,7 +244,8 @@ Tang Nano 20K を USB に接続し、**54 MHz のビットストリームを SRA
 * **ブートのメッセージ**: `Tang Nano 9K` は、カードの ROM イメージ (LSN 1100 から 112 セクタ) の INIT モジュールの中の名前です。`mkdisk.sh` が sim09 の `init.asm` の写し (名前だけ `Tang Nano 20K` にしたもの。sim09 は変えない) からモジュールを作り直し、`make9rom` でイメージを作り直して差し替えます。
 * **カード**: `fpga/tn20k/scripts/mkdisk.sh` が `/d0` を作る (9K の `/d0` に `dos`、CP/M-86 の試験、`/d0/dos` の MS-DOS 2.0 の一式を足したもの)。9K のカード全体のイメージの先頭 1MB を差し替える: `sudo dd if=fpga/tn20k/build/matenro20k_l2.dsk of=/dev/sdX bs=1M count=1 conv=fsync`。**MS-DOS の作業用イメージは 360KB で `/d0` に置けないので、`dos -t=/d1/dostmp.img` で `/d1` (64MB) に置く。**
 * **SKK 辞書** (`jwp` の既定 `/d1/skk.dic`、UTF-8、約 5.6MB): `mkdisk.sh` が `SKK-JISYO.L` (`apt install skkdic`、場所は `SKKJISYO=`) から sim09 の `tools/mkskkdic.py -e utf8` で作り、`kanji.bin` と一緒に `/d1` に入れます。`/d1` だけを書き直すなら `sudo dd if=fpga/tn20k/build/matenro20k_d1.dsk of=/dev/sdX bs=1M seek=128 conv=fsync` (`/d0` は変わりません)。
-* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、フラッシュへの書き込み (`-f`)、電源を入れ直したときの起動 (今は SRAM に書いたので、電源を切ると消える)、`load xlink` のドライバを入れた場合。
+* **フラッシュ** (2026-11-19): `openFPGALoader -f` (`-b` なし、0.10.0) で書き、電源を入れ直して OS-9 が起動することを確かめた (`-f` は何も表示しない)。
+* **未確認**: 性能 (`etime` で MCL86 の 4.9 MHz 相当を測る)、`load xlink` のドライバを入れた場合。
 * **わかったこと**: 書き込み直後の UART に数文字の文字化けが出ることがある (`OOOKKHHHjymmm>`)。ツール (`openFPGALoader`) が JTAG を動かすときの雑音と見ている。UART を読む `cat` を 2 本同時に走らせると文字が欠ける (基板の不具合ではない)。
 
 ## 9. ファイル
