@@ -322,15 +322,19 @@ module matenro_soc #(
     // the console output of the test: one character at a time (the ACIA and the screen)
     reg        p_go, st_wr, st_d, st_d2;
     reg [7:0]  p_ch, st_byte;
-    function [7:0] cred(input [4:0] i);
-        case (i)
-            5'd0: cred = "Y"; 5'd1: cred = "U"; 5'd2: cred = "K"; 5'd3: cred = "A"; 5'd4: cred = "R"; 5'd5: cred = "I"; 5'd6: cred = " ";
-            5'd7: cred = "S"; 5'd8: cred = "e"; 5'd9: cred = "m"; 5'd10: cred = "i"; 5'd11: cred = "c"; 5'd12: cred = "o"; 5'd13: cred = "n";
-            5'd14: cred = "d"; 5'd15: cred = "u"; 5'd16: cred = "c"; 5'd17: cred = "t"; 5'd18: cred = "o"; 5'd19: cred = "r"; 5'd20: cred = " ";
-            5'd21: cred = "D"; 5'd22: cred = "e"; 5'd23: cred = "v"; 5'd24: cred = "i"; 5'd25: cred = "c"; 5'd26: cred = "e"; 5'd27: cred = "s";
-            5'd28: cred = 8'h0d; default: cred = 8'h0a;
-        endcase
-    endfunction
+    // the credit line: a small ROM with a registered read (a block RAM / ROM, not LUTs: the design is nearly full, 97% of the CLS)
+    reg [7:0] crom [0:31];
+    reg [7:0] cred_q;
+    integer ck;
+    initial begin
+        for (ck = 0; ck < 32; ck = ck + 1) crom[ck] = 8'h0a;
+        crom[0] = "Y"; crom[1] = "U"; crom[2] = "K"; crom[3] = "A"; crom[4] = "R"; crom[5] = "I"; crom[6] = " ";
+        crom[7] = "S"; crom[8] = "e"; crom[9] = "m"; crom[10] = "i"; crom[11] = "c"; crom[12] = "o"; crom[13] = "n";
+        crom[14] = "d"; crom[15] = "u"; crom[16] = "c"; crom[17] = "t"; crom[18] = "o"; crom[19] = "r"; crom[20] = " ";
+        crom[21] = "D"; crom[22] = "e"; crom[23] = "v"; crom[24] = "i"; crom[25] = "c"; crom[26] = "e"; crom[27] = "s";
+        crom[28] = 8'h0d;
+    end
+    always @(posedge clk) cred_q <= crom[mi];          // mi is stable for many clocks before p_ch takes cred_q
     function [7:0] hexc(input [3:0] n); hexc = (n < 4'd10) ? (8'h30 + n) : (8'h37 + n); endfunction
     function [7:0] msg(input [4:0] i5, input fail, input [21:0] fa);
         reg [3:0] i;
@@ -376,7 +380,7 @@ module matenro_soc #(
             case (cs_)
                 C_WAIT:  if (bsy_d == 4'b0000 && !ps_busy) cs_ <= MEMTEST ? M_CRED : C_CLR;
                 M_CRED: if (MEMTEST && !p_go && !st_wr && !st_d) begin                   // the credit line first: "YUKARI Semiconductor Devices"
-                    p_ch <= cred(mi);
+                    p_ch <= cred_q;
                     p_go <= 1'b1;
                     if (mi == 5'd29) begin mi <= 5'd0; cs_ <= M_HDR; end else mi <= mi + 1'b1;
                 end

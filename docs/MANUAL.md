@@ -714,7 +714,7 @@ TV80=<TV80 のファイルのあるディレクトリ> SIM09=<sim09 の場所> f
 
 **作ったら必ず**、`impl/pnr/matenro_boot_tr_content.html` の `Total Negative Slack Summary` が全部 0 であることを確かめてください (負の値があると、67.5MHz で正しく動かないことがあります)。配置配線の結果は、RTL を少し変えただけで変わります。`build.sh` は、制約のエラーでは「ビットストリームは新しくない」と止まります。
 
-資源は、9K は LUT の 88% で、67.5 MHz を満たします。20K は、Z80 + 8088 + HDMI + フレームバッファで Logic の約 62% で、54 MHz を満たします。**どちらも余裕は小さいです** ([FPGA_RESOURCES.md](FPGA_RESOURCES.md))。
+資源は、9K は Logic の 92% (CLS 96%、ほぼ満杯) で、67.5 MHz を満たします。20K は、Z80 + 8088 + HDMI + フレームバッファで Logic の約 62% で、54 MHz を満たします。**どちらも余裕は小さいです** ([FPGA_RESOURCES.md](FPGA_RESOURCES.md))。
 
 ### 10.3 書く
 
