@@ -25,6 +25,7 @@ MC6809 側は [sim09](https://github.com/kaya-z/sim09) をベースにしてい�
   ```
 * 6809 側のメモリ・MMU・I/O は sim09 のまま (Level 2: 8KB × 8 ページの MMU、物理 2MB、I/O は `$FF80`)。
 * ストレージは SD カード相当のディスクイメージ (6809/OS-9 側だけが持つ。生デバイスも指せる)。
+* シミュレータは、**実機の待ちのモデル**を持っています (`-hw`、既定。PSRAM の応答待ちと、6809 と Z80 が PSRAM を取り合うときの待ち。`-nohw` で理想の機械。[docs/DESIGN.md](docs/DESIGN.md) の 17 章)。`duo` の実機との比較で、差は最大 2.7% です。8088 も 20K の実機で動かして確かめました (CP/M-86、MS-DOS)。
 * 8088 では、CP/M-86 のほかに **MS-DOS 1.25 と 2.0 が動きます** (OS-9 のコマンド `dos`。カーネルと `COMMAND` は Microsoft が公開したものを組むか、そのまま使います。`EDLIN`、`DEBUG`、`DATE`/`TIME`、プリンタ、ディスクイメージ。使い方は [docs/MANUAL.md](docs/MANUAL.md) の 6.8、設計は [docs/DESIGN.md](docs/DESIGN.md) の 18 章)。**`cpm` のように OS-9 のコマンドラインから `dos -v=2 -a=dosrun2.img tbasic` で DOS のプログラムも実行できます** (実行モード、MANUAL 6.9: OS-9 のカレントディレクトリのファイルを DOS のディスクに出し入れします)。
 * Linux (Debian 12) で動く C のプログラムです (gcc、make)。
 * **FPGA 版 Tang Nano 9K (Z80 のみ) は動いています** ([docs/FPGA.md](docs/FPGA.md)): sim09 の SoC に Z80 をつないだもの (6809 コア + PSRAM + SD + XLINK + Z80、`fpga/tn9k/`) を作り、**実機で OS-9 Level 2 が SD カードから起動し、`cpm` で CP/M-80 のプログラムが動きます**。6809 は E = 1.875 MHz、Z80 は 7.5 MHz (システムクロック 67.5 MHz の 1/36 と 1/9) です。実機で HI-TECH C のコンパイル (`cc80`) と ZEXDOC (Z80 の命令 67 項目、約 3 時間) が通りました。LUT は 92% (CLS 96%。ほぼ満杯で、配置配線の結果で実機が止まることがあった: docs/FPGA_RESOURCES.md)、電源投入時に PSRAM の検査 (`Memory >>>>… OK 2048K`、約 4.5 秒) をします。タイミングは 67.5 MHz に収めていて、実機は 74.25 MHz でも動きましたが、ツールのモデルでは余裕が小さいです ([docs/FPGA_RESOURCES.md](docs/FPGA_RESOURCES.md))。XLINK (`fpga/rtl/xlink.v`) と Z80 (`fpga/rtl/z80_soc.v`) は Verilator でも C のシミュレータと同じ結果を確認しています (`make -C fpga/sim`)。8088 は 9K に載らないので、20K の版です (次の項目)。
@@ -228,5 +229,5 @@ fpga/tn20k/     Tang Nano 20K の SoC (rtl/ に 20K 専用の matenro_soc.v な�
 * FPGA のタイミングの余裕は小さいです (9K は 67.5 MHz で 0.1〜0.5 ns、20K は 54 MHz に対して Fmax が 58.4 MHz)。実機では問題なく動いていますが、RTL を変えるたびに配置配線の結果が変わるので、毎回 `Total Negative Slack Summary` を見てください。
 * 実物の CP/M ソフトでの検証は ZEXDOC、HI-TECH C、Turbo Pascal 3.0、DR の標準ツールと MBASIC です (WordStar など他は未確認)。CP/M の CCP/BDOS/BIOS の実物、BIOS のディスクの入口 (コンソールの入口だけ用意)、複数ドライブ、ワイルドカードの名前変更は未対応。
 * MS-DOS は 1.25 と 2.0 だけです (2.0 のカーネルは Microsoft が公開した完成品を使います)。IBM PC 用の `BASIC.COM` は動きません。MS-DOS は 8088 を載せた 20K の実機とシミュレータで動きます (9K にはありません)。
-* 実機の待ちのモデルは**入れてあります** (`-hw`、既定。PSRAM の応答待ちと、6809 と Z80 が PSRAM を取り合うときの待ち。`-nohw` で理想の機械。docs/DESIGN.md の 17 章)。ただし精度は最大 2.7% 差 (`duo` の実機との比較) で、命令の中のバスサイクルの順序や割り込みの入り方などは近似です。8088 は 20K の実機でも動かして確かめました (CP/M-86、MS-DOS)。ただしクロック数はプリフェッチキューを作っていないので近似で、命令の基準は Intel の資料です。
+* シミュレータの待ちのモデルは近似です。命令の中のバスサイクルの順序や、割り込みの入り方などは、実機と同じではありません。8088 のクロック数は、プリフェッチキューを作っていないので近似で、命令の基準は Intel の資料です。
 * 8086 の外部テストスイートでの検証、サブ CPU の逆アセンブル付きトレース。
